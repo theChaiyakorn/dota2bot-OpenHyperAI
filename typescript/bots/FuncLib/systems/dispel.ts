@@ -18,58 +18,211 @@ import { BotMode, Unit } from "bots/ts_libs/dota";
 // ============================================================
 
 interface DebuffInfo {
-    severity: number;      // 1-10 score
-    isDisable: boolean;    // stun/hex — can't act at all
-    isSilence: boolean;    // can't cast spells
-    isRoot: boolean;       // can't move
-    isDot: boolean;        // damage over time
-    isArmor: boolean;      // armor reduction / damage amp
-    basicDispel: boolean;  // removable by basic dispel
+    severity: number; // 1-10 score
+    isDisable: boolean; // stun/hex — can't act at all
+    isSilence: boolean; // can't cast spells
+    isRoot: boolean; // can't move
+    isDot: boolean; // damage over time
+    isArmor: boolean; // armor reduction / damage amp
+    basicDispel: boolean; // removable by basic dispel
     strongDispel: boolean; // removable by strong dispel only
 }
 
 const DEBUFFS: Record<string, DebuffInfo> = {
     // CRITICAL: complete disable
-    modifier_stunned:                           { severity: 9, isDisable: true,  isSilence: false, isRoot: false, isDot: false, isArmor: false, basicDispel: false, strongDispel: true },
-    modifier_bashed:                            { severity: 9, isDisable: true,  isSilence: false, isRoot: false, isDot: false, isArmor: false, basicDispel: false, strongDispel: true },
-    modifier_sheepstick_debuff:                 { severity: 9, isDisable: true,  isSilence: false, isRoot: false, isDot: false, isArmor: false, basicDispel: false, strongDispel: true },
-    modifier_lion_voodoo:                       { severity: 9, isDisable: true,  isSilence: false, isRoot: false, isDot: false, isArmor: false, basicDispel: false, strongDispel: true },
-    modifier_shadow_shaman_voodoo:              { severity: 9, isDisable: true,  isSilence: false, isRoot: false, isDot: false, isArmor: false, basicDispel: false, strongDispel: true },
-    modifier_bane_nightmare:                    { severity: 8, isDisable: true,  isSilence: false, isRoot: false, isDot: false, isArmor: false, basicDispel: false, strongDispel: true },
+    modifier_stunned: { severity: 9, isDisable: true, isSilence: false, isRoot: false, isDot: false, isArmor: false, basicDispel: false, strongDispel: true },
+    modifier_bashed: { severity: 9, isDisable: true, isSilence: false, isRoot: false, isDot: false, isArmor: false, basicDispel: false, strongDispel: true },
+    modifier_sheepstick_debuff: { severity: 9, isDisable: true, isSilence: false, isRoot: false, isDot: false, isArmor: false, basicDispel: false, strongDispel: true },
+    modifier_lion_voodoo: { severity: 9, isDisable: true, isSilence: false, isRoot: false, isDot: false, isArmor: false, basicDispel: false, strongDispel: true },
+    modifier_shadow_shaman_voodoo: {
+        severity: 9,
+        isDisable: true,
+        isSilence: false,
+        isRoot: false,
+        isDot: false,
+        isArmor: false,
+        basicDispel: false,
+        strongDispel: true,
+    },
+    modifier_bane_nightmare: { severity: 8, isDisable: true, isSilence: false, isRoot: false, isDot: false, isArmor: false, basicDispel: false, strongDispel: true },
 
     // HIGH: silence / major debuff
-    modifier_doom_bringer_doom:                 { severity: 10, isDisable: false, isSilence: true,  isRoot: false, isDot: true,  isArmor: false, basicDispel: false, strongDispel: true },
-    modifier_orchid_malevolence_debuff:          { severity: 7, isDisable: false, isSilence: true,  isRoot: false, isDot: false, isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_bloodthorn_debuff:                 { severity: 8, isDisable: false, isSilence: true,  isRoot: false, isDot: false, isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_silencer_last_word:                { severity: 6, isDisable: false, isSilence: true,  isRoot: false, isDot: false, isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_skywrath_mage_ancient_seal:        { severity: 7, isDisable: false, isSilence: true,  isRoot: false, isDot: false, isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_death_prophet_silence:             { severity: 6, isDisable: false, isSilence: true,  isRoot: false, isDot: false, isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_night_stalker_crippling_fear:      { severity: 6, isDisable: false, isSilence: true,  isRoot: false, isDot: false, isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_riki_smoke_screen:                 { severity: 6, isDisable: false, isSilence: true,  isRoot: false, isDot: false, isArmor: false, basicDispel: false, strongDispel: false },
-    modifier_disruptor_static_storm:            { severity: 7, isDisable: false, isSilence: true,  isRoot: false, isDot: true,  isArmor: false, basicDispel: false, strongDispel: false },
+    modifier_doom_bringer_doom: { severity: 10, isDisable: false, isSilence: true, isRoot: false, isDot: true, isArmor: false, basicDispel: false, strongDispel: true },
+    modifier_orchid_malevolence_debuff: {
+        severity: 7,
+        isDisable: false,
+        isSilence: true,
+        isRoot: false,
+        isDot: false,
+        isArmor: false,
+        basicDispel: true,
+        strongDispel: true,
+    },
+    modifier_bloodthorn_debuff: { severity: 8, isDisable: false, isSilence: true, isRoot: false, isDot: false, isArmor: false, basicDispel: true, strongDispel: true },
+    modifier_silencer_last_word: { severity: 6, isDisable: false, isSilence: true, isRoot: false, isDot: false, isArmor: false, basicDispel: true, strongDispel: true },
+    modifier_skywrath_mage_ancient_seal: {
+        severity: 7,
+        isDisable: false,
+        isSilence: true,
+        isRoot: false,
+        isDot: false,
+        isArmor: false,
+        basicDispel: true,
+        strongDispel: true,
+    },
+    modifier_death_prophet_silence: {
+        severity: 6,
+        isDisable: false,
+        isSilence: true,
+        isRoot: false,
+        isDot: false,
+        isArmor: false,
+        basicDispel: true,
+        strongDispel: true,
+    },
+    modifier_night_stalker_crippling_fear: {
+        severity: 6,
+        isDisable: false,
+        isSilence: true,
+        isRoot: false,
+        isDot: false,
+        isArmor: false,
+        basicDispel: true,
+        strongDispel: true,
+    },
+    modifier_riki_smoke_screen: { severity: 6, isDisable: false, isSilence: true, isRoot: false, isDot: false, isArmor: false, basicDispel: false, strongDispel: false },
+    modifier_disruptor_static_storm: {
+        severity: 7,
+        isDisable: false,
+        isSilence: true,
+        isRoot: false,
+        isDot: true,
+        isArmor: false,
+        basicDispel: false,
+        strongDispel: false,
+    },
 
     // ROOT
-    modifier_rod_of_atos_debuff:                { severity: 5, isDisable: false, isSilence: false, isRoot: true,  isDot: false, isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_crystal_maiden_frostbite:          { severity: 5, isDisable: false, isSilence: false, isRoot: true,  isDot: true,  isArmor: false, basicDispel: false, strongDispel: true },
-    modifier_treant_overgrowth:                 { severity: 6, isDisable: false, isSilence: false, isRoot: true,  isDot: false, isArmor: false, basicDispel: false, strongDispel: true },
+    modifier_rod_of_atos_debuff: { severity: 5, isDisable: false, isSilence: false, isRoot: true, isDot: false, isArmor: false, basicDispel: true, strongDispel: true },
+    modifier_crystal_maiden_frostbite: {
+        severity: 5,
+        isDisable: false,
+        isSilence: false,
+        isRoot: true,
+        isDot: true,
+        isArmor: false,
+        basicDispel: false,
+        strongDispel: true,
+    },
+    modifier_treant_overgrowth: { severity: 6, isDisable: false, isSilence: false, isRoot: true, isDot: false, isArmor: false, basicDispel: false, strongDispel: true },
 
     // ARMOR/DAMAGE AMP
-    modifier_slardar_amplify_damage:            { severity: 5, isDisable: false, isSilence: false, isRoot: false, isDot: false, isArmor: true,  basicDispel: true,  strongDispel: true },
-    modifier_bounty_hunter_track:               { severity: 4, isDisable: false, isSilence: false, isRoot: false, isDot: false, isArmor: true,  basicDispel: true,  strongDispel: true },
-    modifier_spirit_vessel_damage:              { severity: 5, isDisable: false, isSilence: false, isRoot: false, isDot: true,  isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_item_spirit_vessel_damage:         { severity: 5, isDisable: false, isSilence: false, isRoot: false, isDot: true,  isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_razor_static_link_debuff:          { severity: 5, isDisable: false, isSilence: false, isRoot: false, isDot: false, isArmor: true,  basicDispel: true,  strongDispel: true },
+    modifier_slardar_amplify_damage: {
+        severity: 5,
+        isDisable: false,
+        isSilence: false,
+        isRoot: false,
+        isDot: false,
+        isArmor: true,
+        basicDispel: true,
+        strongDispel: true,
+    },
+    modifier_bounty_hunter_track: { severity: 4, isDisable: false, isSilence: false, isRoot: false, isDot: false, isArmor: true, basicDispel: true, strongDispel: true },
+    modifier_spirit_vessel_damage: { severity: 5, isDisable: false, isSilence: false, isRoot: false, isDot: true, isArmor: false, basicDispel: true, strongDispel: true },
+    modifier_item_spirit_vessel_damage: {
+        severity: 5,
+        isDisable: false,
+        isSilence: false,
+        isRoot: false,
+        isDot: true,
+        isArmor: false,
+        basicDispel: true,
+        strongDispel: true,
+    },
+    modifier_razor_static_link_debuff: {
+        severity: 5,
+        isDisable: false,
+        isSilence: false,
+        isRoot: false,
+        isDot: false,
+        isArmor: true,
+        basicDispel: true,
+        strongDispel: true,
+    },
 
     // SLOWS / DOTS
-    modifier_viper_viper_strike_slow:           { severity: 4, isDisable: false, isSilence: false, isRoot: false, isDot: true,  isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_axe_battle_hunger_self:            { severity: 3, isDisable: false, isSilence: false, isRoot: false, isDot: true,  isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_venomancer_venomous_gale:          { severity: 3, isDisable: false, isSilence: false, isRoot: false, isDot: true,  isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_bristleback_viscous_nasal_goo:     { severity: 2, isDisable: false, isSilence: false, isRoot: false, isDot: false, isArmor: true,  basicDispel: true,  strongDispel: true },
-    modifier_phoenix_fire_spirit_burn:          { severity: 2, isDisable: false, isSilence: false, isRoot: false, isDot: true,  isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_earth_spirit_magnetize:            { severity: 3, isDisable: false, isSilence: false, isRoot: false, isDot: true,  isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_warlock_fatal_bonds:               { severity: 3, isDisable: false, isSilence: false, isRoot: false, isDot: false, isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_life_stealer_open_wounds:          { severity: 3, isDisable: false, isSilence: false, isRoot: false, isDot: false, isArmor: false, basicDispel: true,  strongDispel: true },
-    modifier_ice_blast:                         { severity: 4, isDisable: false, isSilence: false, isRoot: false, isDot: true,  isArmor: false, basicDispel: false, strongDispel: false },
+    modifier_viper_viper_strike_slow: {
+        severity: 4,
+        isDisable: false,
+        isSilence: false,
+        isRoot: false,
+        isDot: true,
+        isArmor: false,
+        basicDispel: true,
+        strongDispel: true,
+    },
+    modifier_axe_battle_hunger_self: {
+        severity: 3,
+        isDisable: false,
+        isSilence: false,
+        isRoot: false,
+        isDot: true,
+        isArmor: false,
+        basicDispel: true,
+        strongDispel: true,
+    },
+    modifier_venomancer_venomous_gale: {
+        severity: 3,
+        isDisable: false,
+        isSilence: false,
+        isRoot: false,
+        isDot: true,
+        isArmor: false,
+        basicDispel: true,
+        strongDispel: true,
+    },
+    modifier_bristleback_viscous_nasal_goo: {
+        severity: 2,
+        isDisable: false,
+        isSilence: false,
+        isRoot: false,
+        isDot: false,
+        isArmor: true,
+        basicDispel: true,
+        strongDispel: true,
+    },
+    modifier_phoenix_fire_spirit_burn: {
+        severity: 2,
+        isDisable: false,
+        isSilence: false,
+        isRoot: false,
+        isDot: true,
+        isArmor: false,
+        basicDispel: true,
+        strongDispel: true,
+    },
+    modifier_earth_spirit_magnetize: {
+        severity: 3,
+        isDisable: false,
+        isSilence: false,
+        isRoot: false,
+        isDot: true,
+        isArmor: false,
+        basicDispel: true,
+        strongDispel: true,
+    },
+    modifier_warlock_fatal_bonds: { severity: 3, isDisable: false, isSilence: false, isRoot: false, isDot: false, isArmor: false, basicDispel: true, strongDispel: true },
+    modifier_life_stealer_open_wounds: {
+        severity: 3,
+        isDisable: false,
+        isSilence: false,
+        isRoot: false,
+        isDot: false,
+        isArmor: false,
+        basicDispel: true,
+        strongDispel: true,
+    },
+    modifier_ice_blast: { severity: 4, isDisable: false, isSilence: false, isRoot: false, isDot: true, isArmor: false, basicDispel: false, strongDispel: false },
 };
 
 /** Enemy buffs worth stripping with offensive purge */
@@ -104,7 +257,15 @@ const PROTECTED_MODIFIERS: string[] = [
  * Analyze all debuffs on a unit. Returns total severity score
  * and the worst debuff info for decision making.
  */
-export function AnalyzeDebuffs(unit: Unit): { score: number; worstSeverity: number; hasSilence: boolean; hasDisable: boolean; hasRoot: boolean; canBasicDispel: boolean; canStrongDispel: boolean } {
+export function AnalyzeDebuffs(unit: Unit): {
+    score: number;
+    worstSeverity: number;
+    hasSilence: boolean;
+    hasDisable: boolean;
+    hasRoot: boolean;
+    canBasicDispel: boolean;
+    canStrongDispel: boolean;
+} {
     let score = 0;
     let worstSeverity = 0;
     let hasSilence = false;
@@ -116,9 +277,7 @@ export function AnalyzeDebuffs(unit: Unit): { score: number; worstSeverity: numb
     for (const [mod, info] of Object.entries(DEBUFFS)) {
         if (unit.HasModifier(mod)) {
             // Duration check: don't count very short debuffs (< 1s remaining)
-            const remaining = (unit as any).GetModifierRemainingDuration
-                ? (unit as any).GetModifierRemainingDuration(mod)
-                : 999; // assume long if we can't check
+            const remaining = (unit as any).GetModifierRemainingDuration ? (unit as any).GetModifierRemainingDuration(mod) : 999; // assume long if we can't check
 
             if (remaining < 0.5) continue; // Too short to react to
 
@@ -168,7 +327,7 @@ function IsSilenceCriticalForHero(bot: Unit): boolean {
  */
 function CanSurviveAfterDispel(bot: Unit): boolean {
     // Always try to dispel human players and core heroes (pos 1-2)
-    if (!(bot as any).IsBot() || (bot as any).GetPosition && (bot as any).GetPosition() <= 2) {
+    if (!(bot as any).IsBot() || ((bot as any).GetPosition && (bot as any).GetPosition() <= 2)) {
         return true;
     }
 
@@ -275,11 +434,13 @@ export function ShouldUseAllyDispelItem(bot: Unit): LuaMultiReturn<[number, Unit
                     if (enemy && !enemy.IsNull() && enemy.IsAlive()) {
                         const eName = enemy.GetUnitName();
                         // Heroes with dangerous targeted ults
-                        if (eName === "npc_dota_hero_doom_bringer"
-                            || eName === "npc_dota_hero_lion"
-                            || eName === "npc_dota_hero_lina"
-                            || eName === "npc_dota_hero_necrolyte"
-                            || eName === "npc_dota_hero_bane") {
+                        if (
+                            eName === "npc_dota_hero_doom_bringer" ||
+                            eName === "npc_dota_hero_lion" ||
+                            eName === "npc_dota_hero_lina" ||
+                            eName === "npc_dota_hero_necrolyte" ||
+                            eName === "npc_dota_hero_bane"
+                        ) {
                             if ((enemy as any).IsFacingLocation(ally.GetLocation(), 30)) {
                                 bestAlly = ally;
                                 bestScore = 10; // Preemptive is high priority

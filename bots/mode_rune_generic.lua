@@ -46,13 +46,6 @@ local function IsHumanClaimingRune(nRune)
 	return false
 end
 
--- Wisdom rune state
-local radiantWRLocation = Vector(-7948.152344, 768.207825, 256.000000)
-local direWRLocation = Vector(8029.234375, -1125.811768, 256.000000)
-local wisdomRuneSpots = { [TEAM_RADIANT] = radiantWRLocation, [TEAM_DIRE] = direWRLocation }
-local nShrineOfWisdomTime = 0
-local nShrineOfWisdomTeam = TEAM_RADIANT
-
 -- GetDesire  (reference structure, with local additions)
 function GetDesire()
 	if ShouldSkipBotThink(GetBot()) then return 0 end
@@ -88,45 +81,6 @@ function GetDesireRaw()
 		end
 		if bot:WasRecentlyDamagedByAnyHero(2.0) and botHP < 0.7 then
 			return BOT_MODE_DESIRE_NONE
-		end
-	end
-
-	-- Wisdom Rune
-	if bot:GetLevel() < 30 then
-		nShrineOfWisdomTime = X.GetCurrentWisdomTime()
-		X.UpdateWisdom()
-
-		if  DotaTime() >= 7 * 60
-		and not Fu.IsMeepoClone(bot)
-		and not bot:HasModifier('modifier_arc_warden_tempest_double')
-		and bot.rune and bot.rune.wisdom and bot.rune.wisdom[nShrineOfWisdomTime]
-		then
-			local wisdom = bot.rune.wisdom[nShrineOfWisdomTime]
-
-			if DotaTime() < wisdom.time + 3.5 then
-				if not bot:WasRecentlyDamagedByAnyHero(3.0) then
-					return BOT_MODE_DESIRE_ABSOLUTE
-				end
-			end
-
-			local nEnemyTowers = bot:GetNearbyTowers(700, true)
-			local nInRangeEnemy = Fu.GetEnemiesNearLoc(bot:GetLocation(), 1200)
-			if (#nEnemyTowers > 0 and bot:WasRecentlyDamagedByTower(1.0) and botHP < 0.3)
-			or (#nInRangeEnemy > 0 and not Fu.IsRealInvisible(bot))
-			then
-				return 0
-			end
-
-			nShrineOfWisdomTeam = X.GetShrineOfWisdomTeam()
-			if nShrineOfWisdomTeam then
-				local bChecked  = wisdom.spot[nShrineOfWisdomTeam].status
-				local vLocation = wisdom.spot[nShrineOfWisdomTeam].location
-				if bChecked == false then
-					if bot == X.GetWisdomAlly(vLocation) then
-						return X.GetWisdomDesire(vLocation)
-					end
-				end
-			end
 		end
 	end
 
@@ -255,50 +209,6 @@ function Think()
 	or bot:GetCurrentActionType() == BOT_ACTION_TYPE_PICK_UP_RUNE
 	then
 		return
-	end
-
-	-- Wisdom Rune
-	if nShrineOfWisdomTeam and DotaTime() >= 7 * 60
-	and bot.rune and bot.rune.wisdom and bot.rune.wisdom[nShrineOfWisdomTime]
-	then
-		local wisdom = bot.rune.wisdom[nShrineOfWisdomTime]
-		if wisdom then
-			local vLocation = wisdom.spot[nShrineOfWisdomTeam].location
-			local nInRangeEnemy = Fu.GetEnemiesNearLoc(vLocation, 1600)
-
-			if wisdom.spot[nShrineOfWisdomTeam].status == false then
-				for _, enemyHero in pairs(nInRangeEnemy) do
-					if Fu.IsValidHero(enemyHero)
-					and ((not enemyHero:IsBot())
-						or (GetUnitToLocationDistance(enemyHero, vLocation) + 400 < GetUnitToLocationDistance(bot, vLocation)))
-					then
-						wisdom.spot[nShrineOfWisdomTeam].status = true
-					end
-				end
-
-				if GetUnitToLocationDistance(bot, vLocation) < 250 then
-					if wisdom.spot[nShrineOfWisdomTeam].status == false then
-						wisdom.time = DotaTime()
-					end
-					wisdom.spot[nShrineOfWisdomTeam].status = true
-				end
-
-				bot.rune.location = vLocation
-				bot:Action_MoveDirectly(vLocation)
-				return
-			else
-				nInRangeEnemy = Fu.GetEnemiesNearLoc(vLocation, 300)
-				if GetUnitToLocationDistance(bot, vLocation) < 300 and #nInRangeEnemy > 0 then
-					wisdom.spot[nShrineOfWisdomTeam].status = false
-					wisdom.time = DotaTime()
-				end
-			end
-
-			if DotaTime() < wisdom.time + 3.5 then
-				bot:Action_ClearActions(false)
-				return
-			end
-		end
 	end
 
 	-- Pre-game movement
@@ -431,11 +341,8 @@ function X.InitRune()
 				distance = 0,
 				status = RUNE_STATUS_MISSING,
 			},
-			wisdom = {},
 			location = nil,
 		}
-	elseif bot.rune.wisdom == nil then
-		bot.rune.wisdom = {}
 	end
 end
 
@@ -707,110 +614,3 @@ function X.IsTeamMustSaveRune(nRune)
 	end
 end
 
--- Wisdom Rune helpers
-function X.UpdateWisdom()
-	if nShrineOfWisdomTime >= 7 and nShrineOfWisdomTime % 7 == 0 and bot.rune then
-		for i = 1, 5 do
-			local member = GetTeamMember(i)
-			if member and member == bot then
-				if bot.rune.wisdom[nShrineOfWisdomTime] == nil then
-					bot.rune.wisdom[nShrineOfWisdomTime] = {
-						spot = {
-							[TEAM_RADIANT] = { status = false, location = radiantWRLocation },
-							[TEAM_DIRE] = { status = false, location = direWRLocation },
-						},
-						time = 0,
-					}
-				end
-				if member.rune then member.rune.wisdom = bot.rune.wisdom end
-			end
-
-			if member and member.rune and member.rune.wisdom
-			and member.rune.wisdom[nShrineOfWisdomTime]
-			and bot.rune and bot.rune.wisdom
-			and bot.rune.wisdom[nShrineOfWisdomTime]
-			then
-				for _, team in pairs({TEAM_RADIANT, TEAM_DIRE}) do
-					if member.rune.wisdom[nShrineOfWisdomTime].spot[team].status == true then
-						bot.rune.wisdom[nShrineOfWisdomTime].spot[team].status = true
-					end
-				end
-			end
-		end
-	end
-end
-
-local nMinuteLast = 0
-function X.GetCurrentWisdomTime()
-	local nMinuteCurr = math.floor(DotaTime() / 60)
-	if nMinuteCurr > nMinuteLast and nMinuteCurr % 7 == 0 then
-		nMinuteLast = nMinuteCurr
-	end
-	return nMinuteLast
-end
-
-function X.GetWisdomAlly(vLocation)
-	local target = nil
-	local targetDistance = math.huge
-	for i = 1, 5 do
-		local member = GetTeamMember(i)
-		if Fu.IsValidHero(member) and not Fu.IsDoingTormentor(member) then
-			local memberDistance = GetUnitToLocationDistance(member, vLocation)
-			if memberDistance < targetDistance then
-				target = member
-				targetDistance = memberDistance
-			end
-		end
-	end
-	return target
-end
-
-function X.GetWisdomDesire(vLocation)
-	if (Fu.IsDefending(bot) and botActiveModeDesire > 0.7)
-	or Fu.IsInTeamFight(bot, 1600) then
-		return 0
-	end
-
-	local nDesire = 0
-	local botLevel = bot:GetLevel()
-	local distance = GetUnitToLocationDistance(bot, vLocation)
-
-	if botLevel < 12 then
-		nDesire = RemapValClamped(distance, 6400, 3200, 0.75, 0.95)
-	elseif botLevel < 18 then
-		nDesire = RemapValClamped(distance, 6400, 3200, 0.65, 0.95)
-	elseif botLevel < 25 then
-		nDesire = RemapValClamped(distance, 6400, 2400, 0.55, 0.95)
-	elseif botLevel < 30 then
-		nDesire = RemapValClamped(distance, 6400, 2400, 0.45, 0.95)
-	end
-
-	return nDesire
-end
-
-function X.GetShrineOfWisdomTeam()
-	local dist1 = GetUnitToLocationDistance(bot, radiantWRLocation)
-	local dist2 = GetUnitToLocationDistance(bot, direWRLocation)
-
-	if GetTeam() == TEAM_RADIANT then
-		if dist1 < dist2 then
-			return TEAM_RADIANT
-		else
-			local hTower = GetTower(GetOpposingTeam(), TOWER_BOT_1)
-			if hTower == nil or not hTower:IsAlive() or dist2 <= 1600 then
-				return TEAM_DIRE
-			end
-		end
-	elseif GetTeam() == TEAM_DIRE then
-		if dist1 > dist2 then
-			return TEAM_DIRE
-		else
-			local hTower = GetTower(GetOpposingTeam(), TOWER_TOP_1)
-			if hTower == nil or not hTower:IsAlive() or dist1 <= 1600 then
-				return TEAM_RADIANT
-			end
-		end
-	end
-
-	return nil
-end

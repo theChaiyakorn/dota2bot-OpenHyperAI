@@ -27,6 +27,8 @@ local beInitDone, IsSupport, IsHeroCore, bePvNMode = false, false, false, false
 local ShouldAttackSpecialUnit = false
 local lastIdleStateCheck, isInIdleState = -1, false
 local ShouldHelpAlly, ShouldHelpWhenCoreIsTargeted = false, false
+local ShouldFollowAlly = false
+local followAllyTarget = nil
 local nearbyAllies, nearbyEnemies
 
 -- Pickup / swap timers
@@ -70,13 +72,9 @@ local function CapForLanePush(desire)
 end
 
 function GetDesire()
-	if ShouldSkipBotThink(GetBot()) then return 0 end
-    -- local cacheKey = 'GetTeamRoamDesire'..tostring(bot:GetPlayerID())
-    -- local cachedVar = Fu.Utils.GetCachedVars(cacheKey, 0.2 * (1 + Customize.ThinkLess))
-    -- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
-
-    -- Unstuck: if bot is in a Valve-only mode for too long and enemies are nearby,
-    -- boost desire to take over and let team_roam Think handle the situation.
+    -- Unstuck: if bot is in a Valve-only mode for too long, take over.
+    -- This MUST be before ShouldSkipBotThink — critical recovery logic.
+    -- Returns RAW desire (not adjusted) to outbid Valve's mode (e.g. wisdom shrine 0.75).
     local activeMode = bot:GetActiveMode()
     if activeMode == BOT_MODE_ITEM
     or (BOT_MODE_WISDOM_SHRINE and activeMode == BOT_MODE_WISDOM_SHRINE)
@@ -85,18 +83,19 @@ function GetDesire()
     then
         if bot._stuckModeTime == nil then bot._stuckModeTime = DotaTime() end
         if DotaTime() - bot._stuckModeTime > 8 then
+            bot._stuckUnsticking = true
             local enemies = bot:GetNearbyHeroes(1200, true, BOT_MODE_NONE) or {}
             if #enemies > 0 then
-                bot._stuckModeTime = nil
-                return GetAdjustedDesireValue(0.85)
+                return 0.85 -- Raw, outbids wisdom shrine 0.75
             end
-            -- No enemies but still stuck — move to lane
-            bot._stuckModeTime = nil
-            return GetAdjustedDesireValue(0.8)
+            return 0.8
         end
     else
         bot._stuckModeTime = nil
+        bot._stuckUnsticking = false
     end
+
+	if ShouldSkipBotThink(GetBot()) then return 0 end
 
     local res = GetDesireHelper()
     res = CapForLanePush(res)
@@ -106,6 +105,9 @@ function GetDesire()
 end
 function GetDesireHelper()
 	local nBotHP = Fu.GetHP(bot)
+    ShouldFollowAlly = false
+    followAllyTarget = nil
+
     if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then
         return BOT_MODE_DESIRE_NONE
     end
@@ -222,6 +224,48 @@ function GetDesireHelper()
         end
     end
 
+    -- Fallback: if support has nothing to do, follow the nearest ally that IS busy.
+    -- This prevents supports sitting idle at 0.07 defend doing nothing useful.
+    if bot:IsAlive() and DotaTime() > 0 then
+        local bestAlly = nil
+        local bestDist = 99999
+        for i = 1, 5 do
+            local ally = GetTeamMember(i)
+            if ally ~= nil and ally ~= bot
+            and Fu.IsValidHero(ally) and ally:IsAlive()
+            and not ally:IsIllusion()
+            then
+                local allyDesire = ally:GetActiveModeDesire()
+                local allyMode = ally:GetActiveMode()
+                -- Only follow allies doing something real (desire > 0.15)
+                -- and not stuck in same low-desire state or shopping
+                if allyDesire > 0.15
+                and allyMode ~= BOT_MODE_RETREAT
+                and allyMode ~= BOT_MODE_SECRET_SHOP
+                and allyMode ~= BOT_MODE_SIDE_SHOP
+                then
+                    local dist = GetUnitToUnitDistance(bot, ally)
+                    if dist < bestDist then
+                        bestDist = dist
+                        bestAlly = ally
+                    end
+                end
+            end
+        end
+        if bestAlly ~= nil then
+            ShouldFollowAlly = true
+            followAllyTarget = bestAlly
+            -- Supports: 0.25 pre-adjust -> ~0.175, beats 0.07 defend
+            -- Cores: 0.2 pre-adjust -> ~0.14, mild fallback
+            return IsSupport and 0.25 or 0.2
+        end
+
+        -- No ally doing anything useful — just go to lane front
+        ShouldFollowAlly = true
+        followAllyTarget = nil
+        return IsSupport and 0.2 or 0.15
+    end
+
     return 0.0
 end
 
@@ -312,15 +356,33 @@ function OnEnd()
     towerTime = 0
     towerCreepMode = false
     PickedItem = nil
+    ShouldFollowAlly = false
+    followAllyTarget = nil
 end
 
 -- ==============================
 -- Think
 -- ==============================
 function Think()
+    -- Unstuck action: if we took over from a stuck Valve mode, do something useful
+    -- This MUST be before any skip/guard checks since it's critical recovery logic
+    if bot._stuckUnsticking then
+        local enemies = bot:GetNearbyHeroes(1200, true, BOT_MODE_NONE) or {}
+        if #enemies > 0 and Fu.IsValidHero(enemies[1]) and Fu.CanBeAttacked(enemies[1]) then
+            bot:Action_AttackUnit(enemies[1], false)
+            bot._stuckModeTime = nil
+            bot._stuckUnsticking = false
+            return
+        end
+        -- No enemies — move to lane
+        local lane = bot:GetAssignedLane() or LANE_MID
+        bot:Action_MoveToLocation(GetLaneFrontLocation(GetTeam(), lane, 0))
+        bot._stuckModeTime = nil
+        bot._stuckUnsticking = false
+        return
+    end
+
     if Fu.CanNotUseAction(bot) then return end
-	-- diabled think less to avoid failing to last hit
-    -- if Fu.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "team_roam") then return end
 
     ItemOpsThink()
 
@@ -365,6 +427,22 @@ function Think()
 
     if (IsHeroCore or IsSupport) and Fu.Utils.IsValidUnit(targetUnit) then
         bot:Action_AttackUnit(targetUnit, false)
+        return
+    end
+
+    -- Follow-ally fallback: move toward a nearby ally doing something useful
+    if ShouldFollowAlly then
+        if followAllyTarget ~= nil and Fu.IsValidHero(followAllyTarget) and followAllyTarget:IsAlive() then
+            local dist = GetUnitToUnitDistance(bot, followAllyTarget)
+            if dist > 400 then
+                bot:Action_MoveToLocation(followAllyTarget:GetLocation())
+            end
+            -- If close enough, just stand near them (they'll pick up a real mode soon)
+        else
+            -- No specific ally — move to lane front
+            local lane = bot:GetAssignedLane() or LANE_MID
+            bot:Action_MoveToLocation(GetLaneFrontLocation(GetTeam(), lane, 0))
+        end
         return
     end
 end

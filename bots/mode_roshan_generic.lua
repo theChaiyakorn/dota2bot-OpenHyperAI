@@ -30,9 +30,41 @@ local ROSH_PING_DURATION = 30
 local ROSH_COOLDOWN_NORMAL = 10 * 60
 local ROSH_COOLDOWN_TURBO = 6 * 60
 
+-- Roshan HP dip: when bot HP drops below 50%, KEEP desire high (so roshan mode
+-- stays active and Valve doesn't TP bot away for another mode), but the Think
+-- function will back the bot off so Roshan retargets another ally.
+local roshDipUntil = 0
+local ROSH_DIP_DURATION = 1.5 -- seconds to back off so Rosh retargets
+
+local function DampenByBotHP(desire)
+	if desire <= 0 then return desire end
+	-- Huskar: no dampening
+	if botName == "npc_dota_hero_huskar" then return desire end
+
+	local botHP = Fu.GetHP(bot)
+
+	-- If being hit by enemy heroes near roshan, suppress harder (likely ganked)
+	if bot:WasRecentlyDamagedByAnyHero(2.0) and botHP < 0.4 then
+		return desire * RemapValClamped(botHP, 0.1, 0.4, 0.0, 0.5)
+	end
+
+	-- HP dip: start backing off timer, but do NOT reduce desire.
+	-- Desire stays high to keep roshan mode active. Think handles the back-off.
+	if botHP < 0.5 then
+		if DotaTime() > roshDipUntil then
+			roshDipUntil = DotaTime() + ROSH_DIP_DURATION
+		end
+	end
+
+	bot._roshDipActive = DotaTime() < roshDipUntil
+
+	return desire
+end
+
 function GetDesire()
 	if ShouldSkipBotThink(GetBot()) then return 0 end
 	local res = GetDesireHelper()
+	res = DampenByBotHP(res)
 	if res > 0.6 then Fu.ModeAnnounce(bot, 'say_roshan', 30) end
 	return GetAdjustedDesireValue(res)
 end
@@ -123,8 +155,13 @@ function GetDesireHelper()
 
     -- Human team Roshan flow:
     -- Bots can't properly enter pit with Valve's Think when human is on team.
+    -- In early game, don't attempt Roshan at all with humans — too risky without coordination.
     -- Instead: ping to gather for 30s, then give up for a cooldown period.
     if hasHumanOnTeam then
+        if Fu.IsEarlyGame() then
+            return BOT_ACTION_DESIRE_NONE
+        end
+
         -- On cooldown — skip Roshan entirely
         if DotaTime() < roshCooldownUntil then
             return BOT_ACTION_DESIRE_NONE
@@ -228,4 +265,74 @@ function GetDesireHelper()
     end
 
     return BOT_ACTION_DESIRE_NONE
+end
+
+-- How many allies need to be near the pit before we engage Roshan.
+-- Scales by game phase: early needs everyone, late game a core or two suffices.
+local function GetRequiredAlliesForRoshan()
+	if Fu.IsLateGame() then
+		return Fu.IsCore(bot) and 1 or 2
+	elseif Fu.IsMidGame() then
+		return 3
+	else
+		return 4
+	end
+end
+
+local ROSH_GATHER_RADIUS = 2800  -- how close to pit counts as "gathered"
+local ROSH_WAIT_RADIUS   = 1200  -- stand outside pit waiting for team
+
+function Think()
+	if not bot:IsAlive() or Fu.CanNotUseAction(bot) then return end
+
+	local roshLoc = Fu.GetCurrentRoshanLocation()
+	if roshLoc == nil then return end
+
+	-- During HP dip: back off from Roshan so it retargets an ally.
+	-- Desire stays high so no mode switch / Valve TP happens.
+	if bot._roshDipActive then
+		local awayDir = Fu.AdjustLocationWithOffsetTowardsFountain(roshLoc, 500)
+		bot:Action_MoveToLocation(awayDir + RandomVector(100))
+		return
+	end
+
+	-- Count allies gathered near the pit
+	local alliesNearPit = Fu.GetAlliesNearLoc(roshLoc, ROSH_GATHER_RADIUS)
+	local alliesCount = 0
+	for _, ally in pairs(alliesNearPit) do
+		if Fu.IsValidHero(ally) and ally:IsAlive() and not ally:IsIllusion() then
+			alliesCount = alliesCount + 1
+		end
+	end
+
+	local requiredAllies = GetRequiredAlliesForRoshan()
+	local distToRosh = GetUnitToLocationDistance(bot, roshLoc)
+
+	-- If Roshan is already being attacked (low HP), skip gathering and help finish
+	local roshBeingAttacked = Fu.Utils.IsValidUnit(Roshan) and Fu.GetHP(Roshan) < 0.7
+
+	-- Gathering phase: not enough allies yet → wait outside pit
+	if alliesCount < requiredAllies and not roshBeingAttacked then
+		-- Move toward pit entrance but don't go inside yet
+		if distToRosh > ROSH_WAIT_RADIUS then
+			local waitLoc = Fu.AdjustLocationWithOffsetTowardsFountain(roshLoc, ROSH_WAIT_RADIUS - 200)
+			bot:Action_MoveToLocation(waitLoc)
+		end
+		-- Ping periodically to gather allies
+		if DotaTime() > (bot._lastRoshGatherPing or 0) + 8 then
+			bot._lastRoshGatherPing = DotaTime()
+			Fu.ModeAnnounce(bot, 'say_roshan', 8)
+		end
+		return
+	end
+
+	-- Enough allies gathered (or Rosh already being hit) → attack Roshan
+	if Fu.Utils.IsValidUnit(Roshan) and Fu.CanBeAttacked(Roshan) then
+		bot:Action_AttackUnit(Roshan, true)
+	else
+		-- Roshan handle not found yet, move toward pit
+		if distToRosh > 400 then
+			bot:Action_MoveToLocation(roshLoc)
+		end
+	end
 end

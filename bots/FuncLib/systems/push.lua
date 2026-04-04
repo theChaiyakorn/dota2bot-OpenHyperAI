@@ -24,8 +24,8 @@ end
 -- End of Lua Library inline imports
 local ____exports = {}
 local updateGameStateCache, updateLocationStateCache, updateUnitStateCache, presence_adjust, pingTimeDelta, StartToPushTime, BOT_MODE_DESIRE_EXTRA_LOW, hEnemyAncient, PUSH_CACHE_TTL, gameStateCache, locationStateCache, unitStateCache, BASE_ANC_RADIUS
-local Fu = require(GetScriptDirectory().."/FuncLib/func_utils")
-local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local Fu = require("bots/FuncLib/func_utils")
+local ____dota = require("bots.ts_libs.dota.index")
 local Barracks = ____dota.Barracks
 local BotMode = ____dota.BotMode
 local BotModeDesire = ____dota.BotModeDesire
@@ -34,12 +34,12 @@ local Lane = ____dota.Lane
 local Team = ____dota.Team
 local Tower = ____dota.Tower
 local UnitType = ____dota.UnitType
-local ____utils = require(GetScriptDirectory().."/FuncLib/systems/utils")
+local ____utils = require("bots.FuncLib.systems.utils")
 local IsValidUnit = ____utils.IsValidUnit
 local GetLocationToLocationDistance = ____utils.GetLocationToLocationDistance
 local RadiantFountainTpPoint = ____utils.RadiantFountainTpPoint
 local DireFountainTpPoint = ____utils.DireFountainTpPoint
-local ____cache = require(GetScriptDirectory().."/FuncLib/systems/cache")
+local ____cache = require("bots.FuncLib.systems.cache")
 local getGlobalGameState = ____cache.getGlobalGameState
 local getGlobalLocationState = ____cache.getGlobalLocationState
 local getCachedAlliesNearLoc = ____cache.getCachedAlliesNearLoc
@@ -153,7 +153,15 @@ function ____exports.GetPushDesireHelper(bot, lane)
         BASE_ANC_RADIUS
     )
     if enemiesAtAncient >= 1 then
-        return BotModeDesire.ExtraLow
+        return BotModeDesire.None
+    end
+    local defendLanes = {Lane.Top, Lane.Mid, Lane.Bot}
+    for ____, dl in ipairs(defendLanes) do
+        local laneFront = GetLaneFrontLocation(team, dl, 0)
+        local enemiesAtLane = Fu.Utils.CountEnemyHeroesNear(laneFront, 2200)
+        if enemiesAtLane >= 2 then
+            return BotModeDesire.None
+        end
     end
     if #alliesHere <= 1 and gameState.aliveEnemyCount >= 3 then
         return BotModeDesire.None
@@ -322,7 +330,13 @@ function ____exports.GetPushDesireHelper(bot, lane)
             )
         end
     end
-    return lane == Lane.Mid and BotModeDesire.VeryLow or BOT_MODE_DESIRE_EXTRA_LOW
+    if not gameState.isLaningPhase and gameState.currentTime > 15 * 60 then
+        local pushLane = ____exports.WhichLaneToPush(bot, lane)
+        if pushLane == lane and Fu.GetHP(bot) > 0.5 and aAliveCount >= eAliveCount - 1 then
+            return 0.2
+        end
+    end
+    return BotModeDesire.None
 end
 function presence_adjust(score, loc)
     local allies = #Fu.GetAlliesNearLoc(loc, 1600)
@@ -539,7 +553,7 @@ function ____exports.IsAnyTargetBackdooredAt(_bot, lane)
     end
     return not not (nearest and ____exports.HasBackdoorProtect(nearest))
 end
-local Customize = require(GetScriptDirectory().."/Customize/general")
+local Customize = require("bots.Customize.general")
 local ____Customize_1 = Customize
 local ____Customize_Enable_0
 if Customize.Enable then
@@ -723,6 +737,16 @@ function ____exports.PushThink(bot, lane)
     local locationState = getGlobalLocationState()
     local botState = updateBotStateCache(bot)
     local botLocation = botState.location
+    local pushFront = GetLaneFrontLocation(gameState.team, lane, 0)
+    local distToPush = GetUnitToLocationDistance(bot, pushFront)
+    if distToPush > 4000 and not bot:HasModifier("modifier_teleporting") and not bot._roshDipActive then
+        local tp = Fu.Utils.GetItemFromFullInventory(bot, "item_tpscroll")
+        if tp and Fu.CanCastAbility(tp) then
+            local tpTarget = GetLaneFrontLocation(gameState.team, lane, -500)
+            bot:Action_UseAbilityOnLocation(tp, tpTarget)
+            return
+        end
+    end
     local alliesHere = getCachedAlliesNearLoc(botLocation, 1600)
     local enemiesHere = getCachedEnemiesNearLoc(botLocation, 1600)
     local botAttackRange = botState.attackRange
@@ -807,24 +831,24 @@ function ____exports.PushThink(bot, lane)
     local towerDistanceToFountain = bTowerNearby and GetUnitToLocationDistance(nEnemyTowers[1], vTeamFountain) or 0
     for ____, creep in ipairs(nCreeps) do
         do
-            local __continue119
+            local __continue126
             repeat
                 if not Fu.IsValid(creep) or not Fu.CanBeAttacked(creep) then
-                    __continue119 = true
+                    __continue126 = true
                     break
                 end
                 if Fu.IsTormentor(creep) or Fu.IsRoshan(creep) then
-                    __continue119 = true
+                    __continue126 = true
                     break
                 end
                 if bTowerNearby and GetUnitToLocationDistance(creep, vTeamFountain) >= towerDistanceToFountain then
-                    __continue119 = true
+                    __continue126 = true
                     break
                 end
                 bot:Action_AttackUnit(creep, true)
                 return
             until true
-            if not __continue119 then
+            if not __continue126 then
                 break
             end
         end

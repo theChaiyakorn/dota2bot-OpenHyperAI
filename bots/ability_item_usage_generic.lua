@@ -2290,7 +2290,9 @@ X.ConsiderItemDesire["item_flask"] = function( hItem )
 	local nInRangeEnmyList = Fu.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
 
 
-	if bot:OriginalGetMaxHealth() - bot:OriginalGetHealth() > 500
+	-- Use HP ratio: 500 missing HP is nearly dead at lv1 but trivial at lv25
+	local nSelfHPrate = Fu.GetHP(bot)
+	if nSelfHPrate < 0.65
 		and #nInRangeEnmyList == 0
 		and not bot:WasRecentlyDamagedByAnyHero( 2.2 )
 		and not bot:HasModifier( "modifier_filler_heal" )
@@ -2316,7 +2318,7 @@ X.ConsiderItemDesire["item_flask"] = function( hItem )
 			and not npcAlly:WasRecentlyDamagedByAnyHero( 3.0 )
 			and not npcAlly:IsIllusion()
 			and not npcAlly:IsChanneling()
-			and npcAlly:OriginalGetMaxHealth() - npcAlly:OriginalGetHealth() > 550 
+			and Fu.GetHP(npcAlly) < 0.6
 		then
 			if( npcAlly:OriginalGetHealth() < nNeedHealAllyHealth )
 			then
@@ -2325,7 +2327,7 @@ X.ConsiderItemDesire["item_flask"] = function( hItem )
 			end
 		end
 	end
-	if hNeedHealAlly ~= nil and #hNearbyEnemyHeroList == 0
+	if hNeedHealAlly ~= nil and #nInRangeEnmyList == 0
 	then
 		hEffectTarget = hNeedHealAlly
 		sCastMotive = '给队友贴:'..Fu.Chat.GetNormName( hEffectTarget )
@@ -3269,22 +3271,27 @@ X.ConsiderItemDesire["item_magic_stick"] = function( hItem )
 	local nCharges = hItem:GetCurrentCharges()
 
 	-- Emergency: about to die
-	if nHPrate < 0.2 and nCharges >= 1 and (bot:WasRecentlyDamagedByAnyHero(3.0) or nEnemyCount >= 1) then
+	if nHPrate < 0.25 and nCharges >= 1 then
 		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Stick: emergency'
 	end
 
 	-- Retreating and hurt
-	if Fu.IsRetreating(bot) and nHPrate < 0.5 and nCharges >= 2 then
+	if Fu.IsRetreating(bot) and nHPrate < 0.6 and nCharges >= 2 then
 		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Stick: retreat'
 	end
 
 	-- In fight and low resources
-	if nEnemyCount >= 1 and nCharges >= 1 and (nHPrate < 0.5 or nMPrate < 0.3) then
+	if nEnemyCount >= 1 and nCharges >= 1 and (nHPrate < 0.6 or nMPrate < 0.35) then
 		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Stick: fight'
 	end
 
+	-- Proactive heal: not in danger, but hurt with decent charges
+	if nCharges >= 5 and nEnemyCount == 0 and (nHPrate < 0.7 or nMPrate < 0.5) then
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Stick: proactive heal'
+	end
+
 	-- Max charges (10 for stick), use to not waste
-	if nCharges >= 10 and (nHPrate < 0.8 or nMPrate < 0.7) then
+	if nCharges >= 10 and (nHPrate < 0.85 or nMPrate < 0.75) then
 		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Stick: max charges'
 	end
 
@@ -3306,30 +3313,34 @@ X.ConsiderItemDesire["item_magic_wand"] = function( hItem )
 	local nMPrate = Fu.GetMP(bot)
 	local nCharges = hItem:GetCurrentCharges()
 	local bRetreating = Fu.IsRetreating(bot)
-	local bRecentlyDamaged = bot:WasRecentlyDamagedByAnyHero(3.0)
 
 	-- EMERGENCY: about to die — use with ANY charges
-	if nHPrate < 0.2 and nCharges >= 1 and (bRecentlyDamaged or nEnemyCount >= 1) then
+	if nHPrate < 0.25 and nCharges >= 1 then
 		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Wand: emergency'
 	end
 
 	-- RETREATING: use when being chased and hurt
-	if bRetreating and nHPrate < 0.5 and nCharges >= 3 then
+	if bRetreating and nHPrate < 0.6 and nCharges >= 2 then
 		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Wand: retreat'
 	end
 
 	-- FIGHTING: use when in combat and HP or mana is low
-	if nEnemyCount >= 1 and nCharges >= 1 and (nHPrate < 0.4 or nMPrate < 0.25) then
+	if nEnemyCount >= 1 and nCharges >= 1 and (nHPrate < 0.6 or nMPrate < 0.3) then
 		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Wand: fight'
 	end
 
-	-- HIGH CHARGES: use when reasonably hurt and have many charges
-	if nCharges >= 10 and nEnemyCount >= 1 and (nHPrate < 0.7 or nMPrate < 0.5) then
+	-- PROACTIVE HEAL: out of combat with decent charges, don't sit on them
+	if nCharges >= 5 and nEnemyCount == 0 and (nHPrate < 0.75 or nMPrate < 0.5) then
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Wand: proactive heal'
+	end
+
+	-- HIGH CHARGES: use when reasonably hurt (no enemy requirement)
+	if nCharges >= 10 and (nHPrate < 0.8 or nMPrate < 0.6) then
 		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Wand: high charges'
 	end
 
 	-- MAX CHARGES: use when capped to not waste further charges
-	if nCharges >= 20 and (nHPrate < 0.8 or nMPrate < 0.7) then
+	if nCharges >= 20 and (nHPrate < 0.9 or nMPrate < 0.75) then
 		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Wand: max charges'
 	end
 
@@ -4696,8 +4707,8 @@ X.ConsiderItemDesire["item_tango_single"] = function( hItem )
 		end
 	end
 	
-	if Fu.IsWithoutTarget( bot )
-		and not bot:HasModifier( "modifier_flask_healing" )
+	-- Allow tango use even with a target — only skip if flask/ward heal is active
+	if not bot:HasModifier( "modifier_flask_healing" )
 		and not bot:HasModifier( "modifier_juggernaut_healing_ward_heal" )
 	then
 		local trees = bot:GetNearbyTrees( 800 )
@@ -4706,9 +4717,24 @@ X.ConsiderItemDesire["item_tango_single"] = function( hItem )
 		local nearestEnemy = nearEnemyList[1]
 		local nearTowerList = bot:GetNearbyTowers( 1400, true )
 		local nearestTower = nearTowerList[1]
+		-- Use HP ratio for early game (200 missing HP = nearly dead at lv1)
+		local nHPrate = Fu.GetHP(bot)
+		local bSafeToEat = #nearEnemyList == 0 or (nearestEnemy ~= nil and not Fu.IsInRange( bot, nearestEnemy, 600 ))
 
+		-- Proactive heal: hurt but safe, eat a tree
+		if targetTree ~= nil and nHPrate < 0.75 and bSafeToEat then
+			local targetTreeLoc = GetTreeLocation( targetTree )
+			if IsLocationVisible( targetTreeLoc )
+				and IsLocationPassable( targetTreeLoc )
+				and ( #nearTowerList == 0 or GetUnitToLocationDistance( nearestTower, targetTreeLoc ) > 920 )
+			then
+				hEffectTarget = targetTree
+				sCastMotive = 'proactive heal'
+				return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
+			end
+		end
 
-		--常规吃树
+		-- Standard eat: missing enough flat HP and safe
 		if targetTree ~= nil
 		then
 			local targetTreeLoc = GetTreeLocation( targetTree )
@@ -4726,7 +4752,7 @@ X.ConsiderItemDesire["item_tango_single"] = function( hItem )
 		end
 
 
-		--塔下吃树
+		-- Eat under allied tower
 		local nAllyTowerList = bot:GetNearbyTowers( 1100, false )
 		if #nAllyTowerList >= 1
 			and nLostHealth > nUseTangoLostHealth + 20
@@ -4753,7 +4779,7 @@ X.ConsiderItemDesire["item_tango_single"] = function( hItem )
 		end
 
 
-		--吃近处的树
+		-- Eat nearby tree (close range)
 		local nearbyTrees = bot:GetNearbyTrees( 280 )
 		if nearbyTrees[1] ~= nil
 			and IsLocationVisible( GetTreeLocation( nearbyTrees[1] ) )
@@ -4768,9 +4794,6 @@ X.ConsiderItemDesire["item_tango_single"] = function( hItem )
 
 			if nLostHealth > nUseTangoLostHealth * 0.38
 				and bot:WasRecentlyDamagedByAnyHero( 2.0 )
-				and ( bot:GetActiveMode() == BOT_MODE_ATTACK
-					 or ( bot:GetActiveMode() == BOT_MODE_RETREAT
-						 and bot:GetActiveModeDesire() > BOT_MODE_DESIRE_HIGH ) )
 			then
 				hEffectTarget = nearbyTrees[1]
 				sCastMotive = '提前吃树'
@@ -5052,6 +5075,7 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 		or ( bot:HasModifier( "modifier_jakiro_macropyre_burn" ) and Fu.GetModifierTime( bot, "modifier_jakiro_macropyre_burn" ) >= 1.4 )
 		or ( bot:HasModifier( "modifier_arc_warden_tempest_double" ) and bot:GetRemainingLifespan() < 3.3 )
 		or (Fu.IsDoingRoshan(bot) and GetUnitToLocationDistance(bot, Fu.GetCurrentRoshanLocation()) <= 2800)
+		or bot._roshDipActive
 	then return BOT_ACTION_DESIRE_NONE end
 
 	if bot:GetHealth() < 240

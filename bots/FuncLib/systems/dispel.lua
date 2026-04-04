@@ -70,7 +70,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
+local ____dota = require("bots.ts_libs.dota.index")
 local BotMode = ____dota.BotMode
 local DEBUFFS = {
     modifier_stunned = {

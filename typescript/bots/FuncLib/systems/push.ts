@@ -282,8 +282,17 @@ export function GetPushDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     const team = gameState.team;
     const ourAncient = gameState.ourAncient;
     const enemiesAtAncient = Fu.Utils.CountEnemyHeroesNear(ourAncient!.GetLocation(), BASE_ANC_RADIUS);
-    // If Ancient under direct pressure → strongly deprioritize pushes
-    if (enemiesAtAncient >= 1) return BotModeDesire.ExtraLow;
+    // If Ancient under direct pressure → return 0 so push never outbids defend
+    if (enemiesAtAncient >= 1) return BotModeDesire.None;
+
+    // If ANY lane has enemy heroes pushing toward our buildings, suppress push entirely.
+    // This prevents push 0.07 from beating defend 0.07 during desire oscillation.
+    const defendLanes: Lane[] = [Lane.Top, Lane.Mid, Lane.Bot];
+    for (const dl of defendLanes) {
+        const laneFront = GetLaneFrontLocation(team, dl, 0);
+        const enemiesAtLane = Fu.Utils.CountEnemyHeroesNear(laneFront, 2200);
+        if (enemiesAtLane >= 2) return BotModeDesire.None;
+    }
 
     // --- Push safety gates ---
     // Never push alone when 3+ enemies alive
@@ -492,8 +501,19 @@ export function GetPushDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
         }
     }
 
-    // Default: prefer mid as the soft fallback
-    return lane === Lane.Mid ? BotModeDesire.VeryLow : (BOT_MODE_DESIRE_EXTRA_LOW as BotModeDesire);
+    // Mid/late game fallback: if nothing else to do, bots should group push
+    // rather than sitting idle. Give a mild baseline desire for the best lane.
+    if (!gameState.isLaningPhase && gameState.currentTime > 15 * 60) {
+        const pushLane = WhichLaneToPush(bot, lane);
+        if (pushLane === lane && Fu.GetHP(bot) > 0.5 && aAliveCount >= eAliveCount - 1) {
+            // 0.2 pre-adjustment → ~0.14 post-adjustment. Enough to beat 0.07
+            // defend/push defaults but not enough to override real modes.
+            return 0.2 as BotModeDesire;
+        }
+    }
+
+    // Default: no reason to push. Return 0 so push never wins by default.
+    return BotModeDesire.None;
 }
 
 /* -----------------------------------------------------------------------------
@@ -735,6 +755,18 @@ export function PushThink(bot: Unit, lane: Lane): void {
     // 2) Use cached bot state instead of fresh calculations
     const botState = updateBotStateCache(bot);
     const botLocation = botState.location;
+
+    // TP to push lane if far away — bots should commit to push, not wander
+    const pushFront = GetLaneFrontLocation(gameState.team, lane, 0);
+    const distToPush = GetUnitToLocationDistance(bot, pushFront);
+    if (distToPush > 4000 && !bot.HasModifier("modifier_teleporting") && !(bot as any)._roshDipActive) {
+        const tp = Fu.Utils.GetItemFromFullInventory(bot, "item_tpscroll");
+        if (tp && Fu.CanCastAbility(tp)) {
+            const tpTarget = GetLaneFrontLocation(gameState.team, lane, -500);
+            bot.Action_UseAbilityOnLocation(tp as any, tpTarget);
+            return;
+        }
+    }
 
     // Use global cached threat picture
     const alliesHere = getCachedAlliesNearLoc(botLocation, 1600);

@@ -298,11 +298,12 @@ function GetThreatenedLane(): Lane {
         }
     }
 
-    // short stickiness to avoid oscillation
+    // Stickiness to avoid oscillation — 1.8s was far too short, caused
+    // threat lane to flip every ~2s when enemies briefly leave vision.
     if (DotaTime() <= _threatLaneSticky.until) {
         return _threatLaneSticky.lane;
     }
-    _threatLaneSticky = { lane: bestLane, until: DotaTime() + 1.8 };
+    _threatLaneSticky = { lane: bestLane, until: DotaTime() + 6.0 };
     return bestLane;
 }
 
@@ -671,7 +672,7 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
         }
     }
     if (teamIsPushing) {
-        return BotModeDesire.VeryLow;
+        return BotModeDesire.None;
     }
 
     const recentlyHit = bot.WasRecentlyDamagedByAnyHero(5) || bot.WasRecentlyDamagedByTower(5);
@@ -688,7 +689,7 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
 
     // If more than 1 enemy hero on our high ground → force everyone to defend the threatened lane
     if (enemiesOnHG >= 2 && !recentlyHit) {
-        if (lane !== threatenedLane) return BotModeDesire.VeryLow;
+        if (lane !== threatenedLane) return BotModeDesire.None;
         baseThreatUntil = DotaTime() + BASE_THREAT_HOLD;
         panic = { active: true, floor: 0.96, forceLoc: ancient ? Fu.AdjustLocationWithOffsetTowardsFountain(ancient.GetLocation(), 300) : ds.defendLoc };
         (bot as any).laneToDefend = lane;
@@ -696,7 +697,7 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
 
     // If Ancient under attack → ensure at least one support goes (lane-gated)
     if (enemiesAtAncient >= 1) {
-        if (lane !== threatenedLane) return BotModeDesire.VeryLow;
+        if (lane !== threatenedLane) return BotModeDesire.None;
 
         if (ancient) {
             const defenders = Fu.GetAlliesNearLoc(ancient.GetLocation(), 1600);
@@ -737,7 +738,7 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     if (isBaseThreatActive) {
         // defend near Ancient but only on the threatened lane
         if (lane !== threatenedLane) {
-            return BotModeDesire.VeryLow;
+            return BotModeDesire.None;
         }
     } else {
         // Opportunistically use enemy lanefront ONLY if not in base threat
@@ -760,17 +761,18 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     // aliveAllyHeroes = gameState.aliveAllyCount; // Using cached value directly
 
     // Bail-outs to avoid feed / conflicts
+    // NOTE: removed `ds.nInRangeEnemy.length > 0` — enemies near the bot
+    // should NOT suppress defend. That's exactly when defending matters most.
     const pos = Fu.GetPosition(bot);
     const bMyLane = bot.GetAssignedLane() === lane;
     if (
-        ds.nInRangeEnemy.length > 0 ||
         (!bMyLane && pos === 1 && gameState.isLaningPhase) || // keep carry safe early
         (Fu.IsDoingRoshan(bot) && Fu.GetAlliesNearLoc(Fu.GetCurrentRoshanLocation(), 2800).length >= 3) ||
         (Fu.IsDoingTormentor(bot) &&
             (Fu.GetAlliesNearLoc(Fu.GetTormentorLocation(team), 1600).length >= 2 || Fu.GetAlliesNearLoc(Fu.GetTormentorWaitingLocation(team), 2500).length >= 2) &&
             enemiesAtAncient === 0)
     ) {
-        return BotModeDesire.VeryLow;
+        return BotModeDesire.None;
     }
 
     // Human priority ping (use a hint floor instead of early-return)
@@ -800,7 +802,7 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
             (!Fu.CanCastAbility(tp) && dist && dist > 4000 && nearEnemiesAtBuilding.length === 0) ||
             (nearEnemiesAtBuilding.length === 0 && Fu.GetAlliesNearLoc(furthestBuilding.GetLocation(), 1600).length >= 1)
         ) {
-            return BotModeDesire.VeryLow;
+            return BotModeDesire.None;
         }
     }
 
@@ -815,17 +817,17 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     const nEffAllies = nDefendAllies.length + Fu.Utils.GetAllyIdsInTpToLocation(hub, 2500).length;
 
     if (lEnemies.length === 0 && (Fu.IsAnyAllyDefending(bot, lane) || Fu.IsCore(bot))) {
-        return BotModeDesire.VeryLow;
+        return BotModeDesire.None;
     }
     if (lEnemies.length === 1 && (nEffAllies > lEnemies.length || (Fu.IsAnyAllyDefending(bot, lane) && Fu.GetAverageLevel(false) >= Fu.GetAverageLevel(true)))) {
-        return BotModeDesire.VeryLow;
+        return BotModeDesire.None;
     }
 
     // Cap & floor via ShouldDefend & tier
     const capBoost = shouldDef ? 0.1 : 0.0;
     let maxDesire = (buildingTier >= 3 && nEffAllies >= lEnemies.length ? 1.0 : MAX_DESIRE_CAP) + capBoost;
     maxDesire = math.min(maxDesire, 1.0);
-    const baseFloor = shouldDef ? BotActionDesire.Low : BotActionDesire.VeryLow;
+    const baseFloor = shouldDef ? BotActionDesire.Low : BotActionDesire.None;
 
     nDefendDesire = RemapValClamped(Fu.GetHP(bot), 0.75, 0.2, RemapValClamped(nDefendDesire * urgentMul, 0, 1, baseFloor, maxDesire), BotActionDesire.Low);
 
@@ -885,6 +887,19 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
         (bot as any).laneToDefend = lane;
     }
 
+    // Desire commitment: once defend was meaningful, keep a floor for a few seconds.
+    // Prevents the oscillation where defend drops when bot encounters enemies en route,
+    // then rises again once bot backs off, causing endless walk→retreat→walk loops.
+    const botData = bot as any;
+    if (nDefendDesire > 0.4) {
+        botData._defendCommitUntil = DotaTime() + 4.0;
+        botData._defendCommitFloor = nDefendDesire * 0.7;
+        botData._defendCommitLane = lane;
+    }
+    if (botData._defendCommitUntil && DotaTime() <= botData._defendCommitUntil && lane === botData._defendCommitLane) {
+        nDefendDesire = math.max(nDefendDesire, botData._defendCommitFloor);
+    }
+
     return nDefendDesire as BotModeDesire;
 }
 
@@ -893,6 +908,22 @@ export function DefendThink(bot: Unit, lane: Lane) {
 
     if (Fu.CanNotUseAction(bot)) return;
     if (Fu.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "defend")) return;
+
+    const ds = getDefendState(bot);
+    if (!ds.defendLoc) ds.defendLoc = GetLaneFrontLocation(nTeam, lane, 0);
+    const distToDefend = GetUnitToLocationDistance(bot, ds.defendLoc);
+
+    // TP-back logic: if far from defend location and enemies block the path, TP directly.
+    // This prevents the oscillation loop where bot walks → encounters enemies → retreats → walks again.
+    // Don't TP if bot is in a Roshan HP dip — it should stay near the pit.
+    if (distToDefend > 3500 && !(bot as any)._roshDipActive) {
+        const tp = Fu.Utils.GetItemFromFullInventory(bot, "item_tpscroll");
+        if (tp && Fu.CanCastAbility(tp) && !bot.HasModifier("modifier_teleporting")) {
+            const tpTarget = Fu.AdjustLocationWithOffsetTowardsFountain(ds.defendLoc, 400);
+            bot.Action_UseAbilityOnLocation(tp as any, tpTarget);
+            return;
+        }
+    }
 
     // a small don't-walk-through-fire guard - use cached enemies when possible
     const botLocation = bot.GetLocation();
@@ -911,9 +942,18 @@ export function DefendThink(bot: Unit, lane: Lane) {
         pathEnemies = (bot as any)[pathCacheKey];
     }
 
-    const ds = getDefendState(bot);
     if (bot.WasRecentlyDamagedByAnyHero(5) && pathEnemies.length > ds.nInRangeEnemy.length) {
-        // step back toward fountain a bit, then re-eval next tick
+        // Enemies blocking path and we're being hit — don't just retreat,
+        // try to TP if far enough. Otherwise back off briefly.
+        if (distToDefend > 2500 && !(bot as any)._roshDipActive) {
+            const tp = Fu.Utils.GetItemFromFullInventory(bot, "item_tpscroll");
+            if (tp && Fu.CanCastAbility(tp) && !bot.HasModifier("modifier_teleporting")) {
+                const tpTarget = Fu.AdjustLocationWithOffsetTowardsFountain(ds.defendLoc, 400);
+                bot.Action_UseAbilityOnLocation(tp as any, tpTarget);
+                return;
+            }
+        }
+        // No TP available — back off
         const safe = Fu.AdjustLocationWithOffsetTowardsFountain(bot.GetLocation(), 700);
         bot.Action_MoveToLocation(add(safe, Fu.RandomForwardVector(120)));
         return;

@@ -369,7 +369,7 @@ function GetDesireHelper()
 
 	if GetGameMode() ~= GAMEMODE_MO
 	and Fu.Site.IsTimeToFarm(bot)
-	and not Fu.IsDefending(bot)
+	and (not Fu.IsDefending(bot) or botActiveModeDesire < 0.2)
 	and (bot:GetUnitName() ~= 'npc_dota_hero_lone_druid_bear' or (bot:HasScepter() and not Fu.IsValid(LoneDruid.hero)))
 	and (DotaTime() > 8 * 60 or bot:GetLevel() >= 8 or ( bot:GetAttackRange() < 220 and bot:GetLevel() >= 6 ))
 	and networthAdvantage < 6000
