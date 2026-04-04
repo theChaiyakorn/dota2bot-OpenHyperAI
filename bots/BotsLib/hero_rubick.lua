@@ -2,9 +2,10 @@ local X             = {}
 local bot           = GetBot()
 
 local Fu             = require( GetScriptDirectory()..'/FuncLib/func_utils' )
+local AbilityCtx    = require( GetScriptDirectory()..'/FuncLib/systems/ability_context' )
 local R             = dofile( GetScriptDirectory()..'/FuncLib/hero/rubick' )
-local SPL           = dofile( GetScriptDirectory()..'/FuncLib/data/spell_prob_list' )
-local Minion        = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local SPL           = require( GetScriptDirectory()..'/FuncLib/data/spell_prob_list' )
+local Minion        = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList   = Fu.Skill.GetTalentList( bot )
 local sAbilityList  = Fu.Skill.GetAbilityList( bot )
 local sRole   = Fu.Item.GetRoleItemsBuyList( bot )
@@ -188,7 +189,8 @@ local bRetreating
 function X.SkillsComplement()
 	if Fu.CanNotUseAbility(bot) then return end
 
-	bRetreating = Fu.IsRetreating(bot)
+	local ctx = AbilityCtx.Build(bot)
+	bRetreating = ctx.isRetreating
 
     -- if Rubick is in good health condition and is casting an ability with some enmey still nearby, don't consider any other spells.
     if Fu.GetHP(bot) > 0.3
@@ -203,7 +205,7 @@ function X.SkillsComplement()
         end
     end
 
-    botTarget = Fu.GetProperTarget(bot)
+    botTarget = ctx.target
     StolenSpell1 = bot:GetAbilityInSlot(3)
     StolenSpell2 = bot:GetAbilityInSlot(4)
 

@@ -55,6 +55,11 @@ local nShrineOfWisdomTeam = TEAM_RADIANT
 
 -- GetDesire  (reference structure, with local additions)
 function GetDesire()
+	if ShouldSkipBotThink(GetBot()) then return 0 end
+	return GetAdjustedDesireValue(GetDesireRaw())
+end
+
+function GetDesireRaw()
 	X.InitRune()
 
 	if (DotaTime() > 2 * 60 and DotaTime() < 6 * 60 and GetUnitToLocationDistance(bot, GetRuneSpawnLocation(RUNE_POWERUP_2)) < 80) then
@@ -68,8 +73,8 @@ function GetDesire()
 	botActiveMode = bot:GetActiveMode()
 	botActiveModeDesire = bot:GetActiveModeDesire()
 	botAssignedLane = bot:GetAssignedLane()
-	nAllyHeroes = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE)
-	nEnemyHeroes = bot:GetNearbyHeroes(1600, true, BOT_MODE_NONE)
+	nAllyHeroes = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE) or {}
+	nEnemyHeroes = bot:GetNearbyHeroes(1600, true, BOT_MODE_NONE) or {}
 
 	if bot:IsInvulnerable() and botHP > 0.9 and bot:DistanceFromFountain() < 500 then
 		return BOT_MODE_DESIRE_ABSOLUTE

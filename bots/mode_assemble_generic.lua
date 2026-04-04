@@ -13,6 +13,7 @@ local assembleLoc = nil
 local assembleExpireTime = 0
 
 function GetDesire()
+	if ShouldSkipBotThink(GetBot()) then return 0 end
 	if not bot:IsAlive() then return BOT_MODE_DESIRE_NONE end
 
 	-- Check for recent human normal pings (not danger pings)

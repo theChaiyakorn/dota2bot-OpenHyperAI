@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -182,19 +183,17 @@ function X.SkillsComplement()
 
 	if Fu.CanNotUseAbility( bot ) or bot:IsInvisible() then return end
 
+	local ctx = AbilityCtx.Build(bot)
 	nKeepMana = 400
-	aetherRange = 0
+	aetherRange = ctx.aetherRange
 	talentDamage = 0
 	abilityASBonus = 0
-	nLV = bot:GetLevel()
-	nMP = bot:GetMana()/bot:GetMaxMana()
-	nHP = bot:GetHealth()/bot:GetMaxHealth()
-	nManaPercentage = bot:GetMana()/bot:GetMaxMana()
-	nHealthPercentage = bot:GetHealth()/bot:GetMaxHealth()
-	hEnemyHeroList = Fu.GetNearbyHeroes(bot, 1600, true, BOT_MODE_NONE )
-
-	local aether = Fu.IsItemAvailable( "item_aether_lens" )
-	if aether ~= nil then aetherRange = 250 end
+	nLV = ctx.level
+	nMP = ctx.mp
+	nHP = ctx.hp
+	nManaPercentage = ctx.mp
+	nHealthPercentage = ctx.hp
+	hEnemyHeroList = ctx.enemies
 	if abilityAS:IsTrained() then abilityASBonus = 0.09 end
 	if talent8:IsTrained() then talentDamage = talentDamage + talent8:GetSpecialValueInt( "value" ) end
 

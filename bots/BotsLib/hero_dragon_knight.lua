@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -192,9 +193,10 @@ function X.SkillsComplement()
 
 	if Fu.CanNotUseAbility(bot) then return end
 
-	bGoingOnSomeone = Fu.IsGoingOnSomeone(bot)
-	bRetreating = Fu.IsRetreating(bot)
-	bInTeamFight = Fu.IsInTeamFight(bot, 1200)
+	local ctx = AbilityCtx.Build(bot)
+	bGoingOnSomeone = ctx.isEngaging
+	bRetreating = ctx.isRetreating
+	bInTeamFight = ctx.isTeamFight
 
 	BreatheFire = bot:GetAbilityByName('dragon_knight_breathe_fire')
 	DragonTail = bot:GetAbilityByName('dragon_knight_dragon_tail')
@@ -203,10 +205,10 @@ function X.SkillsComplement()
 
 	bInDragonForm = bot:HasModifier('modifier_dragon_knight_dragon_form')
 	bAttacking = Fu.IsAttacking(bot)
-    botHP = Fu.GetHP(bot)
-    botTarget = Fu.GetProperTarget(bot)
-    nAllyHeroes = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE)
-    nEnemyHeroes = bot:GetNearbyHeroes(1600, true, BOT_MODE_NONE)
+    botHP = ctx.hp
+    botTarget = ctx.target
+    nAllyHeroes = ctx.allies
+    nEnemyHeroes = ctx.enemies
 
 	ElderDragonFormDesire = X.ConsiderElderDragonForm()
 	if ElderDragonFormDesire> 0 then

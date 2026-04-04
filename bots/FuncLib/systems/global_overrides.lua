@@ -11,6 +11,103 @@ end
 
 local Utils = require( GetScriptDirectory()..'/FuncLib/systems/utils')
 
+-- Fast check: should this bot skip all mode logic (illusions, invulnerable, dead).
+-- The idle state check runs separately BEFORE this in mode files that need it.
+function ShouldSkipBotThink(bot)
+	return bot:IsInvulnerable()
+		or not bot:IsHero()
+		or not bot:IsAlive()
+		or bot:IsIllusion()
+end
+
+-- Check and handle idle/stuck bots — runs BEFORE ShouldSkipBotThink so it
+-- catches invulnerable fountain bots. Returns true if bot was idle and action taken.
+function HandleIdleBotState(bot)
+	local ok, result = pcall(function()
+		return _HandleIdleBotStateInner(bot)
+	end)
+	if ok then return result end
+	return false
+end
+
+function _HandleIdleBotStateInner(bot)
+	if not bot:IsHero() or not bot:IsAlive() or bot:IsIllusion() then return false end
+
+	-- Init per-bot state
+	if bot._idleCheck == nil then
+		bot._idleCheck = { lastTime = DotaTime(), lastPos = bot:GetLocation(), idleSince = 0 }
+	end
+
+	local state = bot._idleCheck
+	local now = DotaTime()
+
+	-- Only check every 1 second
+	if now - state.lastTime < 1.0 then return false end
+	state.lastTime = now
+
+	local currentPos = bot:GetLocation()
+	if not currentPos then return false end
+	local dist = GetUnitToLocationDistance(bot, state.lastPos)
+	state.lastPos = currentPos
+
+	-- Bot hasn't moved more than 50 units in 1 second
+	if dist < 50 and bot:GetCurrentActionType() == BOT_ACTION_TYPE_IDLE then
+		if state.idleSince == 0 then
+			state.idleSince = now
+		end
+
+		local idleDuration = now - state.idleSince
+
+		-- Idle in fountain for > 3 seconds after spawn — move to lane
+		if bot:IsInvulnerable() and bot:DistanceFromFountain() < 500 and idleDuration > 3 then
+			local lane = bot:GetAssignedLane() or LANE_MID
+			local laneFront = GetLaneFrontLocation(GetTeam(), lane, 0)
+			bot:Action_MoveToLocation(laneFront)
+			state.idleSince = 0
+			return true
+		end
+
+		-- Idle anywhere for > 5 seconds — move to assigned lane
+		if idleDuration > 5 and not bot:IsInvulnerable() then
+			local lane = bot:GetAssignedLane() or LANE_MID
+			local laneFront = GetLaneFrontLocation(GetTeam(), lane, 0)
+			bot:Action_MoveToLocation(laneFront)
+			state.idleSince = 0
+			return true
+		end
+	else
+		state.idleSince = 0
+	end
+
+	return false
+end
+
+-- 7.41 new bot mode constants (not yet defined by Valve)
+if BOT_MODE_WATCHER == nil then BOT_MODE_WATCHER = 28 end
+if BOT_MODE_WISDOM_SHRINE == nil then BOT_MODE_WISDOM_SHRINE = 29 end
+if BOT_MODE_LOTUS_POOL == nil then BOT_MODE_LOTUS_POOL = 30 end
+
+-- 7.41 patch: Valve capped attack mode desire at ~0.65.
+-- Redefine desire constants to compressed range so custom modes compete
+-- properly with Valve's built-in modes. Non-overridden modes (Valve's)
+-- still use [0,1] internally but our modes now stay within [0,0.7].
+BOT_MODE_DESIRE_NONE 		= 0
+BOT_MODE_DESIRE_VERYLOW 	= 0.05
+BOT_MODE_DESIRE_LOW 		= 0.175
+BOT_MODE_DESIRE_MODERATE 	= 0.35
+BOT_MODE_DESIRE_HIGH		= 0.525
+BOT_MODE_DESIRE_VERYHIGH 	= 0.6
+BOT_MODE_DESIRE_ABSOLUTE 	= 0.7
+
+-- Remap [0,1] to [0,0.7] for desire value adjustments.
+-- Values > 1 are left untouched (intentional override desires like ABSOLUTE * 1.1).
+function GetAdjustedDesireValue(fNum)
+	if fNum <= 1 then
+		return RemapValClamped(fNum, 0, 1, 0, BOT_MODE_DESIRE_ABSOLUTE)
+	end
+	return fNum
+end
+
 -- Override this func for the script to use
 local orig_GetTeamPlayers = GetTeamPlayers
 local direTeamPlaters = nil
@@ -295,6 +392,94 @@ function CDOTA_Bot_Script:GetUnitName()
 		uName = 'npc_dota_hero_lone_druid_bear'
 	end
 	return uName
+end
+
+-- Override GetCastRange to include item/ability cast range bonuses
+-- that Valve's API doesn't account for
+local o_GetCastRange = CDOTABaseAbility_BotScript.GetCastRange
+function CDOTABaseAbility_BotScript:GetCastRange()
+	local bot = GetBot()
+
+	if self then
+		local nCastRange = self:GetSpecialValueInt('AbilityCastRange')
+		if nCastRange == 0 then
+			nCastRange = o_GetCastRange(self)
+		end
+
+		if bot then
+			-- Hero ability cast range bonuses
+			for i = 0, 7 do
+				local hAbility = bot:GetAbilityInSlot(i)
+				if hAbility and hAbility:IsTrained() then
+					local sAbilityName = hAbility:GetName()
+					if sAbilityName == 'keeper_of_the_light_spirit_form' then
+						if bot:HasModifier('modifier_keeper_of_the_light_spirit_form') then
+							nCastRange = nCastRange + hAbility:GetSpecialValueInt('cast_range')
+						end
+					elseif sAbilityName == 'rubick_arcane_supremacy' then
+						nCastRange = nCastRange + hAbility:GetSpecialValueInt('cast_range')
+					end
+				end
+			end
+
+			-- Item cast range bonuses (main inventory + neutral slot)
+			local itemSlots = { 0, 1, 2, 3, 4, 5, 16, 17 }
+			for i = 1, #itemSlots do
+				local hItem = bot:GetItemInSlot(itemSlots[i])
+				if hItem then
+					local sItemName = hItem:GetName()
+					if sItemName == 'item_aether_lens' then
+						nCastRange = nCastRange + hItem:GetSpecialValueInt('cast_range_bonus')
+					elseif sItemName == 'item_ethereal_blade' then
+						nCastRange = nCastRange + hItem:GetSpecialValueInt('bonus_cast_range')
+					elseif sItemName == 'item_magnifying_monocle' then
+						nCastRange = nCastRange + hItem:GetSpecialValueInt('bonus_cast_range')
+					elseif sItemName == 'item_enhancement_keen_eyed' then
+						nCastRange = nCastRange + hItem:GetSpecialValueInt('cast_range_bonus')
+					elseif sItemName == 'item_enhancement_mystical' then
+						nCastRange = nCastRange + hItem:GetSpecialValueInt('bonus_cast_range')
+					elseif sItemName == 'item_enhancement_boundless' then
+						nCastRange = nCastRange + hItem:GetSpecialValueInt('bonus_cast_range')
+					elseif string.find(sItemName, 'item_dagon') then
+						-- Dagon cast range bonus only if no aether lens (they don't stack)
+						local bHasAether = false
+						for j = 0, 5 do
+							local hItem2 = bot:GetItemInSlot(j)
+							if hItem2 and hItem2 ~= hItem and string.find(hItem2:GetName(), 'item_aether_lens') then
+								bHasAether = true
+								break
+							end
+						end
+						if not bHasAether then
+							nCastRange = nCastRange + hItem:GetSpecialValueInt('cast_range_bonus')
+						end
+					end
+				end
+			end
+		end
+
+		return nCastRange
+	end
+
+	return o_GetCastRange(self)
+end
+
+local originalGetAbilityByName = CDOTA_Bot_Script.GetAbilityByName
+function CDOTA_Bot_Script:GetAbilityByName(sAbilityName)
+	if sAbilityName == nil or sAbilityName == '' then
+		return nil
+	end
+	return originalGetAbilityByName(self, sAbilityName)
+end
+
+local originalFindAbilityByName = FindAbilityByName
+if originalFindAbilityByName then
+	function FindAbilityByName(sAbilityName)
+		if sAbilityName == nil or sAbilityName == '' then
+			return nil
+		end
+		return originalFindAbilityByName(sAbilityName)
+	end
 end
 
 local originalAction_UseAbility = CDOTA_Bot_Script.Action_UseAbility

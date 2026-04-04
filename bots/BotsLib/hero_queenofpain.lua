@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils')
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion')
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion')
 local sTalentList = Fu.Skill.GetTalentList(bot)
 local sAbilityList = Fu.Skill.GetAbilityList(bot)
 local sRole = Fu.Item.GetRoleItemsBuyList(bot)
@@ -192,29 +193,29 @@ function X.SkillsComplement()
 	if Fu.CanNotUseAbility(bot) or bot:IsInvisible() then return end
 
 	bAttacking = Fu.IsAttacking(bot)
-	
+
+	local ctx = AbilityCtx.Build(bot)
 	nKeepMana = 400
-	aetherRange = 0
-	nLV = bot:GetLevel();
-	nMP = bot:GetMana()/bot:GetMaxMana();
-	nHP = bot:GetHealth()/bot:GetMaxHealth();
-	botTarget = Fu.GetProperTarget(bot);
-	hEnemyList = Fu.GetNearbyHeroes(bot,1600, true, BOT_MODE_NONE);
-	hAllyList = Fu.GetAlliesNearLoc(bot:GetLocation(), 1600);
+	aetherRange = ctx.aetherRange
+	nLV = ctx.level
+	nMP = ctx.mp
+	nHP = ctx.hp
+	botTarget = ctx.target
+	hEnemyList = ctx.enemies
+	hAllyList = ctx.allies
 	
-	local aether = Fu.IsItemAvailable("item_aether_lens");
-	if aether ~= nil then aetherRange = 250 end	
-	
-	if ( castWDesire > 0 ) 
+	castWDesire, castWTarget = X.ConsiderW()
+	if ( castWDesire > 0 )
 	then
-	
+
 		Fu.SetQueuePtToINT(bot, true)
-	
+
 		bot:ActionQueue_UseAbilityOnLocation( abilityW, castWTarget )
 		return;
 	end
-	
-	if ( castQDesire > 0 ) 
+
+	castQDesire, castQTarget = X.ConsiderQ()
+	if ( castQDesire > 0 )
 	then
 
 		Fu.SetQueuePtToINT(bot, true)
@@ -229,22 +230,24 @@ function X.SkillsComplement()
 		bot:ActionQueue_UseAbilityOnEntity( abilityQ, castQTarget )
 		return;
 	end
-	
-	if ( castRDesire > 0 ) 
+
+	castRDesire, castRTarget = X.ConsiderR()
+	if ( castRDesire > 0 )
 	then
-	
+
 		Fu.SetQueuePtToINT(bot, true)
-	
+
 		bot:ActionQueue_UseAbilityOnLocation( abilityR, castRTarget )
 		return;
-	
+
 	end
-	
-	if ( castEDesire > 0 ) 
+
+	castEDesire, castETarget = X.ConsiderE()
+	if ( castEDesire > 0 )
 	then
-	
+
 		Fu.SetQueuePtToINT(bot, true)
-	
+
 		bot:ActionQueue_UseAbility( abilityE )
 		return;
 	end

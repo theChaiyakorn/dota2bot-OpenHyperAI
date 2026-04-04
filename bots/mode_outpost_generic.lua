@@ -14,12 +14,13 @@ local IsEnemyTier2Down = false
 local hAbilityCapture = bot:GetAbilityByName('ability_capture')
 
 function GetDesire()
+	if ShouldSkipBotThink(GetBot()) then return 0 end
 	-- local cacheKey = 'GetOutpostDesire'..tostring(bot:GetPlayerID())
 	-- local cachedVar = Fu.Utils.GetCachedVars(cacheKey, 0.5 * (1 + Customize.ThinkLess))
 	-- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
 	local res = GetDesireHelper()
 	-- Fu.Utils.SetCachedVars(cacheKey, res)
-	return res
+	return GetAdjustedDesireValue(res)
 end
 function GetDesireHelper()
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return BOT_MODE_DESIRE_NONE end

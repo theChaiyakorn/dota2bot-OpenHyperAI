@@ -80,9 +80,18 @@ function Fu.CountNotStunnedUnits(tUnits, locAOE, nRadius, nUnits)
 end
 
 function Fu.HasHealingItem(bot)
-	return (Fu.HasItem(bot, "item_tango") or bot:HasModifier("modifier_tango_heal"))
-		or (Fu.HasItem(bot, "item_flask") or bot:HasModifier("modifier_flask_healing"))
-		or (Fu.HasItem(bot, "item_bottle") or bot:HasModifier("modifier_bottle_regeneration"))
+	return Fu.HasItem(bot, "item_tango")
+		or Fu.HasItem(bot, "item_tango_single")
+		or Fu.HasItem(bot, "item_flask")
+		or Fu.HasItem(bot, "item_bottle")
+		or Fu.HasItem(bot, "item_faerie_fire")
+		or Fu.HasItem(bot, "item_enchanted_mango")
+		or Fu.HasItem(bot, "item_famango")
+		or Fu.HasItem(bot, "item_great_famango")
+		or Fu.HasItem(bot, "item_greater_famango")
+		or bot:HasModifier("modifier_tango_heal")
+		or bot:HasModifier("modifier_flask_healing")
+		or bot:HasModifier("modifier_bottle_regeneration")
 end
 
 end

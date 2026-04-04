@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -79,7 +80,7 @@ function X.MinionThink(hMinionUnit)
 end
 
 local LucentBeam 	= bot:GetAbilityByName('luna_lucent_beam')
--- local MoonGlaives 	= bot:GetAbilityByName('luna_moon_glaive')
+local MoonGlaives 	= bot:GetAbilityByName('luna_moon_glaive')
 local LunarOrbit    = bot:GetAbilityByName("luna_lunar_orbit")
 -- local LunarBlessing = bot:GetAbilityByName('luna_lunar_blessing')
 local Eclipse 		= bot:GetAbilityByName('luna_eclipse')
@@ -109,12 +110,12 @@ function X.SkillsComplement()
 
 	if talent6:IsTrained() then talent6BonusDamage = talent6:GetSpecialValueInt('value') end
 
-	-- MoonGlaivesDesire = X.ConsiderMoonGlaives()
-	-- if MoonGlaivesDesire > 0
-	-- then
-	-- 	bot:Action_UseAbility(MoonGlaives)
-	-- 	return
-	-- end
+	MoonGlaivesDesire = X.ConsiderMoonGlaives()
+	if MoonGlaivesDesire > 0
+	then
+		bot:Action_UseAbility(MoonGlaives)
+		return
+	end
 	LunarOrbitDesire = X.ConsiderLunarOrbit()
 	if LunarOrbitDesire > 0
 	then
@@ -561,12 +562,11 @@ function X.ConsiderEclipse()
 		and not botTarget:HasModifier('modifier_necrolyte_reapers_scythe')
 		and not (botTarget:GetHealth() <= bot:GetAttackDamage() * 4)
 		then
-			local nInRangeAlly = Fu.GetNearbyHeroes(botTarget, 1200, true, BOT_MODE_NONE)
-			local nInRangeEnemy = Fu.GetNearbyHeroes(botTarget, 1200, true, BOT_MODE_NONE)
+			local nInRangeEnemy = Fu.GetNearbyHeroes(bot, nRadius + 75, true, BOT_MODE_NONE)
+			local nInRangeAlly = Fu.GetNearbyHeroes(bot, 1200, false, BOT_MODE_NONE)
 
-			if nInRangeAlly ~= nil and nInRangeEnemy ~= nil
-			and #nInRangeAlly >= #nInRangeEnemy
-			and not (#nInRangeAlly >= #nInRangeEnemy + 3)
+			if nInRangeEnemy ~= nil and #nInRangeEnemy >= 1
+			and nInRangeAlly ~= nil and #nInRangeAlly >= #nInRangeEnemy
 			then
 				return BOT_ACTION_DESIRE_HIGH
 			end

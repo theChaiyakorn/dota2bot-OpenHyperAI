@@ -1,7 +1,7 @@
 local Fu = require(GetScriptDirectory() ..  "/FuncLib/func_utils")
 local U = require(GetScriptDirectory()..'/FuncLib/hero/minion_lib/utils')
 local X = {}
-local bot = GetBot()
+local bot = nil
 local DispelMagicDesire, CycloneDesire, WindWalkDesire, HurlBoulderDesire = 0, 0, 0, 0
 local nAllyHeroes, nEnemyHeroes, botTarget
 

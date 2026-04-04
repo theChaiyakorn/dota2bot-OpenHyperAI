@@ -774,6 +774,76 @@ function Fu.IsAllyCanKill( target )
 	return false
 end
 
+--------------------------------------------------------------------
+-- Shared combat utilities for hero ability decisions
+--------------------------------------------------------------------
+
+-- Check if an enemy is currently teleporting (TP scroll or Boots of Travel)
+function Fu.IsEnemyTeleporting(enemy)
+	if not Fu.IsValidHero(enemy) then return false end
+	return enemy:HasModifier('modifier_teleporting')
+end
+
+-- Find an enemy that is currently teleporting within range (for interrupt abilities)
+function Fu.GetTPTarget(bot, nRange)
+	local enemies = bot:GetNearbyHeroes(nRange, true, BOT_MODE_NONE) or {}
+	for _, enemy in pairs(enemies) do
+		if Fu.IsValidHero(enemy) and Fu.IsEnemyTeleporting(enemy) and Fu.CanBeAttacked(enemy) then
+			return enemy
+		end
+	end
+	return nil
+end
+
+-- Check if an enemy is using a healing item (flask, clarity, bottle, etc.)
+function Fu.IsEnemyHealing(enemy)
+	if not Fu.IsValidHero(enemy) then return false end
+	return enemy:HasModifier('modifier_flask_healing')
+		or enemy:HasModifier('modifier_clarity_potion')
+		or enemy:HasModifier('modifier_bottle_regeneration')
+		or enemy:HasModifier('modifier_tango_heal')
+end
+
+-- Find an enemy healing within range (for harassment/interrupt)
+function Fu.GetHealingTarget(bot, nRange)
+	local enemies = bot:GetNearbyHeroes(nRange, true, BOT_MODE_NONE) or {}
+	for _, enemy in pairs(enemies) do
+		if Fu.IsValidHero(enemy) and Fu.IsEnemyHealing(enemy) and Fu.CanBeAttacked(enemy) then
+			return enemy
+		end
+	end
+	return nil
+end
+
+-- Validate team composition before committing a big ultimate.
+-- Returns true if safe to use ult (allies >= enemies near target location).
+function Fu.IsSafeToUseUltimate(bot, targetLoc, nRadius)
+	nRadius = nRadius or 1200
+	local allies = Fu.GetAlliesNearLoc(targetLoc, nRadius)
+	local enemies = Fu.GetEnemiesNearLoc(targetLoc, nRadius)
+	return #allies >= #enemies
+end
+
+-- Check if a target is in a dangerous zone (Chrono, Black Hole, etc.)
+-- Returns true if the location is inside a known danger zone.
+function Fu.IsLocationDangerous(vLoc)
+	local dangerModifiers = {
+		'modifier_faceless_void_chronosphere_freeze',
+		'modifier_enigma_black_hole_pull',
+		'modifier_dark_willow_bramble_maze',
+	}
+	for _, unit in pairs(GetUnitList(UNIT_LIST_ENEMIES)) do
+		if unit and not unit:IsNull() and unit:IsAlive() then
+			for _, mod in pairs(dangerModifiers) do
+				if unit:HasModifier(mod) and GetUnitToLocationDistance(unit, vLoc) < 600 then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
 end
 
 return Init

@@ -3,7 +3,7 @@ import * as Fu from "bots/FuncLib/func_utils";
 import Customize = require("bots/Customize/general");
 import { Barracks, BotMode, BotModeDesire, DamageType, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import { IsValidUnit, GetLocationToLocationDistance, RadiantFountainTpPoint, DireFountainTpPoint } from "./utils";
-import { getGlobalGameState, getGlobalLocationState, getCachedAlliesNearLoc, getCachedEnemiesNearLoc, autoCleanupCache, getCachedData } from "./global_cache";
+import { getGlobalGameState, getGlobalLocationState, getCachedAlliesNearLoc, getCachedEnemiesNearLoc, autoCleanupCache, getCachedData } from "./cache";
 
 Customize.ThinkLess = Customize.Enable ? Customize.ThinkLess : 1;
 
@@ -310,11 +310,9 @@ export function GetPushDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     if (gameState.aliveEnemyCount >= 5 && gameState.aliveAllyCount <= gameState.aliveEnemyCount) {
         nMaxDesire = math.min(nMaxDesire, 0.41);
     }
-    // Cap push desire when enemy heroes are very close — bot should fight, not push
-    const closeEnemies = getCachedEnemiesNearLoc(bot.GetLocation(), 900);
-    if (closeEnemies.length > 0 && alliesHere.length >= closeEnemies.length) {
-        nMaxDesire = math.min(nMaxDesire, 0.3);
-    }
+    // (Removed enemy-nearby cap — push/attack desire compete naturally.
+    // The old 0.3 cap prevented bots from pushing when enemies were nearby,
+    // even when the team had advantage.)
 
     // Sync lane selection with hard bot modes
     if (botActiveMode === BotMode.PushTowerTop) {

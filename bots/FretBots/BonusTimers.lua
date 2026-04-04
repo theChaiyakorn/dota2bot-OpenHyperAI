@@ -72,7 +72,7 @@ NeutralStash = {
 AwardedNeutrals = {}
 
 -- master table (items don't get removed from this one)
-local masterNeutralTable = dofile('bots.FretBots.SettingsNeutralItemTable')
+local masterNeutralTable = require('bots.FretBots.SettingsNeutralItemTable')
 
 -- returns true if we've found every item we can
 function BonusTimers:IsFindingDone()

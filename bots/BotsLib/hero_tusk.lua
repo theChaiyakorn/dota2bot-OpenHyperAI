@@ -2,7 +2,8 @@ local X             = {}
 local bot           = GetBot()
 
 local Fu             = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion        = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx    = require( GetScriptDirectory()..'/FuncLib/systems/ability_context' )
+local Minion        = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList   = Fu.Skill.GetTalentList( bot )
 local sAbilityList  = Fu.Skill.GetAbilityList( bot )
 local sRole   = Fu.Item.GetRoleItemsBuyList( bot )
@@ -137,11 +138,12 @@ local bAttacking
 function X.SkillsComplement()
 	if Fu.CanNotUseAbility(bot) then return end
 
-	bGoingOnSomeone = Fu.IsGoingOnSomeone(bot)
-	bRetreating = Fu.IsRetreating(bot)
+	local ctx = AbilityCtx.Build(bot)
+	bGoingOnSomeone = ctx.isEngaging
+	bRetreating = ctx.isRetreating
 	bAttacking = Fu.IsAttacking(bot)
 
-    botTarget = Fu.GetProperTarget(bot)
+    botTarget = ctx.target
 
     TagTeamDesire = X.ConsiderTagTeam()
     if TagTeamDesire > 0
@@ -178,7 +180,12 @@ function X.SkillsComplement()
         return
     end
 
-    -- WalrusKickDesire, WalrusKickTarget = X.ConsiderWalrusKick()
+    WalrusKickDesire, WalrusKickTarget = X.ConsiderWalrusKick()
+    if WalrusKickDesire > 0
+    then
+        bot:Action_UseAbilityOnEntity(WalrusKick, WalrusKickTarget)
+        return
+    end
 
     WalrusPunchDesire, WalrusPunchTarget = X.ConsiderWalrusPunch()
     if WalrusPunchDesire > 0
@@ -614,6 +621,64 @@ function X.ConsiderTagTeam()
     end
 
     return BOT_ACTION_DESIRE_NONE
+end
+
+function X.ConsiderWalrusKick()
+    if not WalrusKick:IsFullyCastable()
+    then
+        return BOT_ACTION_DESIRE_NONE, nil
+    end
+
+    local nCastRange = Fu.GetProperCastRange(false, bot, WalrusKick:GetCastRange())
+
+    if bRetreating
+    and not Fu.IsRealInvisible(bot)
+    then
+        for _, enemyHero in pairs(Fu.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE))
+        do
+            if Fu.IsValidHero(enemyHero)
+            and Fu.CanCastOnNonMagicImmune(enemyHero)
+            and Fu.IsInRange(bot, enemyHero, nCastRange)
+            and Fu.IsChasingTarget(enemyHero, bot)
+            and not Fu.IsSuspiciousIllusion(enemyHero)
+            and not Fu.IsDisabled(enemyHero)
+            and not enemyHero:HasModifier('modifier_enigma_black_hole_pull')
+            and not enemyHero:HasModifier('modifier_faceless_void_chronosphere_freeze')
+            and not enemyHero:HasModifier('modifier_legion_commander_duel')
+            and not enemyHero:HasModifier('modifier_necrolyte_reapers_scythe')
+            then
+                return BOT_ACTION_DESIRE_HIGH, enemyHero
+            end
+        end
+    end
+
+    if bGoingOnSomeone
+    then
+        local nInRangeAlly = Fu.GetNearbyHeroes(bot, 1200, false, BOT_MODE_NONE)
+
+        for _, enemyHero in pairs(Fu.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE))
+        do
+            if Fu.IsValidHero(enemyHero)
+            and Fu.CanCastOnNonMagicImmune(enemyHero)
+            and Fu.IsInRange(bot, enemyHero, nCastRange)
+            and not Fu.IsSuspiciousIllusion(enemyHero)
+            and not enemyHero:HasModifier('modifier_abaddon_borrowed_time')
+            and not enemyHero:HasModifier('modifier_enigma_black_hole_pull')
+            and not enemyHero:HasModifier('modifier_faceless_void_chronosphere_freeze')
+            and not enemyHero:HasModifier('modifier_legion_commander_duel')
+            and not enemyHero:HasModifier('modifier_necrolyte_reapers_scythe')
+            then
+                if nInRangeAlly ~= nil and #nInRangeAlly >= 2
+                and enemyHero ~= botTarget
+                and Fu.IsInRange(enemyHero, nInRangeAlly[1], 600)
+                then
+                    return BOT_ACTION_DESIRE_HIGH, enemyHero
+                end
+            end
+        end
+    end
+
+    return BOT_ACTION_DESIRE_NONE, nil
 end
 
 function X.ConsiderWalrusPunch()

@@ -702,7 +702,7 @@ function ____exports.GetItemFromCountedInventory(bot, itemName, count)
     return nil
 end
 require(GetScriptDirectory().."/ts_libs/utils/json")
-____exports.DebugMode = false
+____exports.DebugMode = true
 ____exports.ScriptID = 3246316298
 ____exports.RadiantFountainTpPoint = Vector(-7172, -6652, 384)
 ____exports.DireFountainTpPoint = Vector(6982, 6422, 392)
@@ -1055,19 +1055,29 @@ function ____exports.IsPingedByAnyPlayer(bot, pingTimeGap, minDistance, maxDista
     end
     return nil
 end
+--- Store a value in the per-bot cache with the current timestamp.
+-- Uses {t, v} objects — avoids TSTL array index conversion issues.
 function ____exports.SetCachedVars(key, value)
     if not ____exports.GameStates.cachedVars then
         ____exports.GameStates.cachedVars = {}
     end
-    ____exports.GameStates.cachedVars[key] = value
-    ____exports.GameStates.cachedVars[key .. "-Time"] = DotaTime()
+    ____exports.GameStates.cachedVars[key] = {
+        t = DotaTime(),
+        v = value
+    }
 end
+--- Retrieve a cached value if it was stored within `withinTime` seconds.
+-- Returns null if expired or not found.
 function ____exports.GetCachedVars(key, withinTime)
-    if not ____exports.GameStates.cachedVars or not ____exports.GameStates.cachedVars[key] then
+    if not ____exports.GameStates.cachedVars then
         return nil
     end
-    if DotaTime() - ____exports.GameStates.cachedVars[key .. "-Time"] <= withinTime then
-        return ____exports.GameStates.cachedVars[key]
+    local entry = ____exports.GameStates.cachedVars[key]
+    if not entry then
+        return nil
+    end
+    if DotaTime() - entry.t <= withinTime then
+        return entry.v
     end
     return nil
 end
@@ -1093,7 +1103,7 @@ local BARRACKS = {
 }
 local LEVEL_3_TOWERS = {Tower.Top3, Tower.Mid3, Tower.Bot3}
 function ____exports.CountEnemyHeroesOnHighGround(team)
-    local cacheKey = "CountEnemyHeroesOnHighGround:" .. tostring(team or -1)
+    local cacheKey = 60000 + (team or 0)
     local cachedVar = ____exports.GetCachedVars(cacheKey, 1)
     if cachedVar ~= nil then
         return cachedVar
@@ -1685,7 +1695,7 @@ end
 -- @param bot - The bot to check.
 -- @returns True if the team is pushing second tier or high ground, false otherwise.
 function ____exports.IsTeamPushingSecondTierOrHighGround(bot)
-    local cacheKey = "IsTeamPushingSecondTierOrHighGround" .. tostring(bot:GetTeam())
+    local cacheKey = 61000 + bot:GetTeam()
     local cachedRes = ____exports.GetCachedVars(cacheKey, 1)
     if cachedRes ~= nil then
         return cachedRes
@@ -1729,7 +1739,7 @@ function ____exports.CountMissingEnemyHeroes()
     local count = 0
     for ____, playerdId in ipairs(GetTeamPlayers(GetOpposingTeam())) do
         do
-            local __continue262
+            local __continue263
             repeat
                 if IsHeroAlive(playerdId) then
                     local lastSeenInfo = GetHeroLastSeenInfo(playerdId)
@@ -1737,14 +1747,14 @@ function ____exports.CountMissingEnemyHeroes()
                         local firstInfo = lastSeenInfo[1]
                         if firstInfo.time_since_seen >= 2.5 then
                             count = count + 1
-                            __continue262 = true
+                            __continue263 = true
                             break
                         end
                     end
                 end
-                __continue262 = true
+                __continue263 = true
             until true
-            if not __continue262 then
+            if not __continue263 then
                 break
             end
         end
@@ -1800,31 +1810,31 @@ local blinkBuffer = 1200
 function ____exports.IsAnySpecialAOEThreatNearby(bot, nRadius)
     for ____, enemy in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue291
+            local __continue292
             repeat
                 if not ____exports.IsValidHero(enemy) then
-                    __continue291 = true
+                    __continue292 = true
                     break
                 end
                 local enemyName = enemy:GetUnitName()
                 if not (SpecialAOEHeroesDetails[enemyName] ~= nil) then
-                    __continue291 = true
+                    __continue292 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, enemy) > nRadius + blinkBuffer then
-                    __continue291 = true
+                    __continue292 = true
                     break
                 end
                 if #bot:GetNearbyHeroes(nRadius, false, BotMode.None) <= 1 and #bot:GetNearbyLaneCreeps(nRadius, false) <= 2 then
-                    __continue291 = true
+                    __continue292 = true
                     break
                 end
                 if DoesHeroMeetThreatConditions(enemy, SpecialAOEHeroesDetails[enemyName]) then
                     return true
                 end
-                __continue291 = true
+                __continue292 = true
             until true
-            if not __continue291 then
+            if not __continue292 then
                 break
             end
         end
@@ -2265,7 +2275,8 @@ function ____exports.IsBotThinkingMeaningfulAction(bot, thinkLess, ____type)
     elseif thinkLess > 10 then
         thinkLess = 10
     end
-    local cacheKey = (("IsBotThinkingMeaningfulAction" .. tostring(bot:GetPlayerID())) .. "_") .. ____type
+    local typeHash = ____type == "all" and 0 or (____type == "rune" and 1 or (____type == "defend" and 2 or (____type == "push" and 3 or (____type == "farm" and 4 or 5))))
+    local cacheKey = 50000 + bot:GetPlayerID() * 10 + typeHash
     local cachedRes = ____exports.GetCachedVars(cacheKey, 0.11 * thinkLess)
     if cachedRes ~= nil then
         return cachedRes

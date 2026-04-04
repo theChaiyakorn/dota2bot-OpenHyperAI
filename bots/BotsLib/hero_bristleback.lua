@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -204,16 +205,17 @@ function X.SkillsComplement()
 
 	if Fu.CanNotUseAbility(bot) then return end
 
-	bGoingOnSomeone = Fu.IsGoingOnSomeone(bot)
-	bRetreating = Fu.IsRetreating(bot)
-	nBotHP = Fu.GetHP(bot)
-	bInTeamFight = Fu.IsInTeamFight(bot, 1200)
+	local ctx = AbilityCtx.Build(bot)
+	bGoingOnSomeone = ctx.isEngaging
+	bRetreating = ctx.isRetreating
+	nBotHP = ctx.hp
+	bInTeamFight = ctx.isTeamFight
 
 	bAttacking = Fu.IsAttacking(bot)
 	botHP = nBotHP
-	botTarget = Fu.GetProperTarget(bot)
-	nAllyHeroes = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE)
-	nEnemyHeroes = bot:GetNearbyHeroes(1600, true, BOT_MODE_NONE)
+	botTarget = ctx.target
+	nAllyHeroes = ctx.allies
+	nEnemyHeroes = ctx.enemies
 
 	HairballDesire, HairballTarget = X.ConsiderHairball()
 	if HairballDesire > 0 then

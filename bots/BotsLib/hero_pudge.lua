@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -274,6 +275,14 @@ function X.ConsiderMeatHook(MeatHook, Rot, Dismember, botTarget, botHP, nEnemyHe
 	local nSpeed = MeatHook:GetSpecialValueInt('hook_speed')
 	local nDamage = MeatHook:GetSpecialValueInt('damage')
 	local nManaCost = MeatHook:GetManaCost()
+
+    -- TP-cancel hook: interrupt teleporting enemies
+    local tpTarget = Fu.GetTPTarget(bot, nCastRange)
+    if tpTarget
+    and not Fu.IsUnitBetweenMeAndLocation(bot, tpTarget, tpTarget:GetLocation(), nRadius)
+    then
+        return BOT_ACTION_DESIRE_HIGH, tpTarget:GetLocation()
+    end
 
     local nEnemyHeroes = Fu.GetNearbyHeroes(bot,nCastRange, true, BOT_MODE_NONE)
     for _, enemyHero in pairs(nEnemyHeroes)

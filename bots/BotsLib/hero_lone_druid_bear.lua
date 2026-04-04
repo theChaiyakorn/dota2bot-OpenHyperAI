@@ -3,7 +3,8 @@ local bear = GetBot()
 
 local Utils = require( GetScriptDirectory()..'/FuncLib/systems/utils' )
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require( GetScriptDirectory()..'/FuncLib/systems/ability_context' )
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 
 if Utils.GetLoneDruid(bear).bear == nil or not Utils.GetLoneDruid(bear).bear:IsAlive() then Utils.GetLoneDruid(bear).bear = bear end
 bear.assignedRole = Utils.GetLoneDruid(bear).hero.assignedRole -- math.min(1, Utils['LoneDruid'].hero.assignedRole - 1)

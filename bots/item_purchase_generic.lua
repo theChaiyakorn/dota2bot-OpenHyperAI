@@ -1225,9 +1225,35 @@ function ItemPurchaseThink()
 			bot.purchaseListInReverseOrder[#bot.purchaseListInReverseOrder] = nil
 		elseif currentTime > bot.lastInvCheck + 1.0 then
 			bot.lastInvCheck = currentTime
-			if bot.rebuildCount < 3 and botCourierValue == 0 and botStashValue == 0 and botName ~= "npc_dota_hero_lone_druid" then
+			if bot.rebuildCount < 5 and botCourierValue == 0 and botStashValue == 0 and botName ~= "npc_dota_hero_lone_druid" then
 				bot.rebuildCount = bot.rebuildCount + 1
-				-- try rebuild it based on what's actually missing
+
+				-- Check for orphaned recipes in inventory: recipe exists but
+				-- missing components (bot dropped/lost them mid-build)
+				for slot = 0, 14 do
+					local slotItem = bot:GetItemInSlot(slot)
+					if slotItem then
+						local slotName = slotItem:GetName()
+						if string.find(slotName, 'recipe') then
+							-- Find final item this recipe belongs to
+							local finalItem = string.gsub(slotName, 'item_recipe_', 'item_')
+							local components = Item[finalItem] or Item.GetComponentList(finalItem)
+							if components and #components > 0 then
+								for _, comp in pairs(components) do
+									if not string.find(comp, 'recipe') and not Item.IsItemInHero(comp) then
+										table.insert(bot.currBuyingBasicItemList, 1, comp)
+									end
+								end
+								if #bot.currBuyingBasicItemList > 0 then
+									bot.currBuyingRequiredCounts = _buildRequiredCounts(bot.currBuyingBasicItemList)
+									break
+								end
+							end
+						end
+					end
+				end
+
+				-- Also try normal rebuild based on what's actually missing
 				local newList = Item.GetReducedPurchaseList(bot, bot.currBuyingBasicItemRefList)
 				for _, value in pairs(newList) do
 					if not Item.IsItemInHero(value) then

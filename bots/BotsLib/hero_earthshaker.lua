@@ -2,7 +2,8 @@ local X             = {}
 local bot           = GetBot()
 
 local Fu             = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion        = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion        = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList   = Fu.Skill.GetTalentList( bot )
 local sAbilityList  = Fu.Skill.GetAbilityList( bot )
 local sRole   = Fu.Item.GetRoleItemsBuyList( bot )
@@ -139,14 +140,15 @@ local bAttacking
 local bInTeamFight
 function X.SkillsComplement()
 
-	bGoingOnSomeone = Fu.IsGoingOnSomeone(bot)
+	local ctx = AbilityCtx.Build(bot)
+	bGoingOnSomeone = ctx.isEngaging
 	bAttacking = Fu.IsAttacking(bot)
-	bInTeamFight = Fu.IsInTeamFight(bot, 1200)
+	bInTeamFight = ctx.isTeamFight
 	if Fu.CanNotUseAbility(bot)
     or bot:NumQueuedActions() > 0
     then return end
 
-    botTarget = Fu.GetProperTarget(bot)
+    botTarget = ctx.target
 
     BlinkSlamDesire, BlinkSlamLocation = X.ConsiderBlinkSlam()
     if BlinkSlamDesire > 0
@@ -212,6 +214,12 @@ function X.ConsiderFissure()
     end
 
     local nCastRange = Fu.GetProperCastRange(false, bot, Fissure:GetCastRange())
+
+    -- Interrupt TP
+    local tpTarget = Fu.GetTPTarget(bot, nCastRange)
+    if tpTarget and not tpTarget:IsMagicImmune() then
+        return BOT_ACTION_DESIRE_HIGH, tpTarget:GetLocation()
+    end
 	local nCastPoint = Fissure:GetCastPoint()
 	local nRadius = Fissure:GetSpecialValueInt('fissure_radius')
     local nDamage = Fissure:GetSpecialValueInt('fissure_damage')

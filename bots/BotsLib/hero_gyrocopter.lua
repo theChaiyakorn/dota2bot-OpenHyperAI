@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -433,14 +434,22 @@ function X.ConsiderFlakCannon()
     and nMana > 0.35
     then
         local nNeutralCreeps = bot:GetNearbyNeutralCreeps(nRadius)
+        local nEnemyLaneCreeps = bot:GetNearbyLaneCreeps(nRadius, true)
         nEnemyHeroes = Fu.GetNearbyHeroes(bot,600, true, BOT_MODE_NONE)
 
-        if nNeutralCreeps ~= nil
-        and (#nNeutralCreeps >= 3
-            or (#nNeutralCreeps >= 2 and nNeutralCreeps[1]:IsAncientCreep()))
-        and nEnemyHeroes ~= nil and #nEnemyHeroes == 0
+        if nEnemyHeroes ~= nil and #nEnemyHeroes == 0
         then
-            return BOT_ACTION_DESIRE_HIGH
+            if nNeutralCreeps ~= nil
+            and (#nNeutralCreeps >= 3
+                or (#nNeutralCreeps >= 2 and nNeutralCreeps[1]:IsAncientCreep()))
+            then
+                return BOT_ACTION_DESIRE_HIGH
+            end
+
+            if nEnemyLaneCreeps ~= nil and #nEnemyLaneCreeps >= 4
+            then
+                return BOT_ACTION_DESIRE_HIGH
+            end
         end
     end
 
@@ -473,11 +482,24 @@ function X.ConsiderCallDown()
 		end
 	end
 
+    if bGoingOnSomeone
+    then
+        local nLocationAoE = bot:FindAoELocation(true, true, bot:GetLocation(), nCastRange, nRadius / 2, nCastPoint, 0)
+
+        if nLocationAoE.count >= 2
+        then
+            local realEnemyCount = Fu.GetEnemiesNearLoc(nLocationAoE.targetloc, nRadius)
+
+            if realEnemyCount ~= nil and #realEnemyCount >= 2
+            then
+                return BOT_ACTION_DESIRE_HIGH, nLocationAoE.targetloc
+            end
+        end
+    end
+
     local nEnemyHeroes = Fu.GetNearbyHeroes(bot,nCastRange, true, BOT_MODE_NONE)
     for _, enemyHero in pairs(nEnemyHeroes)
     do
-        local nInRangeAlly = Fu.GetNearbyHeroes(bot,nCastRange + 200, false, BOT_MODE_NONE)
-
         if Fu.IsValidHero(enemyHero)
         and Fu.CanCastOnNonMagicImmune(enemyHero)
         and Fu.IsInRange(bot, enemyHero, nCastRange)
@@ -487,10 +509,23 @@ function X.ConsiderCallDown()
         and not enemyHero:HasModifier('modifier_dazzle_shallow_grave')
         and not enemyHero:HasModifier('modifier_oracle_false_promise_timer')
         and not enemyHero:HasModifier('modifier_templar_assassin_refraction_absorb')
-        and nInRangeAlly ~= nil and nEnemyHeroes ~= nil
-        and #nInRangeAlly <= 2 and #nEnemyHeroes <= 2
         then
             return BOT_ACTION_DESIRE_HIGH, enemyHero:GetExtrapolatedLocation(1 + nCastPoint)
+        end
+    end
+
+    if (Fu.IsPushing(bot) or Fu.IsDefending(bot))
+    then
+        local nEnemyLaneCreeps = bot:GetNearbyLaneCreeps(nCastRange, true)
+
+        if nEnemyLaneCreeps ~= nil and #nEnemyLaneCreeps >= 5
+        then
+            local nLocationAoE = bot:FindAoELocation(true, false, bot:GetLocation(), nCastRange, nRadius / 2, nCastPoint, 0)
+
+            if nLocationAoE.count >= 4
+            then
+                return BOT_ACTION_DESIRE_HIGH, nLocationAoE.targetloc
+            end
         end
     end
 

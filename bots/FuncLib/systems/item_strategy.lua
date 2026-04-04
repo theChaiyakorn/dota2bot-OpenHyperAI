@@ -122,13 +122,6 @@ local function __TS__ArrayPushArray(self, items)
     return len
 end
 
-local function __TS__Class(self)
-    local c = {prototype = {}}
-    c.prototype.__index = c.prototype
-    c.prototype.constructor = c
-    return c
-end
-
 local function __TS__ArrayIncludes(self, searchElement, fromIndex)
     if fromIndex == nil then
         fromIndex = 0
@@ -152,9 +145,9 @@ end
 local ____exports = {}
 local ____heroes = require(GetScriptDirectory().."/ts_libs/dota/heroes")
 local HeroName = ____heroes.HeroName
-local ____aba_hero_roles_map = require(GetScriptDirectory().."/FuncLib/data/hero_roles_map")
-local HeroRolesMap = ____aba_hero_roles_map.HeroRolesMap
-local IsRanged = ____aba_hero_roles_map.IsRanged
+local ____hero_roles_map = require(GetScriptDirectory().."/FuncLib/data/hero_roles_map")
+local HeroRolesMap = ____hero_roles_map.HeroRolesMap
+local IsRanged = ____hero_roles_map.IsRanged
 local STARTING_ITEMS = {
     pos_1 = {melee = {"item_tango", "item_double_branches", "item_quelling_blade", "item_circlet"}, ranged = {"item_tango", "item_double_branches", "item_slippers", "item_circlet"}},
     pos_2 = {melee = {"item_tango", "item_double_branches", "item_faerie_fire", "item_circlet"}, ranged = {"item_tango", "item_double_branches", "item_faerie_fire", "item_circlet"}},
@@ -421,12 +414,8 @@ local function hasEnemyThreat(enemies, threatType)
     end
     return false
 end
-____exports.AdvancedItemStrategy = __TS__Class()
-local AdvancedItemStrategy = ____exports.AdvancedItemStrategy
-AdvancedItemStrategy.name = "AdvancedItemStrategy"
-function AdvancedItemStrategy.prototype.____constructor(self)
-end
-function AdvancedItemStrategy.GetItemBuild(self, bot, position)
+--- Generate item build based on position and range type
+function ____exports.GetItemBuild(bot, position)
     local heroName = bot.GetUnitName()
     local enemies = getEnemyHeroes()
     local build = {}
@@ -463,7 +452,8 @@ function AdvancedItemStrategy.GetItemBuild(self, bot, position)
     end
     return applyHeroSpecificModifications(heroName, build)
 end
-function AdvancedItemStrategy.GetSellList(self, _bot, _itemBuild)
+--- Generate sell list based on item build
+function ____exports.GetSellList(_bot, _itemBuild)
     local sellPairs = {
         "item_travel_boots_2",
         "item_boots",
@@ -482,7 +472,8 @@ function AdvancedItemStrategy.GetSellList(self, _bot, _itemBuild)
     }
     return sellPairs
 end
-function AdvancedItemStrategy.GetLateGame6Slot(self, bot, position)
+--- Get 6-slot late game build (excluding non-slot items)
+function ____exports.GetLateGame6Slot(bot, position)
     local heroName = bot.GetUnitName()
     local isHeroRanged = isRanged(heroName)
     local rangeType = isHeroRanged and "ranged" or "melee"
@@ -502,7 +493,8 @@ function AdvancedItemStrategy.GetLateGame6Slot(self, bot, position)
     end
     return build
 end
-function AdvancedItemStrategy.GetNonSlotItems(self, bot, position)
+--- Get non-slot items for late game
+function ____exports.GetNonSlotItems(bot, position)
     local heroName = bot.GetUnitName()
     local isHeroRanged = isRanged(heroName)
     local rangeType = isHeroRanged and "ranged" or "melee"
@@ -516,7 +508,8 @@ function AdvancedItemStrategy.GetNonSlotItems(self, bot, position)
     end
     return nonSlotItems
 end
-function AdvancedItemStrategy.GetCounterItems(self, enemies)
+--- Get counter items for specific enemy threats
+function ____exports.GetCounterItems(enemies)
     local counterItems = {}
     if hasEnemyThreat(enemies, "evasion") then
         __TS__ArrayPushArray(counterItems, COUNTER_ITEMS.evasion)
@@ -537,11 +530,12 @@ function AdvancedItemStrategy.GetCounterItems(self, enemies)
     end
     return counterItems
 end
-function AdvancedItemStrategy.GetPositionSpecificItems(self, bot, position)
-    return self:GetItemBuild(bot, position)
+--- Get position-specific items (simplified - position determines role)
+function ____exports.GetPositionSpecificItems(bot, position)
+    return ____exports.GetItemBuild(bot, position)
 end
-function AdvancedItemStrategy.GetRangeSpecificItems(self, bot, position)
-    return self:GetItemBuild(bot, position)
+--- Get range-specific items (melee vs ranged)
+function ____exports.GetRangeSpecificItems(bot, position)
+    return ____exports.GetItemBuild(bot, position)
 end
-____exports.default = ____exports.AdvancedItemStrategy
 return ____exports

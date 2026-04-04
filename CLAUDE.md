@@ -34,19 +34,19 @@ When user says "update for patch X.XX" or provides patch notes:
 
 ### Add a New Hero
 
-1. Copy a similar existing hero from `bots/BotLib/` as template
-2. Add to `FretBots/HeroNames.lua`, `FunLib/aba_hero_roles_map.lua`, `FunLib/spell_list.lua`
+1. Copy a similar existing hero from `bots/BotsLib/` as template
+2. Add to `FretBots/HeroNames.lua`, `FuncLib/data/hero_roles_map.lua`, `FuncLib/data/spell_list.lua`
 3. See "New Heroes" section in `docs/PATCH_UPDATE_GUIDE.md`
 
 ### Fix a Hero's Item Build
 
-1. Read `bots/BotLib/hero_[name].lua`
+1. Read `bots/BotsLib/hero_[name].lua`
 2. Edit the `sRoleItemsBuyList['pos_N']` arrays
-3. Items use `item_[internal_name]` format -- check `FunLib/aba_item.lua` for valid names
+3. Items use `item_[internal_name]` format -- check `FuncLib/systems/item.lua` for valid names
 
 ### Fix a Hero's Ability Logic
 
-1. Read `bots/BotLib/hero_[name].lua`
+1. Read `bots/BotsLib/hero_[name].lua`
 2. The `SkillsComplement()` function controls ability casting priority
 3. Each ability has a `ConsiderX()` function returning desire + target
 4. See "Skill / Ability System" in `docs/ARCHITECTURE.md`

@@ -2,8 +2,9 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
+local AbilityCtx = require( GetScriptDirectory()..'/FuncLib/systems/ability_context' )
 local Utils = require( GetScriptDirectory()..'/FuncLib/systems/utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -340,12 +341,13 @@ function X.SkillsComplement()
     CheckAbilityUsage()
     if Fu.CanNotUseAbility(bot) then return end
 
-	bGoingOnSomeone = Fu.IsGoingOnSomeone(bot)
-	bRetreating = Fu.IsRetreating(bot)
+    local ctx = AbilityCtx.Build(bot)
+	bGoingOnSomeone = ctx.isEngaging
+	bRetreating = ctx.isRetreating
 	bAttacking = Fu.IsAttacking(bot)
-	nBotHP = Fu.GetHP(bot)
-	nBotMP = Fu.GetMP(bot)
-	bInTeamFight = Fu.IsInTeamFight(bot, 1200)
+	nBotHP = ctx.hp
+	nBotMP = ctx.mp
+	bInTeamFight = ctx.isTeamFight
 
     nEnemyHeroes = Fu.GetNearbyHeroes(bot, 1600, true)
     nAllyHeroes = Fu.GetNearbyHeroes(bot, 1600, false)
@@ -357,7 +359,7 @@ function X.SkillsComplement()
         return
     end
 
-    botTarget = Fu.GetProperTarget(bot)
+    botTarget = ctx.target
     TornadoLiftTime = Tornado:GetSpecialValueFloat('lift_duration')
     -- CheckForCooldownReductions()
 

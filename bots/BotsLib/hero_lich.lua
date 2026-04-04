@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -190,6 +191,7 @@ local abilityW = bot:GetAbilityByName( sAbilityList[2] )
 local abilityE = bot:GetAbilityByName( sAbilityList[3] )
 local abilityAS = bot:GetAbilityByName( sAbilityList[4] )
 local abilityR = bot:GetAbilityByName( sAbilityList[6] )
+local Sacrifice = bot:GetAbilityByName('lich_death_charge')
 local talent1 = bot:GetAbilityByName( sTalentList[1] )
 local talent2 = bot:GetAbilityByName( sTalentList[2] )
 local talent5 = bot:GetAbilityByName( sTalentList[5] )
@@ -200,6 +202,7 @@ local castWDesire, castWTarget
 local castEDesire, castETarget
 local castRDesire, castRTarget
 local castASDesire, castASTarget
+local SacrificeDesire, SacrificeTarget
 
 
 local aetherRange = 0
@@ -211,21 +214,18 @@ function X.SkillsComplement()
 	if Fu.CanNotUseAbility( bot ) or bot:IsInvisible() then return end
 
 
+	local ctx = AbilityCtx.Build(bot)
 	nKeepMana = 330
-	aetherRange = 0
-	nLV = bot:GetLevel()
-	nMP = bot:GetMana()/bot:GetMaxMana()
-	nHP = bot:GetHealth()/bot:GetMaxHealth()
-	botTarget = Fu.GetProperTarget( bot )
-	hEnemyList = Fu.GetNearbyHeroes(bot, 1600, true, BOT_MODE_NONE )
-	hAllyList = Fu.GetAlliesNearLoc( bot:GetLocation(), 1200 )
+	aetherRange = ctx.aetherRange
+	nLV = ctx.level
+	nMP = ctx.mp
+	nHP = ctx.hp
+	botTarget = ctx.target
+	hEnemyList = ctx.enemies
+	hAllyList = ctx.allies
 
 
-	local aether = Fu.IsItemAvailable( "item_aether_lens" )
-	if aether ~= nil then aetherRange = 250 end
---	if talent1:IsTrained() then aetherRange = aetherRange + talent1:GetSpecialValueInt( "value" ) end
-
-
+	castRDesire, castRTarget = X.ConsiderR()
 	if ( castRDesire > 0 )
 	then
 
@@ -236,6 +236,7 @@ function X.SkillsComplement()
 
 	end
 
+	castQDesire, castQTarget = X.ConsiderQ()
 	if ( castQDesire > 0 )
 	then
 
@@ -245,6 +246,7 @@ function X.SkillsComplement()
 		return
 	end
 
+	castWDesire, castWTarget = X.ConsiderW()
 	if ( castWDesire > 0 )
 	then
 
@@ -254,6 +256,7 @@ function X.SkillsComplement()
 		return
 	end
 
+	castEDesire, castETarget = X.ConsiderE()
 	if ( castEDesire > 0 )
 	then
 
@@ -269,6 +272,7 @@ function X.SkillsComplement()
 	end
 	
 	
+	castASDesire, castASTarget = X.ConsiderAS()
 	if ( castASDesire > 0 )
 	then
 
@@ -277,6 +281,14 @@ function X.SkillsComplement()
 		bot:ActionQueue_UseAbilityOnLocation( abilityAS, castASTarget )
 		return
 
+	end
+
+	SacrificeDesire, SacrificeTarget = X.ConsiderSacrifice()
+	if SacrificeDesire > 0
+	then
+		Fu.SetQueuePtToINT( bot, true )
+		bot:ActionQueue_UseAbilityOnEntity( Sacrifice, SacrificeTarget )
+		return
 	end
 
 
@@ -1071,6 +1083,42 @@ function X.ConsiderAS()
 end
 
 
+function X.ConsiderSacrifice()
+	if not Fu.CanCastAbility(Sacrifice) then
+		return BOT_ACTION_DESIRE_NONE
+	end
+
+	if bot:HasModifier('modifier_rune_regen')
+	or bot:HasModifier('modifier_fountain_aura_buff')
+	then
+		return BOT_ACTION_DESIRE_NONE
+	end
+
+	local nCastRange = Sacrifice:GetCastRange()
+	local fHealthToManaPct = Sacrifice:GetSpecialValueInt('active_mana_restore_pct_of_health') / 100
+	local fHealthToManaPctPerLevel = 3 / 100
+
+	local nAllyLaneCreeps = bot:GetNearbyLaneCreeps(Min(nCastRange + 300, 1600), false)
+
+	if Fu.GetMP(bot) < 0.5 then
+		local hTarget = nil
+		local hTargetManaHeal = 0
+		for _, creep in pairs(nAllyLaneCreeps) do
+			if Fu.IsValid(creep) and Fu.CanBeAttacked(creep) then
+				local creepManaHeal = creep:GetHealth() * (fHealthToManaPct + (bot:GetLevel() * fHealthToManaPctPerLevel))
+				if creepManaHeal >= 200 and creepManaHeal > hTargetManaHeal then
+					hTarget = creep
+					hTargetManaHeal = creepManaHeal
+				end
+			end
+		end
+
+		if hTarget then
+			return BOT_ACTION_DESIRE_HIGH, hTarget
+		end
+	end
+
+	return BOT_ACTION_DESIRE_NONE
+end
+
 return X
-
-

@@ -4,11 +4,11 @@ if GetScriptDirectory == nil then GetScriptDirectory = function() return "bots" 
 -- Print version to console
 print('Starting Buff. Version: ' .. Version.number)
 
-dofile('bots/Buff/Timers')
-dofile('bots/Buff/Experience')
-dofile('bots/Buff/GPM')
-dofile('bots/Buff/NeutralItems')
-dofile('bots/Buff/Helper')
+require('bots/Buff/Timers')
+require('bots/Buff/Experience')
+require('bots/Buff/GPM')
+require('bots/Buff/NeutralItems')
+require('bots/Buff/Helper')
 local Chat = require('bots.FretBots.Chat')
 
 local InitTimerName = 'InitTimer'

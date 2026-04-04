@@ -13,8 +13,8 @@ require 'bots.FretBots.Settings'
 require 'bots.FretBots.Utilities'
 
 local role 			= require('bots.FretBots.RoleUtility')
-local radiantTowers	= dofile('bots.FretBots.RadiantTowers')
-local direTowers	= dofile('bots.FretBots.DireTowers')
+local radiantTowers	= require('bots.FretBots.RadiantTowers')
+local direTowers	= require('bots.FretBots.DireTowers')
 local Localization = require 'bots/FuncLib/systems/localization'
 
 -- local debug flags

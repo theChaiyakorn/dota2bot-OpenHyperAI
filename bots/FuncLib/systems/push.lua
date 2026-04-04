@@ -39,13 +39,13 @@ local IsValidUnit = ____utils.IsValidUnit
 local GetLocationToLocationDistance = ____utils.GetLocationToLocationDistance
 local RadiantFountainTpPoint = ____utils.RadiantFountainTpPoint
 local DireFountainTpPoint = ____utils.DireFountainTpPoint
-local ____global_cache = require(GetScriptDirectory().."/FuncLib/systems/cache")
-local getGlobalGameState = ____global_cache.getGlobalGameState
-local getGlobalLocationState = ____global_cache.getGlobalLocationState
-local getCachedAlliesNearLoc = ____global_cache.getCachedAlliesNearLoc
-local getCachedEnemiesNearLoc = ____global_cache.getCachedEnemiesNearLoc
-local autoCleanupCache = ____global_cache.autoCleanupCache
-local getCachedData = ____global_cache.getCachedData
+local ____cache = require(GetScriptDirectory().."/FuncLib/systems/cache")
+local getGlobalGameState = ____cache.getGlobalGameState
+local getGlobalLocationState = ____cache.getGlobalLocationState
+local getCachedAlliesNearLoc = ____cache.getCachedAlliesNearLoc
+local getCachedEnemiesNearLoc = ____cache.getCachedEnemiesNearLoc
+local autoCleanupCache = ____cache.autoCleanupCache
+local getCachedData = ____cache.getCachedData
 function updateGameStateCache()
     local now = DotaTime()
     if gameStateCache and now - gameStateCache.lastUpdate < PUSH_CACHE_TTL then
@@ -125,7 +125,6 @@ function updateUnitStateCache()
     return unitStateCache
 end
 function ____exports.GetPushDesireHelper(bot, lane)
-	local nBotHP = Fu.GetHP(bot)
     if bot.laneToPush == nil then
         bot.laneToPush = lane
     end
@@ -169,18 +168,11 @@ function ____exports.GetPushDesireHelper(bot, lane)
             nMaxDesire = math.min(nMaxDesire, 0.08)
         end
     end
-    if nBotHP < 0.5 then
+    if Fu.GetHP(bot) < 0.5 then
         nMaxDesire = math.min(nMaxDesire, 0.25)
     end
     if gameState.aliveEnemyCount >= 5 and gameState.aliveAllyCount <= gameState.aliveEnemyCount then
         nMaxDesire = math.min(nMaxDesire, 0.41)
-    end
-    local closeEnemies = getCachedEnemiesNearLoc(
-        bot:GetLocation(),
-        900
-    )
-    if #closeEnemies > 0 and #alliesHere >= #closeEnemies then
-        nMaxDesire = math.min(nMaxDesire, 0.3)
     end
     if botActiveMode == BotMode.PushTowerTop then
         bot.laneToPush = Lane.Top
@@ -272,11 +264,11 @@ function ____exports.GetPushDesireHelper(bot, lane)
             return BOT_MODE_DESIRE_EXTRA_LOW
         end
     end
-    if hEnemyAncient and GetUnitToUnitDistance(bot, hEnemyAncient) < nSearchRange * 0.5 and Fu.CanBeAttacked(hEnemyAncient) and not bot:WasRecentlyDamagedByAnyHero(1) and nBotHP > 0.5 and not ____exports.HasBackdoorProtect(hEnemyAncient) then
+    if hEnemyAncient and GetUnitToUnitDistance(bot, hEnemyAncient) < nSearchRange * 0.5 and Fu.CanBeAttacked(hEnemyAncient) and not bot:WasRecentlyDamagedByAnyHero(1) and Fu.GetHP(bot) > 0.5 and not ____exports.HasBackdoorProtect(hEnemyAncient) then
         bot:SetTarget(hEnemyAncient)
         bot:Action_AttackUnit(hEnemyAncient, true)
         return RemapValClamped(
-            nBotHP,
+            Fu.GetHP(bot),
             0,
             0.5,
             BotModeDesire.None,
@@ -322,7 +314,7 @@ function ____exports.GetPushDesireHelper(bot, lane)
                 nPushDesire = nPushDesire + groupBonus
             end
             return RemapValClamped(
-                nPushDesire * nBotHP,
+                nPushDesire * Fu.GetHP(bot),
                 0,
                 1,
                 0,
@@ -815,24 +807,24 @@ function ____exports.PushThink(bot, lane)
     local towerDistanceToFountain = bTowerNearby and GetUnitToLocationDistance(nEnemyTowers[1], vTeamFountain) or 0
     for ____, creep in ipairs(nCreeps) do
         do
-            local __continue120
+            local __continue119
             repeat
                 if not Fu.IsValid(creep) or not Fu.CanBeAttacked(creep) then
-                    __continue120 = true
+                    __continue119 = true
                     break
                 end
                 if Fu.IsTormentor(creep) or Fu.IsRoshan(creep) then
-                    __continue120 = true
+                    __continue119 = true
                     break
                 end
                 if bTowerNearby and GetUnitToLocationDistance(creep, vTeamFountain) >= towerDistanceToFountain then
-                    __continue120 = true
+                    __continue119 = true
                     break
                 end
                 bot:Action_AttackUnit(creep, true)
                 return
             until true
-            if not __continue120 then
+            if not __continue119 then
                 break
             end
         end

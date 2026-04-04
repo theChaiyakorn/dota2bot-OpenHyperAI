@@ -4,7 +4,7 @@
 local Version = require 'bots.FuncLib.systems.version'
 -- Sound constants
 if Sounds == nil then
-	Sounds = dofile('bots.FretBots.Soundboard')
+	Sounds = require('bots.FretBots.Soundboard')
 end
 -- Hero Names
 local heroNames = require('bots.FretBots.HeroNames')

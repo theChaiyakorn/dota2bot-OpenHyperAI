@@ -35,26 +35,39 @@ vscripts/
 │   ├── ability_item_usage_generic.lua # Ability casting + item active-use logic (~8000 lines)
 │   ├── mode_*_generic.lua             # Behavior modes (laning, farm, push, retreat, etc.)
 │   │
-│   ├── BotLib/                        # all hero-specific files (one per hero)
+│   ├── BotsLib/                        # all hero-specific files (one per hero)
 │   │   ├── hero_abaddon.lua
 │   │   ├── hero_axe.lua
 │   │   └── ... (hero_[internal_name].lua)
 │   │
-│   ├── FunLib/                        # Core utility libraries
-│   │   ├── jmz_func.lua              # Main aggregator (loads all sub-libraries as J.*)
-│   │   ├── aba_item.lua              # Item lists, components, sell/buy logic
-│   │   ├── aba_skill.lua             # Ability slot reading, skill build system
-│   │   ├── aba_role.lua              # Role/position assignment (pos 1-5)
-│   │   ├── aba_hero_roles_map.lua    # Hero role scores (carry/support/initiator/etc.)
-│   │   ├── aba_site.lua              # Map positioning, farm timing, location logic
-│   │   ├── spell_list.lua            # Ability weight database (all heroes)
-│   │   ├── spell_prob_list.lua       # Ability probability weights
-│   │   ├── advanced_item_strategy.lua # Fallback item builds by position
-│   │   ├── aba_chat.lua              # Chatbot + item/hero name localization
-│   │   ├── aba_minion.lua            # Minion/summon control
-│   │   ├── aba_special_units.lua     # Special unit interactions
-│   │   ├── morphling_utility.lua     # Morphling replicate helper
-│   │   └── rubick_hero/              # Rubick spell-steal hero-specific logic
+│   ├── FuncLib/                       # Core utility libraries
+│   │   ├── func_utils.lua             # Main aggregator (loads all sub-libraries as J.*)
+│   │   ├── systems/
+│   │   │   ├── item.lua               # Item lists, components, sell/buy logic
+│   │   │   ├── skill.lua              # Ability slot reading, skill build system
+│   │   │   ├── role.lua               # Role/position assignment (pos 1-5)
+│   │   │   ├── utils.lua              # General utility functions
+│   │   │   ├── push.lua               # Push logic
+│   │   │   ├── defend.lua             # Defend logic
+│   │   │   ├── chat.lua               # Chatbot + item/hero name localization
+│   │   │   ├── item_strategy.lua      # Fallback item builds by position
+│   │   │   ├── cache.lua              # Global cache
+│   │   │   ├── version.lua            # Version info
+│   │   │   ├── localization.lua       # Localization support
+│   │   │   ├── custom_loader.lua      # Custom loader
+│   │   │   └── override_generic/      # Generic overrides
+│   │   ├── data/
+│   │   │   ├── site.lua               # Map positioning, farm timing, location logic
+│   │   │   ├── buff.lua               # Buff data
+│   │   │   ├── hero_roles_map.lua     # Hero role scores (carry/support/initiator/etc.)
+│   │   │   ├── hero_pos_weights.lua   # Hero position weights
+│   │   │   ├── matchups.lua           # Matchup data
+│   │   │   ├── spell_list.lua         # Ability weight database (all heroes)
+│   │   │   └── spell_prob_list.lua    # Ability probability weights
+│   │   ├── aba_minion.lua             # Minion/summon control
+│   │   ├── aba_special_units.lua      # Special unit interactions
+│   │   ├── morphling_utility.lua      # Morphling replicate helper
+│   │   └── hero/rubick_hero/          # Rubick spell-steal hero-specific logic
 │   │       ├── beastmaster.lua
 │   │       └── ...
 │   │
@@ -101,11 +114,11 @@ vscripts/
 
 ## 3. Hero Bot Files
 
-Each file in `BotLib/hero_[name].lua` follows this exact structure:
+Each file in `BotsLib/hero_[name].lua` follows this exact structure:
 
 ```lua
 -- 1. IMPORTS
-local J = require(GetScriptDirectory()..'/FunLib/jmz_func')
+local J = require(GetScriptDirectory()..'/FuncLib/func_utils')
 local sAbilityList = J.Skill.GetAbilityList(bot)   -- Dynamic slot reading
 
 -- 2. TALENT BUILD
@@ -147,7 +160,7 @@ end
 
 ### Key Rules
 
-- **`tAllAbilityBuildList` indices are NOT slot numbers.** They index into the filtered `sAbilityList` built by `aba_skill.lua`. Index 1 = first non-innate ability, 6 = ultimate.
+- **`tAllAbilityBuildList` indices are NOT slot numbers.** They index into the filtered `sAbilityList` built by `FuncLib/systems/skill.lua`. Index 1 = first non-innate ability, 6 = ultimate.
 - **If an ability becomes innate** (non-learnable) in a patch, it is filtered out of `sAbilityList` and all higher indices shift down. The build order MUST be updated.
 - **Use `sAbilityList[N]` for ability references** when possible (resilient to renames). Only use hardcoded `GetAbilityByName('hero_ability_name')` when you need to check specific modifiers or special logic.
 - **When unsure about an ability name after a rename**, chain fallbacks:
@@ -161,7 +174,7 @@ end
 
 ## 4. Skill / Ability System
 
-**Core file:** `FunLib/aba_skill.lua`
+**Core file:** `FuncLib/systems/skill.lua`
 
 ### GetAbilityList(bot) -- Dynamic Slot Reader
 
@@ -185,15 +198,15 @@ Takes `sAbilityList` + `nAbilityBuildList` (the `{1,2,1,...}` array) and produce
 
 ### Modifier files
 
-- `FunLib/spell_list.lua` -- Ability weight database keyed by `npc_dota_hero_[name]`. Used for generic ability evaluation.
-- `FunLib/spell_prob_list.lua` -- Probability weights for ability casting decisions.
-- `FunLib/rubick_hero/[hero].lua` -- Rubick spell-steal logic per hero. Must be updated if ability names change.
+- `FuncLib/data/spell_list.lua` -- Ability weight database keyed by `npc_dota_hero_[name]`. Used for generic ability evaluation.
+- `FuncLib/data/spell_prob_list.lua` -- Probability weights for ability casting decisions.
+- `FuncLib/hero/rubick_hero/[hero].lua` -- Rubick spell-steal logic per hero. Must be updated if ability names change.
 
 ---
 
 ## 5. Item System
 
-**Core file:** `FunLib/aba_item.lua` (~830 lines)
+**Core file:** `FuncLib/systems/item.lua` (~830 lines)
 
 ### Item Lists (order of importance)
 
@@ -222,7 +235,7 @@ Item['item_bfury'] = GetItemComponents('item_bfury')[1]
 ### Item Purchase Flow
 
 `item_purchase_generic.lua`:
-1. Loads hero's `sBuyList` from the BotLib file
+1. Loads hero's `sBuyList` from the BotsLib file
 2. Processes in reverse order (highest priority first)
 3. Checks if the bot already owns the item
 4. Breaks items into components via the component definitions
@@ -382,7 +395,7 @@ When a new Dota 2 patch drops, follow these steps in order:
 - [ ] Fetch current neutral items from `https://raw.githubusercontent.com/dotabuff/d2vpkr/master/dota/scripts/npc/neutral_items.txt`
 - [ ] Cross-check ability/item names against **Liquipedia** (`https://liquipedia.net/dota2/HERO_NAME`) -- patch note summaries can be inaccurate about exact internal names
 
-### Step 2: Update Shop Items (`FunLib/aba_item.lua`)
+### Step 2: Update Shop Items (`FuncLib/systems/item.lua`)
 
 - [ ] `sBasicItems` list: Add new basic components
 - [ ] `sSeniorItems` list: Add/remove mid-tier items
@@ -391,9 +404,9 @@ When a new Dota 2 patch drops, follow these steps in order:
 - [ ] `sSellList`: Add sell-pair entries for new components replacing old ones
 - [ ] Comment out (don't delete) removed items with `-- removed from game` note
 
-### Step 3: Update Hero Item Builds (`BotLib/hero_*.lua`)
+### Step 3: Update Hero Item Builds (`BotsLib/hero_*.lua`)
 
-- [ ] `grep` for removed item names across all BotLib files
+- [ ] `grep` for removed item names across all BotsLib files
 - [ ] Replace with appropriate alternatives based on hero role
 - [ ] Add new items to suitable hero builds
 
@@ -405,7 +418,7 @@ When a new Dota 2 patch drops, follow these steps in order:
   - Update `tAllAbilityBuildList` (remove references to the now-missing index)
   - Add nil guards for the ability variable
   - Comment out the Consider function for that ability
-- [ ] Update `spell_list.lua`, `spell_prob_list.lua`, `rubick_hero/*.lua`
+- [ ] Update `FuncLib/data/spell_list.lua`, `FuncLib/data/spell_prob_list.lua`, `FuncLib/hero/rubick_hero/*.lua`
 - [ ] **Always verify against Liquipedia** -- patch note summaries can be wrong
 
 ### Step 5: Add Item Active-Use Logic (`ability_item_usage_generic.lua`)
@@ -424,17 +437,17 @@ When a new Dota 2 patch drops, follow these steps in order:
 
 ### Step 7: Update Support Files
 
-- [ ] `FunLib/advanced_item_strategy.lua`: Replace removed items in fallback builds
-- [ ] `FunLib/aba_site.lua`: Update `HasItem()` checks for removed items
+- [ ] `FuncLib/systems/item_strategy.lua`: Replace removed items in fallback builds
+- [ ] `FuncLib/data/site.lua`: Update `HasItem()` checks for removed items
 - [ ] `FretBots/HeroNames.lua`: Add new heroes (if any)
-- [ ] `FunLib/aba_hero_roles_map.lua`: Add role scores for new heroes
+- [ ] `FuncLib/data/hero_roles_map.lua`: Add role scores for new heroes
 
 ### Step 8: New Heroes (if any)
 
-- [ ] Create `BotLib/hero_[name].lua` following existing hero file template
+- [ ] Create `BotsLib/hero_[name].lua` following existing hero file template
 - [ ] Add to `FretBots/HeroNames.lua`
-- [ ] Add to `FunLib/aba_hero_roles_map.lua`
-- [ ] Add abilities to `spell_list.lua`
+- [ ] Add to `FuncLib/data/hero_roles_map.lua`
+- [ ] Add abilities to `FuncLib/data/spell_list.lua`
 
 ---
 
@@ -459,36 +472,39 @@ When a new Dota 2 patch drops, follow these steps in order:
 
 ## 13. TypeScript to Lua (TSTL) Relationship
 
-Some Lua files in `bots/FunLib/` are **generated from TypeScript** via TSTL. When editing these files, you **MUST also update the TypeScript source** or changes will be overwritten on next build.
+Some Lua files in `bots/FuncLib/` are **generated from TypeScript** via TSTL. When editing these files, you **MUST also update the TypeScript source** or changes will be overwritten on next build.
 
 ### TS-Generated Files (edit the `.ts` source, not the `.lua` output)
 
 | Generated Lua File | TypeScript Source |
 |---------------------|-------------------|
-| `FunLib/aba_site.lua` | `typescript/bots/FunLib/aba_site.ts` |
-| `FunLib/utils.lua` | `typescript/bots/FunLib/utils.ts` |
-| `FunLib/advanced_item_strategy.lua` | `typescript/bots/FunLib/advanced_item_strategy.ts` |
-| `FunLib/aba_push.lua` | `typescript/bots/FunLib/aba_push.ts` |
-| `FunLib/aba_defend.lua` | `typescript/bots/FunLib/aba_defend.ts` |
-| `FunLib/global_cache.lua` | `typescript/bots/FunLib/global_cache.ts` |
-| `FunLib/aba_role.lua` | `typescript/bots/FunLib/aba_role.ts` |
-| `FunLib/aba_hero_roles_map.lua` | `typescript/bots/FunLib/aba_hero_roles_map.ts` |
-| `FunLib/spell_prob_list.lua` | `typescript/bots/FunLib/spell_prob_list.ts` |
-| `FunLib/aba_buff.lua` | `typescript/bots/FunLib/aba_buff.ts` |
+| `FuncLib/data/site.lua` | `typescript/bots/FuncLib/data/site.ts` |
+| `FuncLib/systems/utils.lua` | `typescript/bots/FuncLib/systems/utils.ts` |
+| `FuncLib/systems/item_strategy.lua` | `typescript/bots/FuncLib/systems/item_strategy.ts` |
+| `FuncLib/systems/push.lua` | `typescript/bots/FuncLib/systems/push.ts` |
+| `FuncLib/systems/defend.lua` | `typescript/bots/FuncLib/systems/defend.ts` |
+| `FuncLib/systems/cache.lua` | `typescript/bots/FuncLib/systems/cache.ts` |
+| `FuncLib/systems/role.lua` | `typescript/bots/FuncLib/systems/role.ts` |
+| `FuncLib/data/hero_roles_map.lua` | `typescript/bots/FuncLib/data/hero_roles_map.ts` |
+| `FuncLib/data/spell_prob_list.lua` | `typescript/bots/FuncLib/data/spell_prob_list.ts` |
+| `FuncLib/data/buff.lua` | `typescript/bots/FuncLib/data/buff.ts` |
+| `FuncLib/systems/version.lua` | `typescript/bots/FuncLib/systems/version.ts` |
+| `FuncLib/data/hero_pos_weights.lua` | `typescript/bots/FuncLib/data/hero_pos_weights.ts` |
+| `FuncLib/data/matchups.lua` | `typescript/bots/FuncLib/data/matchups.ts` |
 | `Customize/general.lua` | `typescript/bots/Customize/general.ts` |
 | `ts_libs/dota/heroes.lua` | `typescript/bots/ts_libs/dota/heroes.ts` |
 
 ### Pure Lua Files (edit directly)
 
 These files have NO TypeScript source -- edit the Lua directly:
-- `FunLib/jmz_func.lua` (core functions, hand-written Lua)
-- `FunLib/aba_item.lua` (item definitions)
-- `FunLib/aba_skill.lua` (skill system)
-- `FunLib/spell_list.lua` (ability weights)
-- `FunLib/aba_chat.lua` (chatbot)
+- `FuncLib/func_utils.lua` (core functions, hand-written Lua)
+- `FuncLib/systems/item.lua` (item definitions)
+- `FuncLib/systems/skill.lua` (skill system)
+- `FuncLib/data/spell_list.lua` (ability weights)
+- `FuncLib/systems/chat.lua` (chatbot)
 - `ability_item_usage_generic.lua` (item active-use logic)
 - `item_purchase_generic.lua` (purchase logic)
-- All `BotLib/hero_*.lua` files
+- All `BotsLib/hero_*.lua` files
 - All `Buff/*.lua` files
 - All `FretBots/*.lua` files (except those with `.ts` counterparts)
 
@@ -500,9 +516,9 @@ If unsure whether a Lua file is TS-generated, look for the TSTL marker pattern a
 ```
 Or check if a corresponding `.ts` file exists in `typescript/bots/` at the same relative path.
 
-### jmz_func.d.ts
+### func_utils.d.ts
 
-`typescript/bots/FunLib/jmz_func.d.ts` is a **type declaration file** for the hand-written `jmz_func.lua`. It provides TypeScript type information but does NOT generate any Lua. If you add new functions to `jmz_func.lua` that TS files need to call, add declarations here.
+`typescript/bots/FuncLib/func_utils.d.ts` is a **type declaration file** for the hand-written `func_utils.lua`. It provides TypeScript type information but does NOT generate any Lua. If you add new functions to `func_utils.lua` that TS files need to call, add declarations here.
 
 ---
 
@@ -520,13 +536,13 @@ Patch notes use display names ("Summon Razorback"), but the code needs internal 
 
 ### 4. Forgetting to update multiple files for ability renames
 An ability rename requires updates in:
-- `BotLib/hero_[name].lua` (GetAbilityByName + Consider function)
-- `FunLib/spell_list.lua` (ability weights)
-- `FunLib/spell_prob_list.lua` (probability weights)
-- `FunLib/rubick_hero/[name].lua` (Rubick spell-steal logic)
+- `BotsLib/hero_[name].lua` (GetAbilityByName + Consider function)
+- `FuncLib/data/spell_list.lua` (ability weights)
+- `FuncLib/data/spell_prob_list.lua` (probability weights)
+- `FuncLib/hero/rubick_hero/[name].lua` (Rubick spell-steal logic)
 
 ### 5. Assuming innate = removed
-Innate abilities are NOT removed. They still exist in the game but are `NOT_LEARNABLE`. They are filtered out of `sAbilityList` by `aba_skill.lua`. The ability can still apply modifiers that other code checks for (`bot:HasModifier(...)`).
+Innate abilities are NOT removed. They still exist in the game but are `NOT_LEARNABLE`. They are filtered out of `sAbilityList` by `FuncLib/systems/skill.lua`. The ability can still apply modifiers that other code checks for (`bot:HasModifier(...)`).
 
 ### 6. Not nil-guarding ability references
 When referencing `sAbilityList[N]` where N might not exist (because an ability became innate), always guard:

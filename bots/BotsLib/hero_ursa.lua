@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -142,6 +143,7 @@ function X.ConsiderEarthshock()
 	local nEnemyHeroes = Fu.GetNearbyHeroes(bot,nRadius, true, BOT_MODE_NONE)
 	local nEnemyTowers = bot:GetNearbyTowers(nRadius * 2, true)
 
+	--Kill secure: leap on a lone killable enemy
 	for _, enemyHero in pairs(nEnemyHeroes)
 	do
 		if Fu.IsValidHero(enemyHero)
@@ -164,6 +166,24 @@ function X.ConsiderEarthshock()
 		end
 	end
 
+	--Team fight AoE: leap into 2+ grouped enemy heroes
+	if nEnemyHeroes ~= nil and #nEnemyHeroes >= 2
+	then
+		local nInRangeAlly = Fu.GetNearbyHeroes(bot,nRadius + 300, false, BOT_MODE_NONE)
+
+		if nInRangeAlly ~= nil and #nInRangeAlly >= #nEnemyHeroes
+		and not bot:HasModifier('modifier_ursa_earthshock_move')
+		then
+			local nCenter = Fu.GetCenterOfUnits(nEnemyHeroes)
+			if nCenter ~= nil
+			and bot:IsFacingLocation(nCenter, 25)
+			then
+				return BOT_ACTION_DESIRE_HIGH
+			end
+		end
+	end
+
+	--Going on someone: leap to close distance and slow
 	if bGoingOnSomeone
 	then
 		local nInRangeAlly = Fu.GetNearbyHeroes(bot,nRadius + 200, false, BOT_MODE_NONE)
@@ -185,6 +205,7 @@ function X.ConsiderEarthshock()
 		end
 	end
 
+	--Retreating: leap away to escape
 	if Fu.IsRetreating(bot)
 	then
 		local nInRangeAlly = Fu.GetNearbyHeroes(bot,nRadius * 2.5, false, BOT_MODE_NONE)
@@ -206,6 +227,22 @@ function X.ConsiderEarthshock()
 		end
 	end
 
+	--Farming: Earthshock on 3+ neutral creeps when jungling
+	if Fu.IsFarming(bot)
+	and nMana > 0.4
+	then
+		local nNeutralCreeps = bot:GetNearbyNeutralCreeps(nRadius)
+
+		if nNeutralCreeps ~= nil and #nNeutralCreeps >= 3
+		then
+			if bot:IsFacingLocation(Fu.GetCenterOfUnits(nNeutralCreeps), 25)
+			then
+				return BOT_ACTION_DESIRE_HIGH
+			end
+		end
+	end
+
+	--Laning: last hit ranged/siege creeps or travel to lane
 	if Fu.IsLaning(bot)
 	and nEnemyHeroes ~= nil and nEnemyTowers ~= nil
 	and #nEnemyHeroes == 0 and #nEnemyTowers == 0
@@ -260,25 +297,33 @@ function X.ConsiderOverpower()
 	local nMana = bot:GetMana() / bot:GetMaxMana()
 	botTarget = Fu.GetProperTarget(bot)
 
+	--Pre-engage: cast Overpower before reaching attack range so hits are buffed on arrival
 	if bGoingOnSomeone
 	then
-		local nInRangeAlly = Fu.GetNearbyHeroes(bot,nAttackRange * 3, false, BOT_MODE_NONE)
-		local nInRangeEnemy = Fu.GetNearbyHeroes(bot,nAttackRange * 2, true, BOT_MODE_NONE)
-
 		if Fu.IsValidTarget(botTarget)
-		and Fu.IsInRange(bot, botTarget, nAttackRange * 2)
-		and bot:IsFacingLocation(botTarget:GetLocation(), 30)
+		and not bot:HasModifier('modifier_ursa_overpower')
 		and not Fu.IsSuspiciousIllusion(botTarget)
 		and not botTarget:HasModifier('modifier_abaddon_aphotic_shield')
 		and not botTarget:HasModifier('modifier_dazzle_shallow_grave')
 		and not botTarget:HasModifier('modifier_templar_assassin_refraction_absorb')
-		and nInRangeAlly ~= nil and nInRangeEnemy ~= nil
-		and #nInRangeAlly >= #nInRangeEnemy
 		then
-			return BOT_ACTION_DESIRE_HIGH
+			local nInRangeAlly = Fu.GetNearbyHeroes(bot,nAttackRange * 3, false, BOT_MODE_NONE)
+			local nInRangeEnemy = Fu.GetNearbyHeroes(bot,nAttackRange * 2, true, BOT_MODE_NONE)
+
+			if nInRangeAlly ~= nil and nInRangeEnemy ~= nil
+			and #nInRangeAlly >= #nInRangeEnemy
+			then
+				--Cast even when not yet in attack range (pre-buff)
+				if Fu.IsInRange(bot, botTarget, nAttackRange * 4)
+				and bot:IsFacingLocation(botTarget:GetLocation(), 30)
+				then
+					return BOT_ACTION_DESIRE_HIGH
+				end
+			end
 		end
 	end
 
+	--Pushing: use on grouped creeps or towers
 	if Fu.IsPushing(bot)
 	and nMana > 0.45
 	then
@@ -292,8 +337,10 @@ function X.ConsiderOverpower()
 		end
 	end
 
+	--Farming: use Overpower on neutral creeps for faster clear
 	if Fu.IsFarming(bot)
 	and nMana > 0.25
+	and not bot:HasModifier('modifier_ursa_overpower')
 	then
 		local nCreeps = bot:GetNearbyNeutralCreeps(400)
 
@@ -303,9 +350,11 @@ function X.ConsiderOverpower()
 		end
 	end
 
+	--Roshan: keep Overpower active at all times
 	if Fu.IsDoingRoshan(bot)
 	then
 		if Fu.IsRoshan(botTarget)
+		and not bot:HasModifier('modifier_ursa_overpower')
 		then
 			return BOT_ACTION_DESIRE_HIGH
 		end
@@ -315,6 +364,7 @@ function X.ConsiderOverpower()
 		if Fu.IsTormentor(botTarget)
         and Fu.IsInRange(botTarget, bot, 600)
         and Fu.IsAttacking(bot)
+        and not bot:HasModifier('modifier_ursa_overpower')
 		then
 			return BOT_ACTION_DESIRE_HIGH
 		end
@@ -332,10 +382,34 @@ function X.ConsiderEnrage()
 	local nAttackRange = bot:GetAttackRange()
 	botTarget = Fu.GetProperTarget(bot)
 
+	local nInRangeEnemy = Fu.GetNearbyHeroes(bot,800, true, BOT_MODE_NONE)
+
+	--Safety check: don't waste Enrage when no enemies are nearby
+	if nInRangeEnemy == nil or #nInRangeEnemy == 0
+	then
+		return BOT_ACTION_DESIRE_NONE
+	end
+
+	--Focused by 2+ enemies: pop Enrage for damage reduction regardless of mode
+	if nInRangeEnemy ~= nil and #nInRangeEnemy >= 2
+	and bot:WasRecentlyDamagedByAnyHero(1.5)
+	and nBotHP < 0.6
+	then
+		return BOT_ACTION_DESIRE_HIGH
+	end
+
+	--HP drops below 50% in a fight: use for damage reduction
+	if nBotHP < 0.5
+	and bot:WasRecentlyDamagedByAnyHero(2)
+	and nInRangeEnemy ~= nil and #nInRangeEnemy >= 1
+	then
+		return BOT_ACTION_DESIRE_HIGH
+	end
+
+	--Going on someone: use when in melee range and taking damage
 	if bGoingOnSomeone
 	then
 		local nInRangeAlly = Fu.GetNearbyHeroes(bot,800, false, BOT_MODE_NONE)
-		local nInRangeEnemy = Fu.GetNearbyHeroes(bot,600, true, BOT_MODE_NONE)
 
 		if Fu.IsValidTarget(botTarget)
 		and Fu.IsInRange(bot, botTarget, nAttackRange + 75)
@@ -355,6 +429,7 @@ function X.ConsiderEnrage()
 		end
 	end
 
+	--Retreating: use to survive
 	if Fu.IsRetreating(bot)
 	then
 		if nBotHP < 0.3 and bot:WasRecentlyDamagedByAnyHero(1) then
@@ -362,7 +437,6 @@ function X.ConsiderEnrage()
 		end
 
 		local nInRangeAlly = Fu.GetNearbyHeroes(bot,800, false, BOT_MODE_NONE)
-		local nInRangeEnemy = Fu.GetNearbyHeroes(bot,600, true, BOT_MODE_NONE)
 
 		if nInRangeAlly ~= nil and nInRangeEnemy ~= nil
 		and ((#nInRangeEnemy > #nInRangeAlly)
@@ -377,6 +451,7 @@ function X.ConsiderEnrage()
 		end
 	end
 
+	--Farming: use only as emergency survival
 	if Fu.IsFarming(bot)
 	and nBotHP < 0.25
 	then
@@ -388,6 +463,7 @@ function X.ConsiderEnrage()
 		end
 	end
 
+	--Roshan: use to survive Roshan damage
 	if Fu.IsDoingRoshan(bot)
 	and nBotHP < 0.33
 	then
@@ -399,7 +475,7 @@ function X.ConsiderEnrage()
 
 	if Fu.IsDoingTormentor(bot) then
 		if Fu.IsTormentor(botTarget)
-		and botHP < 0.3
+		and nBotHP < 0.3
 		then
 			return BOT_ACTION_DESIRE_HIGH
 		end

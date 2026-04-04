@@ -5,7 +5,8 @@ local X             = {}
 local bot           = GetBot()
 
 local Fu             = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion        = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion        = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList   = Fu.Skill.GetTalentList( bot )
 local sAbilityList  = Fu.Skill.GetAbilityList( bot )
 local sRole   = Fu.Item.GetRoleItemsBuyList( bot )
@@ -139,10 +140,11 @@ local nBotHP
 local bInTeamFight
 function X.SkillsComplement()
 
-	bGoingOnSomeone = Fu.IsGoingOnSomeone(bot)
-	bRetreating = Fu.IsRetreating(bot)
-	nBotHP = Fu.GetHP(bot)
-	bInTeamFight = Fu.IsInTeamFight(bot, 1200)
+	local ctx = AbilityCtx.Build(bot)
+	bGoingOnSomeone = ctx.isEngaging
+	bRetreating = ctx.isRetreating
+	nBotHP = ctx.hp
+	bInTeamFight = ctx.isTeamFight
 	if Fu.CanNotUseAbility(bot)
     then
         return

@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
@@ -112,23 +113,25 @@ local abilityW = bot:GetAbilityByName( sAbilityList[2] )
 local abilityE = bot:GetAbilityByName( sAbilityList[3] )
 local abilityR = bot:GetAbilityByName( sAbilityList[6] )
 local abilityAS = bot:GetAbilityByName( sAbilityList[4] )
+local SpectralSlug = bot:GetAbilityByName('muerta_spectral_slug')
 
 local castQDesire, castQTarget
 local castWDesire, castWLocation
 local castEDesire, castRDesire
 local castASDesire, castASTarget
+local SpectralSlugDesire, SpectralSlugTarget
 
 local nKeepMana = 280
 local botTarget = nil
 
 -- was for fully takeover, but not used atm.
 function X.Think()
-	-- X.AbilityItemUsage = dofile( GetScriptDirectory()..'/ability_item_usage_generic')
+	-- X.AbilityItemUsage = require( GetScriptDirectory()..'/ability_item_usage_generic')
 
 	-- bot:Action_AttackMove(Fu.GetEnemyFountain())
     if X.TeamRoam == nil then
 		X.TeamRoam = require(GetScriptDirectory() .. "/FuncLib/mode_team_roam_generic_shared")
-        -- X.FarmGeneric = dofile(GetScriptDirectory() .. "/FuncLib/mode_farm_generic_shared")
+        -- X.FarmGeneric = require(GetScriptDirectory() .. "/FuncLib/mode_farm_generic_shared")
     --     -- X.ItemPurchase = require(GetScriptDirectory() .. "/item_purchase_generic")
     --     -- X.TeamRoam = require(GetScriptDirectory() .. "/mode_team_roam_generic")
     --     -- X.AbilityItemUsage = require(GetScriptDirectory() .. "/ability_item_usage_generic")
@@ -190,7 +193,15 @@ function X.SkillsComplement()
 		bot:ActionQueue_UseAbilityOnLocation( abilityW, castWLocation )
 		return
 	end
-	
+
+	SpectralSlugDesire, SpectralSlugTarget = X.ConsiderSpectralSlug()
+	if SpectralSlugDesire > 0
+	then
+		Fu.SetQueuePtToINT( bot, false )
+		bot:ActionQueue_UseAbilityOnEntity( SpectralSlug, SpectralSlugTarget )
+		return
+	end
+
 	castEDesire = X.ConsiderE()
 	if ( castEDesire > 0 )
 	then
@@ -626,5 +637,74 @@ function X.ConsiderAS()
 
 end
 
+
+function X.ConsiderSpectralSlug()
+	if not Fu.CanCastAbility(SpectralSlug) then
+		return BOT_ACTION_DESIRE_NONE
+	end
+
+	local nCastRange = SpectralSlug:GetCastRange()
+	local nCastPoint = SpectralSlug:GetCastPoint()
+	local nDamage = SpectralSlug:GetSpecialValueInt('damage')
+	local nSpeed = SpectralSlug:GetSpecialValueInt('projectile_speed')
+
+	local nEnemyHeroes = bot:GetNearbyHeroes(nCastRange + 300, true, BOT_MODE_NONE)
+	local nAllyHeroes = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE)
+
+	for _, enemyHero in pairs(nEnemyHeroes) do
+		if  Fu.IsValidHero(enemyHero)
+		and Fu.CanBeAttacked(enemyHero)
+		and Fu.IsInRange(bot, enemyHero, nCastRange + 300)
+		and Fu.CanCastOnNonMagicImmune(enemyHero)
+		and Fu.CanCastOnTargetAdvanced(enemyHero)
+		and not enemyHero:HasModifier('modifier_abaddon_borrowed_time')
+		and not enemyHero:HasModifier('modifier_dazzle_shallow_grave')
+		and not enemyHero:HasModifier('modifier_necrolyte_reapers_scythe')
+		and not enemyHero:HasModifier('modifier_oracle_false_promise_timer')
+		then
+			local eta = (GetUnitToUnitDistance(bot, enemyHero) / nSpeed) + nCastPoint
+			if Fu.WillKillTarget(enemyHero, nDamage, DAMAGE_TYPE_MAGICAL, eta) then
+				return BOT_ACTION_DESIRE_HIGH, enemyHero
+			end
+
+			if enemyHero:HasModifier('modifier_abaddon_borrowed_time') then
+				return BOT_ACTION_DESIRE_HIGH, enemyHero
+			end
+
+			local nAllyHeroesAttackingTarget = Fu.GetHeroesTargetingUnit(nAllyHeroes, enemyHero)
+			if Fu.IsGoingOnSomeone(bot) then
+				if  not enemyHero:HasModifier('modifier_dazzle_shallow_grave')
+				and not enemyHero:HasModifier('modifier_oracle_false_promise_timer')
+				and Fu.GetHP(enemyHero) < 0.5
+				and #nAllyHeroesAttackingTarget <= 1
+				then
+					return BOT_ACTION_DESIRE_HIGH, enemyHero
+				end
+			end
+		end
+	end
+
+	if Fu.IsRetreating(bot) and not Fu.IsRealInvisible(bot) then
+		for _, enemyHero in pairs(nEnemyHeroes) do
+			if Fu.IsValidHero(enemyHero)
+			and Fu.CanBeAttacked(enemyHero)
+			and Fu.IsInRange(bot, enemyHero, nCastRange)
+			and Fu.CanCastOnNonMagicImmune(enemyHero)
+			and Fu.CanCastOnTargetAdvanced(enemyHero)
+			and bot:WasRecentlyDamagedByHero(enemyHero, 3.0)
+			and not Fu.IsDisabled(enemyHero)
+			and not enemyHero:IsDisarmed()
+			and not enemyHero:HasModifier('modifier_muerta_spectral_slug_ethereal')
+			then
+				local nAllyHeroesAttackingTarget = Fu.GetHeroesTargetingUnit(nAllyHeroes, enemyHero)
+				if #nAllyHeroesAttackingTarget == 0 then
+					return BOT_ACTION_DESIRE_HIGH, enemyHero
+				end
+			end
+		end
+	end
+
+	return BOT_ACTION_DESIRE_NONE
+end
 
 return X

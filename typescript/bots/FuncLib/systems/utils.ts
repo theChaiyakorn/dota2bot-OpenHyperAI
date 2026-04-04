@@ -18,7 +18,7 @@ import { Request } from "bots/ts_libs/utils/http_utils/http_req";
 import { add, dot, length2D, length3D, multiply, sub } from "bots/ts_libs/utils/native-operators";
 import { HeroName } from "bots/ts_libs/dota/heroes";
 
-export const DebugMode = false;
+export const DebugMode = true;
 
 export const ScriptID = 3246316298;
 
@@ -435,32 +435,34 @@ export function IsPingedByAnyPlayer(bot: Unit, pingTimeGap: number, minDistance:
     return null;
 }
 
-export function SetCachedVars(key: string, value: any) {
-    // Not helpful for now. Disable it.
-    // return;
-
+/**
+ * Store a value in the per-bot cache with the current timestamp.
+ * Uses {t, v} objects — avoids TSTL array index conversion issues.
+ */
+export function SetCachedVars(key: string | number, value: any) {
     if (!GameStates.cachedVars) {
         GameStates.cachedVars = {};
     }
-    GameStates.cachedVars[key] = value;
-    GameStates.cachedVars[`${key}-Time`] = DotaTime();
+    GameStates.cachedVars[key] = { t: DotaTime(), v: value };
 }
 
-export function GetCachedVars(key: string, withinTime: number) {
-    // Not helpful for now. Disable it.
-    // return null;
-
-    if (!GameStates.cachedVars || !GameStates.cachedVars[key]) {
-        return null;
-    }
-    if (DotaTime() - GameStates.cachedVars[`${key}-Time`] <= withinTime) {
-        return GameStates.cachedVars[key];
+/**
+ * Retrieve a cached value if it was stored within `withinTime` seconds.
+ * Returns null if expired or not found.
+ */
+export function GetCachedVars(key: string | number, withinTime: number) {
+    if (!GameStates.cachedVars) return null;
+    const entry = GameStates.cachedVars[key];
+    if (!entry) return null;
+    if (DotaTime() - entry.t <= withinTime) {
+        return entry.v;
     }
     return null;
 }
 
 export function CleanupCachedVars() {
-    // Not helpful for now. Disable it.
+    // Cache entries auto-expire via TTL check in GetCachedVars.
+    // Periodic cleanup not needed — table stays small (< 50 keys per bot).
     return;
 
     if (!GameStates.cachedVars) {
@@ -489,7 +491,7 @@ export function CountEnemyHeroesNear(loc: Vector, r: number): number {
 const BARRACKS = [Barracks.TopMelee, Barracks.TopRanged, Barracks.MidMelee, Barracks.MidRanged, Barracks.BotMelee, Barracks.BotRanged];
 const LEVEL_3_TOWERS = [Tower.Top3, Tower.Mid3, Tower.Bot3];
 export function CountEnemyHeroesOnHighGround(team: Team): number {
-    const cacheKey = `CountEnemyHeroesOnHighGround:${team ?? -1}`;
+    const cacheKey = 60000 + (team ?? 0);
     const cachedVar = GetCachedVars(cacheKey, 1);
     if (cachedVar != null) {
         return cachedVar;
@@ -1232,7 +1234,7 @@ export function IsNearEnemyHighGroundTower(unit: Unit, range: number): boolean {
  * @returns True if the team is pushing second tier or high ground, false otherwise.
  */
 export function IsTeamPushingSecondTierOrHighGround(bot: Unit): boolean {
-    const cacheKey = "IsTeamPushingSecondTierOrHighGround" + bot.GetTeam();
+    const cacheKey = 61000 + bot.GetTeam();
     const cachedRes = GetCachedVars(cacheKey, 1);
     if (cachedRes !== null) {
         return cachedRes;
@@ -2059,7 +2061,10 @@ export function IsBotThinkingMeaningfulAction(bot: Unit, thinkLess: number = 1, 
     } else if (thinkLess > 10) {
         thinkLess = 10;
     }
-    const cacheKey = "IsBotThinkingMeaningfulAction" + bot.GetPlayerID() + "_" + type;
+    // Numeric cache key: avoid string concat on every frame.
+    // Encode: 50000 + playerID * 10 + type hash (0=all, 1=rune, 2=defend, etc.)
+    const typeHash = type === "all" ? 0 : type === "rune" ? 1 : type === "defend" ? 2 : type === "push" ? 3 : type === "farm" ? 4 : 5;
+    const cacheKey = 50000 + bot.GetPlayerID() * 10 + typeHash;
     const cachedRes = GetCachedVars(cacheKey, 0.11 * thinkLess);
     if (cachedRes !== null) return cachedRes;
 

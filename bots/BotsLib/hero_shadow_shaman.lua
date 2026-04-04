@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -139,6 +140,7 @@ local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
 local abilityW = bot:GetAbilityByName( sAbilityList[2] )
 local abilityE = bot:GetAbilityByName( sAbilityList[3] )
 local abilityR = bot:GetAbilityByName( sAbilityList[6] )
+local Urnaconda = bot:GetAbilityByName('shadow_shaman_urnaconda')
 local talent3 = bot:GetAbilityByName( sTalentList[3] )
 local talent7 = bot:GetAbilityByName( sTalentList[7] )
 
@@ -146,6 +148,7 @@ local castQDesire, castQTarget
 local castWDesire, castWTarget
 local castEDesire, castETarget
 local castRDesire, castRLocation
+local UrnacondaDesire, UrnacondaLocation
 
 
 local aetherRange = 0
@@ -160,23 +163,21 @@ function X.SkillsComplement()
 
 	bAttacking = Fu.IsAttacking(bot)
 
+	local ctx = AbilityCtx.Build(bot)
 	nKeepMana = 400
-	aetherRange = 0
+	aetherRange = ctx.aetherRange
 	talent7Damage = 0
-	nLV = bot:GetLevel()
-	nMP = bot:GetMana()/bot:GetMaxMana()
-	nHP = bot:GetHealth()/bot:GetMaxHealth()
-	botTarget = Fu.GetProperTarget( bot )
-	hEnemyList = Fu.GetNearbyHeroes(bot, 1600, true, BOT_MODE_NONE )
-	hAllyList = Fu.GetAlliesNearLoc( bot:GetLocation(), 1600 )
-
-
-	local aether = Fu.IsItemAvailable( "item_aether_lens" )
-	if aether ~= nil then aetherRange = 250 end
+	nLV = ctx.level
+	nMP = ctx.mp
+	nHP = ctx.hp
+	botTarget = ctx.target
+	hEnemyList = ctx.enemies
+	hAllyList = ctx.allies
 --	if talent3:IsTrained() then aetherRange = aetherRange + talent3:GetSpecialValueInt( "value" ) end
 	if talent7:IsTrained() then talent7Damage = talent7:GetSpecialValueInt( "value" ) end
 
 
+	castWDesire, castWTarget = X.ConsiderW()
 	if ( castWDesire > 0 )
 	then
 
@@ -186,7 +187,16 @@ function X.SkillsComplement()
 		return
 	end
 
+	UrnacondaDesire, UrnacondaLocation = X.ConsiderUrnaconda()
+	if UrnacondaDesire > 0
+	then
+		Fu.SetQueuePtToINT( bot, true )
+		bot:ActionQueue_UseAbilityOnLocation( Urnaconda, UrnacondaLocation )
+		return
+	end
 
+
+	castRDesire, castRLocation = X.ConsiderR()
 	if ( castRDesire > 0 )
 	then
 
@@ -198,6 +208,7 @@ function X.SkillsComplement()
 	end
 
 
+	castQDesire, castQTarget = X.ConsiderQ()
 	if ( castQDesire > 0 )
 	then
 
@@ -208,6 +219,7 @@ function X.SkillsComplement()
 	end
 
 
+	castEDesire, castETarget = X.ConsiderE()
 	if ( castEDesire > 0 )
 	then
 
@@ -799,5 +811,133 @@ function X.ConsiderR()
 
 end
 
+
+function X.ConsiderUrnaconda()
+	if not Fu.CanCastAbility(Urnaconda) then
+		return BOT_ACTION_DESIRE_NONE
+	end
+
+	local nCastRange = Urnaconda:GetCastRange()
+	local nCastPoint = Urnaconda:GetCastPoint()
+	local nDamage = Urnaconda:GetSpecialValueInt('impact_damage')
+	local nSpeed = Urnaconda:GetSpecialValueInt('speed')
+	local nRadius = Urnaconda:GetSpecialValueInt('impact_radius')
+	local nManaCost = Urnaconda:GetManaCost()
+	local fManaAfter = Fu.GetManaAfter(nManaCost)
+	local fManaThreshold1 = Fu.GetManaThreshold(bot, nManaCost, {abilityQ, abilityW, abilityE, abilityR})
+
+	local nEnemyHeroes = bot:GetNearbyHeroes(nCastRange + 300, true, BOT_MODE_NONE)
+	local nAllyHeroes = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE)
+
+	for _, enemyHero in pairs(nEnemyHeroes) do
+		if  Fu.IsValidHero(enemyHero)
+		and Fu.CanBeAttacked(enemyHero)
+		and Fu.IsInRange(bot, enemyHero, nCastRange + 300)
+		and not Fu.IsInRange(bot, enemyHero, 300)
+		and Fu.CanCastOnNonMagicImmune(enemyHero)
+		and not Fu.IsChasingTarget(bot, enemyHero)
+		and not enemyHero:HasModifier('modifier_abaddon_borrowed_time')
+		and not enemyHero:HasModifier('modifier_dazzle_shallow_grave')
+		and not enemyHero:HasModifier('modifier_oracle_false_promise_timer')
+		and not enemyHero:HasModifier('modifier_templar_assassin_refraction_absorb')
+		then
+			local eta = (GetUnitToUnitDistance(bot, enemyHero) / nSpeed) + nCastPoint
+			if Fu.WillKillTarget(enemyHero, nDamage, DAMAGE_TYPE_MAGICAL, eta) then
+				return BOT_ACTION_DESIRE_HIGH, enemyHero:GetLocation()
+			end
+		end
+	end
+
+	if Fu.IsGoingOnSomeone(bot) then
+		if  Fu.IsValidHero(botTarget)
+		and Fu.CanBeAttacked(botTarget)
+		and Fu.IsInRange(bot, botTarget, nCastRange + 300)
+		and not Fu.IsChasingTarget(bot, botTarget)
+		and not Fu.IsSuspiciousIllusion(botTarget)
+		and not botTarget:HasModifier('modifier_abaddon_borrowed_time')
+		and not botTarget:HasModifier('modifier_necrolyte_reapers_scythe')
+		then
+			if (Fu.IsDisabled(botTarget) and not (botTarget:HasModifier('modifier_enigma_black_hole_pull') or botTarget:HasModifier('modifier_faceless_void_chronosphere_freeze')))
+			or botTarget:GetCurrentMovementSpeed() <= 250
+			then
+				if Fu.GetHP(botTarget) > 0.4 then
+					if Fu.GetTotalEstimatedDamageToTarget(nAllyHeroes, botTarget, 8.0) > botTarget:GetHealth() then
+						return BOT_ACTION_DESIRE_HIGH, botTarget:GetLocation()
+					end
+				end
+			end
+
+			if Fu.IsInTeamFight(bot, 1200) then
+				return BOT_ACTION_DESIRE_HIGH, botTarget:GetLocation()
+			end
+		end
+	end
+
+	if Fu.IsRetreating(bot) and not Fu.IsRealInvisible(bot) and not Fu.CanCastAbilitySoon(abilityW, 5.0) and not Fu.IsInTeamFight(bot, 1200) and Fu.IsRunning(bot) then
+		for _, enemyHero in pairs(nEnemyHeroes) do
+			if  Fu.IsValidHero(enemyHero)
+			and Fu.CanBeAttacked(enemyHero)
+			and Fu.IsInRange(bot, enemyHero, nCastRange)
+			and not Fu.IsInRange(bot, enemyHero, nRadius)
+			and not Fu.IsSuspiciousIllusion(enemyHero)
+			and not Fu.IsDisabled(enemyHero)
+			and Fu.IsChasingTarget(enemyHero, bot)
+			and bot:WasRecentlyDamagedByHero(enemyHero, 3.0)
+			then
+				return BOT_ACTION_DESIRE_HIGH, bot:GetLocation()
+			end
+		end
+	end
+
+	if Fu.IsPushing(bot) and #nAllyHeroes >= #nEnemyHeroes and fManaAfter > fManaThreshold1 then
+		local radius = Min(nCastRange + bot:GetAttackRange(), 1600)
+		local nEnemyTowers = bot:GetNearbyTowers(radius, true)
+		local nEnemyBarracks = bot:GetNearbyBarracks(radius, true)
+		local hEnemyAncient = GetAncient(GetOpposingTeam())
+		local nInRangeAlly = Fu.GetAlliesNearLoc(bot:GetLocation(), 800)
+
+		local hBuildingList = {
+			botTarget,
+			nEnemyTowers[1],
+			nEnemyBarracks[1],
+			hEnemyAncient,
+		}
+
+		for _, building in pairs(hBuildingList) do
+			if  Fu.IsValidBuilding(building)
+			and Fu.CanBeAttacked(building)
+			and Fu.IsInRange(bot, building, nCastRange + bot:GetAttackRange())
+			and not Fu.IsKeyWordUnit('DOTA_Outpost', building)
+			then
+				local sBuildingName = building:GetUnitName()
+				if #nInRangeAlly <= 3 or string.find(sBuildingName, 'barracks') or building == hEnemyAncient then
+					if (building:GetHealthRegen() == 0)
+					or (bot:GetAttackTarget() == building)
+					then
+						return BOT_ACTION_DESIRE_HIGH, Fu.VectorTowards(building:GetLocation(), bot:GetLocation(), nRadius)
+					end
+				end
+			end
+		end
+	end
+
+	local nEnemyCreeps = bot:GetNearbyCreeps(Min(nCastRange + 300, 1600), true)
+
+	if Fu.IsFarming(bot) and bAttacking and fManaAfter > fManaThreshold1 + 0.1 and #nAllyHeroes <= 1 then
+		for _, creep in pairs(nEnemyCreeps) do
+			if Fu.IsValid(creep) and Fu.CanBeAttacked(creep) then
+				local nLocationAoE = bot:FindAoELocation(true, false, creep:GetLocation(), 0, nRadius, 0, 0)
+				if (nLocationAoE.count >= 3)
+				or (nLocationAoE.count >= 2 and creep:IsAncientCreep())
+				or (nLocationAoE.count >= 1 and creep:GetHealth() >= 1000)
+				then
+					return BOT_ACTION_DESIRE_HIGH, nLocationAoE.targetloc
+				end
+			end
+		end
+	end
+
+	return BOT_ACTION_DESIRE_NONE
+end
 
 return X

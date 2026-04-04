@@ -21,6 +21,7 @@ local nSuppCountInLoc = 0
 local bHumanInTeam = false
 
 function GetDesire()
+	if ShouldSkipBotThink(GetBot()) then return 0 end
 	-- local cacheKey = 'GetSideShopDesire'..tostring(bot:GetPlayerID())
 	-- local cachedVar = Fu.Utils.GetCachedVars(cacheKey, 0.6 * (1 + Customize.ThinkLess))
 	-- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end

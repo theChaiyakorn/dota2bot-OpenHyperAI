@@ -5,7 +5,7 @@
  */
 
 import { HeroName } from "bots/ts_libs/dota/heroes";
-import { HeroRolesMap, IsRanged } from "./aba_hero_roles_map";
+import { HeroRolesMap, IsRanged } from "../data/hero_roles_map";
 
 // Type definitions for Dota 2 API
 declare const GetTeamMember: (team: number, index: number) => any;
@@ -366,201 +366,196 @@ function hasEnemyThreat(enemies: HeroName[], threatType: string): boolean {
 
 // Removed getGamePhase function as we no longer use timing-based categories
 
-// Main class for Advanced Item Strategy
-export class AdvancedItemStrategy {
-    /**
-     * Generate item build based on position and range type
-     */
-    static GetItemBuild(bot: any, position: Position): string[] {
-        const heroName = bot.GetUnitName() as HeroName;
-        const enemies = getEnemyHeroes();
+/**
+ * Generate item build based on position and range type
+ */
+export function GetItemBuild(bot: any, position: Position): string[] {
+    const heroName = bot.GetUnitName() as HeroName;
+    const enemies = getEnemyHeroes();
 
-        const build: string[] = [];
-        const isHeroRanged = isRanged(heroName);
-        const rangeType: RangeType = isHeroRanged ? "ranged" : "melee";
+    const build: string[] = [];
+    const isHeroRanged = isRanged(heroName);
+    const rangeType: RangeType = isHeroRanged ? "ranged" : "melee";
 
-        // Add starting items
-        if (STARTING_ITEMS[position] && STARTING_ITEMS[position][rangeType]) {
-            build.push(...STARTING_ITEMS[position][rangeType]);
-        }
-
-        // Add core items
-        build.push(...CORE_ITEMS);
-
-        // Add appropriate boots
-        if (BOOTS_BY_POSITION[position]) {
-            build.push(...BOOTS_BY_POSITION[position]);
-        }
-
-        // Add position-based items
-        if (ITEMS_BY_POSITION[position] && ITEMS_BY_POSITION[position][rangeType]) {
-            build.push(...ITEMS_BY_POSITION[position][rangeType]);
-        }
-
-        // Add role-based items based on hero stats
-        const roleItems = getRoleBasedItems(heroName, position);
-        build.push(...roleItems);
-
-        // Add counter items based on enemy threats
-        if (hasEnemyThreat(enemies, "evasion")) {
-            build.push(...COUNTER_ITEMS.evasion);
-        }
-
-        if (hasEnemyThreat(enemies, "magic_heavy")) {
-            build.push(...COUNTER_ITEMS.magic_heavy);
-        }
-
-        if (hasEnemyThreat(enemies, "illusion_heavy")) {
-            build.push(...COUNTER_ITEMS.illusion_heavy);
-        }
-
-        if (hasEnemyThreat(enemies, "invisibility")) {
-            build.push(...COUNTER_ITEMS.invisibility);
-        }
-
-        // Add specific hero counters
-        for (const enemy of enemies) {
-            if (COUNTER_ITEMS.heroes[enemy as keyof typeof COUNTER_ITEMS.heroes]) {
-                build.push(...COUNTER_ITEMS.heroes[enemy as keyof typeof COUNTER_ITEMS.heroes]);
-            }
-        }
-
-        // Apply hero-specific modifications
-        return applyHeroSpecificModifications(heroName, build);
+    // Add starting items
+    if (STARTING_ITEMS[position] && STARTING_ITEMS[position][rangeType]) {
+        build.push(...STARTING_ITEMS[position][rangeType]);
     }
 
-    /**
-     * Generate sell list based on item build
-     */
-    static GetSellList(_bot: any, _itemBuild: string[]): string[] {
-        // Items that should be sold when better items are purchased
-        const sellPairs: string[] = [
-            // When getting better boots, sell basic boots
-            "item_travel_boots_2",
-            "item_boots",
+    // Add core items
+    build.push(...CORE_ITEMS);
 
-            // When getting ultimate scepter 2, sell ultimate scepter
-            "item_ultimate_scepter_2",
-            "item_ultimate_scepter",
-
-            // When getting better items, sell early game items
-            "item_skadi",
-            "item_wraith_band",
-
-            "item_butterfly",
-            "item_magic_wand",
-
-            "item_abyssal_blade",
-            "item_quelling_blade",
-
-            "item_octarine_core",
-            "item_bottle",
-
-            "item_sheepstick",
-            "item_urn_of_shadows",
-        ];
-
-        return sellPairs;
+    // Add appropriate boots
+    if (BOOTS_BY_POSITION[position]) {
+        build.push(...BOOTS_BY_POSITION[position]);
     }
 
-    /**
-     * Get 6-slot late game build (excluding non-slot items)
-     */
-    static GetLateGame6Slot(bot: any, position: Position): string[] {
-        const heroName = bot.GetUnitName() as HeroName;
-        const isHeroRanged = isRanged(heroName);
-        const rangeType: RangeType = isHeroRanged ? "ranged" : "melee";
-
-        const build: string[] = [];
-
-        if (ITEMS_BY_POSITION[position] && ITEMS_BY_POSITION[position][rangeType]) {
-            for (const item of ITEMS_BY_POSITION[position][rangeType]) {
-                // Only add items that take inventory slots
-                if (!NON_SLOT_ITEMS.includes(item)) {
-                    build.push(item);
-                }
-            }
-        }
-
-        // Ensure we have exactly 6 items
-        while (build.length > 6) {
-            build.pop();
-        }
-
-        while (build.length < 6) {
-            build.push("item_moon_shard"); // Fill with moon shard if needed
-        }
-
-        return build;
+    // Add position-based items
+    if (ITEMS_BY_POSITION[position] && ITEMS_BY_POSITION[position][rangeType]) {
+        build.push(...ITEMS_BY_POSITION[position][rangeType]);
     }
 
-    /**
-     * Get non-slot items for late game
-     */
-    static GetNonSlotItems(bot: any, position: Position): string[] {
-        const heroName = bot.GetUnitName() as HeroName;
-        const isHeroRanged = isRanged(heroName);
-        const rangeType: RangeType = isHeroRanged ? "ranged" : "melee";
+    // Add role-based items based on hero stats
+    const roleItems = getRoleBasedItems(heroName, position);
+    build.push(...roleItems);
 
-        const nonSlotItems: string[] = [];
-
-        if (ITEMS_BY_POSITION[position] && ITEMS_BY_POSITION[position][rangeType]) {
-            for (const item of ITEMS_BY_POSITION[position][rangeType]) {
-                if (NON_SLOT_ITEMS.includes(item)) {
-                    nonSlotItems.push(item);
-                }
-            }
-        }
-
-        return nonSlotItems;
+    // Add counter items based on enemy threats
+    if (hasEnemyThreat(enemies, "evasion")) {
+        build.push(...COUNTER_ITEMS.evasion);
     }
 
-    /**
-     * Get counter items for specific enemy threats
-     */
-    static GetCounterItems(enemies: HeroName[]): string[] {
-        const counterItems: string[] = [];
-
-        if (hasEnemyThreat(enemies, "evasion")) {
-            counterItems.push(...COUNTER_ITEMS.evasion);
-        }
-
-        if (hasEnemyThreat(enemies, "magic_heavy")) {
-            counterItems.push(...COUNTER_ITEMS.magic_heavy);
-        }
-
-        if (hasEnemyThreat(enemies, "illusion_heavy")) {
-            counterItems.push(...COUNTER_ITEMS.illusion_heavy);
-        }
-
-        if (hasEnemyThreat(enemies, "invisibility")) {
-            counterItems.push(...COUNTER_ITEMS.invisibility);
-        }
-
-        // Add specific hero counters
-        for (const enemy of enemies) {
-            if (COUNTER_ITEMS.heroes[enemy as keyof typeof COUNTER_ITEMS.heroes]) {
-                counterItems.push(...COUNTER_ITEMS.heroes[enemy as keyof typeof COUNTER_ITEMS.heroes]);
-            }
-        }
-
-        return counterItems;
+    if (hasEnemyThreat(enemies, "magic_heavy")) {
+        build.push(...COUNTER_ITEMS.magic_heavy);
     }
 
-    /**
-     * Get position-specific items (simplified - position determines role)
-     */
-    static GetPositionSpecificItems(bot: any, position: Position): string[] {
-        return this.GetItemBuild(bot, position);
+    if (hasEnemyThreat(enemies, "illusion_heavy")) {
+        build.push(...COUNTER_ITEMS.illusion_heavy);
     }
 
-    /**
-     * Get range-specific items (melee vs ranged)
-     */
-    static GetRangeSpecificItems(bot: any, position: Position): string[] {
-        // Range-specific items are already included in the position-based builds
-        return this.GetItemBuild(bot, position);
+    if (hasEnemyThreat(enemies, "invisibility")) {
+        build.push(...COUNTER_ITEMS.invisibility);
     }
+
+    // Add specific hero counters
+    for (const enemy of enemies) {
+        if (COUNTER_ITEMS.heroes[enemy as keyof typeof COUNTER_ITEMS.heroes]) {
+            build.push(...COUNTER_ITEMS.heroes[enemy as keyof typeof COUNTER_ITEMS.heroes]);
+        }
+    }
+
+    // Apply hero-specific modifications
+    return applyHeroSpecificModifications(heroName, build);
 }
 
-export default AdvancedItemStrategy;
+/**
+ * Generate sell list based on item build
+ */
+export function GetSellList(_bot: any, _itemBuild: string[]): string[] {
+    // Items that should be sold when better items are purchased
+    const sellPairs: string[] = [
+        // When getting better boots, sell basic boots
+        "item_travel_boots_2",
+        "item_boots",
+
+        // When getting ultimate scepter 2, sell ultimate scepter
+        "item_ultimate_scepter_2",
+        "item_ultimate_scepter",
+
+        // When getting better items, sell early game items
+        "item_skadi",
+        "item_wraith_band",
+
+        "item_butterfly",
+        "item_magic_wand",
+
+        "item_abyssal_blade",
+        "item_quelling_blade",
+
+        "item_octarine_core",
+        "item_bottle",
+
+        "item_sheepstick",
+        "item_urn_of_shadows",
+    ];
+
+    return sellPairs;
+}
+
+/**
+ * Get 6-slot late game build (excluding non-slot items)
+ */
+export function GetLateGame6Slot(bot: any, position: Position): string[] {
+    const heroName = bot.GetUnitName() as HeroName;
+    const isHeroRanged = isRanged(heroName);
+    const rangeType: RangeType = isHeroRanged ? "ranged" : "melee";
+
+    const build: string[] = [];
+
+    if (ITEMS_BY_POSITION[position] && ITEMS_BY_POSITION[position][rangeType]) {
+        for (const item of ITEMS_BY_POSITION[position][rangeType]) {
+            // Only add items that take inventory slots
+            if (!NON_SLOT_ITEMS.includes(item)) {
+                build.push(item);
+            }
+        }
+    }
+
+    // Ensure we have exactly 6 items
+    while (build.length > 6) {
+        build.pop();
+    }
+
+    while (build.length < 6) {
+        build.push("item_moon_shard"); // Fill with moon shard if needed
+    }
+
+    return build;
+}
+
+/**
+ * Get non-slot items for late game
+ */
+export function GetNonSlotItems(bot: any, position: Position): string[] {
+    const heroName = bot.GetUnitName() as HeroName;
+    const isHeroRanged = isRanged(heroName);
+    const rangeType: RangeType = isHeroRanged ? "ranged" : "melee";
+
+    const nonSlotItems: string[] = [];
+
+    if (ITEMS_BY_POSITION[position] && ITEMS_BY_POSITION[position][rangeType]) {
+        for (const item of ITEMS_BY_POSITION[position][rangeType]) {
+            if (NON_SLOT_ITEMS.includes(item)) {
+                nonSlotItems.push(item);
+            }
+        }
+    }
+
+    return nonSlotItems;
+}
+
+/**
+ * Get counter items for specific enemy threats
+ */
+export function GetCounterItems(enemies: HeroName[]): string[] {
+    const counterItems: string[] = [];
+
+    if (hasEnemyThreat(enemies, "evasion")) {
+        counterItems.push(...COUNTER_ITEMS.evasion);
+    }
+
+    if (hasEnemyThreat(enemies, "magic_heavy")) {
+        counterItems.push(...COUNTER_ITEMS.magic_heavy);
+    }
+
+    if (hasEnemyThreat(enemies, "illusion_heavy")) {
+        counterItems.push(...COUNTER_ITEMS.illusion_heavy);
+    }
+
+    if (hasEnemyThreat(enemies, "invisibility")) {
+        counterItems.push(...COUNTER_ITEMS.invisibility);
+    }
+
+    // Add specific hero counters
+    for (const enemy of enemies) {
+        if (COUNTER_ITEMS.heroes[enemy as keyof typeof COUNTER_ITEMS.heroes]) {
+            counterItems.push(...COUNTER_ITEMS.heroes[enemy as keyof typeof COUNTER_ITEMS.heroes]);
+        }
+    }
+
+    return counterItems;
+}
+
+/**
+ * Get position-specific items (simplified - position determines role)
+ */
+export function GetPositionSpecificItems(bot: any, position: Position): string[] {
+    return GetItemBuild(bot, position);
+}
+
+/**
+ * Get range-specific items (melee vs ranged)
+ */
+export function GetRangeSpecificItems(bot: any, position: Position): string[] {
+    // Range-specific items are already included in the position-based builds
+    return GetItemBuild(bot, position);
+}

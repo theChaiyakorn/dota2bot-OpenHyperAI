@@ -12,6 +12,7 @@ Starting from here, please use typescript to write the bot logic in ts and build
 1. Do not use relative filepath when importing module files with functions like `require` or `dofile` in a ts file. Make sure to use absolute filepath with `bots/` as the root path. TLDR, this is because bot script lua files need to use absolute filepath for any non-in-same-folder path.
 1. Always try to modify/update ts files first for any modification, because ts files can replace the lua files and override whatever you might have changed in lua files.
 1. When adding/moving files, create the files/folders in typescript in the same file structure as in the root bots folder.
+1. **Array indexing**: TypeScript is 0-indexed but Lua is 1-indexed. TSTL converts automatically, but this can be confusing at API boundaries. See `CONVENTIONS.md` for detailed rules.
 
 ## Usage
 
@@ -20,6 +21,7 @@ Starting from here, please use typescript to write the bot logic in ts and build
 1. Install dependencies. `yarn install`
 1. Run a watcher process to keep re-compiling code for any newly saved changes in TS: `npm run dev`
     - Or, compile to generate lua files only once: `npm run build`
+1. Run index safety check: `node typescript/post-process/check-lua-index.js` (warns about potential 0-vs-1 index issues in compiled Lua)
 
 ## Release a new version of the bot script
 

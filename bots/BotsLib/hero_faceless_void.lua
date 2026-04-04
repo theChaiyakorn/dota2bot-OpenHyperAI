@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -80,11 +81,13 @@ local TimeWalk 			= bot:GetAbilityByName('faceless_void_time_walk')
 local TimeDilation 		= bot:GetAbilityByName('faceless_void_time_dilation')
 local Chronosphere 		= bot:GetAbilityByName('faceless_void_chronosphere')
 local TimeWalkReverse 	= bot:GetAbilityByName('faceless_void_time_walk_reverse')
+local Timezone 			= bot:GetAbilityByName('faceless_void_time_zone')
 
 local TimeWalkDesire, TimeWalkLocation
 local TimeDilationDesire
 local ChronosphereDesire, ChronosphereLocation
 local TimeWalkReverseDesire
+local TimezoneDesire, TimezoneLocation
 
 local TimeWalkPrevLocation
 
@@ -154,6 +157,14 @@ function X.SkillsComplement()
 			announceCount = announceCount + 1
 			bot:ActionImmediate_Chat( "Due to Valve bug in 7.37. I lost Chronosphere. Please enable Fretbots mode in this script to fix this problem. Check Workshop page if you need help.", true )
 		end
+	end
+
+	TimezoneDesire, TimezoneLocation = X.ConsiderTimezone()
+	if TimezoneDesire > 0
+	then
+		Fu.SetQueuePtToINT(bot, false)
+		bot:ActionQueue_UseAbilityOnLocation(Timezone, TimezoneLocation)
+		return
 	end
 end
 
@@ -609,6 +620,61 @@ function X.ConsiderTimeWalkReverse()
 	end
 
 	return BOT_ACTION_DESIRE_NONE
+end
+
+function X.ConsiderTimezone()
+	if not Timezone or Timezone:IsNull() or not Timezone:IsFullyCastable()
+	then
+		return BOT_ACTION_DESIRE_NONE, 0
+	end
+
+	local nCastRange = Fu.GetProperCastRange(false, bot, Timezone:GetCastRange())
+	local nRadius = Timezone:GetSpecialValueInt('radius')
+
+	if Fu.IsInTeamFight(bot, 1600)
+	then
+		local nLocationAoE = bot:FindAoELocation(true, true, bot:GetLocation(), nCastRange, nRadius, 0, 0)
+		local nInRangeAlly = Fu.GetAlliesNearLoc(nLocationAoE.targetloc, nRadius)
+		local nInRangeEnemy = Fu.GetEnemiesNearLoc(nLocationAoE.targetloc, nRadius)
+
+		if nInRangeAlly ~= nil and nInRangeEnemy ~= nil
+		and #nInRangeAlly >= 2 and #nInRangeEnemy >= 2
+		then
+			local nGoodEnemies = 0
+			for _, enemyHero in pairs(nInRangeEnemy)
+			do
+				if Fu.IsValidHero(enemyHero)
+				and not Fu.IsSuspiciousIllusion(enemyHero)
+				and Fu.GetHP(enemyHero) > 0.25
+				and Fu.CanBeAttacked(enemyHero)
+				and not enemyHero:HasModifier('modifier_abaddon_borrowed_time')
+				and not enemyHero:HasModifier('modifier_necrolyte_reapers_scythe')
+				then
+					nGoodEnemies = nGoodEnemies + 1
+				end
+			end
+
+			if nGoodEnemies >= 2
+			then
+				return BOT_ACTION_DESIRE_HIGH, nLocationAoE.targetloc
+			end
+		end
+	end
+
+	if bGoingOnSomeone
+	then
+		if Fu.IsValidTarget(botTarget)
+		and Fu.CanBeAttacked(botTarget)
+		and Fu.IsInRange(bot, botTarget, nCastRange)
+		and not Fu.IsSuspiciousIllusion(botTarget)
+		and not botTarget:HasModifier('modifier_abaddon_borrowed_time')
+		and not botTarget:HasModifier('modifier_necrolyte_reapers_scythe')
+		then
+			return BOT_ACTION_DESIRE_HIGH, botTarget:GetLocation()
+		end
+	end
+
+	return BOT_ACTION_DESIRE_NONE, 0
 end
 
 --Helper Funcs

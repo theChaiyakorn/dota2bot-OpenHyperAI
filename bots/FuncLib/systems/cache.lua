@@ -311,29 +311,18 @@ function ____exports.clearAllCaches()
     globalUnitStateCache = nil
     globalLocationStateCache = nil
 end
---- Get cached allies near location
+--- Get cached allies near location.
+-- Now delegates to Fu.GetAlliesNearLoc which has its own function-level
+-- cache (0.15s TTL with grid-snapped numeric keys). No extra caching needed here.
 function ____exports.getCachedAlliesNearLoc(location, radius)
-    local key = (((((("allies_" .. tostring(math.floor(location.x))) .. "_") .. tostring(math.floor(location.y))) .. "_") .. tostring(radius)) .. "_") .. tostring(math.floor(DotaTime() * 2))
-    return ____exports.getCachedData(
-        key,
-        0.5,
-        function()
-            local Fu = require(GetScriptDirectory().."/FuncLib/func_utils")
-            return Fu.GetAlliesNearLoc(location, radius)
-        end
-    )
+    local Fu = require(GetScriptDirectory().."/FuncLib/func_utils")
+    return Fu.GetAlliesNearLoc(location, radius)
 end
---- Get cached enemies near location
+--- Get cached enemies near location.
+-- Delegates to Fu.GetEnemiesNearLoc which has its own function-level cache.
 function ____exports.getCachedEnemiesNearLoc(location, radius)
-    local key = (((((("enemies_" .. tostring(math.floor(location.x))) .. "_") .. tostring(math.floor(location.y))) .. "_") .. tostring(radius)) .. "_") .. tostring(math.floor(DotaTime() * 2))
-    return ____exports.getCachedData(
-        key,
-        0.5,
-        function()
-            local Fu = require(GetScriptDirectory().."/FuncLib/func_utils")
-            return Fu.GetEnemiesNearLoc(location, radius)
-        end
-    )
+    local Fu = require(GetScriptDirectory().."/FuncLib/func_utils")
+    return Fu.GetEnemiesNearLoc(location, radius)
 end
 local lastCleanupTime = 0
 function ____exports.autoCleanupCache()

@@ -14,7 +14,7 @@ This is a step-by-step runbook for quickly updating the bot scripts when Valve r
 |--------|-----|-------------------|
 | **Valve Patch List API** | `https://www.dota2.com/datafeed/patchnoteslist?language=english` | Lists all patches with timestamps -- compare latest against what we've updated |
 | **Valve Patch Notes API** | `https://www.dota2.com/datafeed/patchnotes?version=X.XX&language=english` | Machine-readable patch data (hero IDs, ability IDs, exact changes) |
-| **d2vpkr shops.txt** | `https://raw.githubusercontent.com/dotabuff/d2vpkr/master/dota/scripts/shops.txt` | Current item pool -- diff against aba_item.lua |
+| **d2vpkr shops.txt** | `https://raw.githubusercontent.com/dotabuff/d2vpkr/master/dota/scripts/shops.txt` | Current item pool -- diff against item.lua |
 | **d2vpkr neutral_items.txt** | `https://raw.githubusercontent.com/dotabuff/d2vpkr/master/dota/scripts/npc/neutral_items.txt` | Current neutral item tiers |
 | **Liquipedia** | `https://liquipedia.net/dota2/HERO_NAME` | Ability details, targeting types (verify before trusting patch summaries) |
 | **Liquipedia Cheats (Internal Names)** | `https://liquipedia.net/dota2/Cheats` | Authoritative `item_*` internal names for all items, neutral items, and hero code names. Essential for item builds and ability references |
@@ -43,7 +43,7 @@ Categorize all changes into:
 3. TALENT SWAPS (talents moved between levels) → check hero tTalentTreeList preferences
 
 Then apply the STRUCTURAL changes following the phase-by-phase guide.
-For TALENT SWAPS, check BotLib/hero_*.lua talent preferences and swap if needed.
+For TALENT SWAPS, check BotsLib/hero_*.lua talent preferences and swap if needed.
 ```
 
 ### Major vs Minor Patches
@@ -64,7 +64,7 @@ Given a new patch URL like `https://www.dota2.com/patches/7.42`:
 ```
 1. Fetch patch notes + d2vpkr data       (5 min, parallel)
 2. Diff items: added/removed/changed      (5 min)
-3. Update aba_item.lua                     (10 min)
+3. Update item.lua                          (10 min)
 4. Update hero item builds                 (15 min)
 5. Handle ability renames/reworks          (15 min)
 6. Update neutral items                    (10 min)
@@ -87,7 +87,7 @@ Extract: item changes, ability changes, new heroes, mechanic changes
 ### 1B. Fetch Current Shop Items (Source of Truth for item names)
 ```
 URL: https://raw.githubusercontent.com/dotabuff/d2vpkr/master/dota/scripts/shops.txt
-Compare against: bots/FunLib/aba_item.lua sBasicItems/sSeniorItems/sTopItems
+Compare against: bots/FuncLib/systems/item.lua sBasicItems/sSeniorItems/sTopItems
 Output: list of ADDED items, REMOVED items
 ```
 
@@ -110,7 +110,7 @@ WARNING: Patch note summaries can be WRONG. Always cross-check.
 
 ## Phase 2: Item Updates
 
-### 2A. Core Item File (`bots/FunLib/aba_item.lua`)
+### 2A. Core Item File (`bots/FuncLib/systems/item.lua`)
 
 **Add new basic items** to `sBasicItems` (~line 150-197):
 ```lua
@@ -138,11 +138,11 @@ Item["item_new_upgrade"] = GetItemComponents('item_new_upgrade')[1]
 'item_new_component', 'item_old_component',
 ```
 
-### 2B. Hero Item Builds (`bots/BotLib/hero_*.lua`)
+### 2B. Hero Item Builds (`bots/BotsLib/hero_*.lua`)
 
 ```bash
 # Find all heroes referencing a removed item
-grep -rn "item_removed_name" bots/BotLib/
+grep -rn "item_removed_name" bots/BotsLib/
 ```
 
 Replace with role-appropriate alternatives:
@@ -166,10 +166,10 @@ sRoleItemsBuyList['pos_X'] = {
 
 ```bash
 # Check fallback builds
-grep -rn "item_removed_name" bots/FunLib/advanced_item_strategy.lua
+grep -rn "item_removed_name" bots/FuncLib/systems/item_strategy.lua
 
 # Check map logic
-grep -rn "item_removed_name" bots/FunLib/aba_site.lua
+grep -rn "item_removed_name" bots/FuncLib/data/site.lua
 ```
 
 ---
@@ -180,16 +180,16 @@ grep -rn "item_removed_name" bots/FunLib/aba_site.lua
 
 ```bash
 # For each renamed ability:
-grep -rn "old_ability_name" bots/BotLib/ bots/FunLib/spell_list.lua bots/FunLib/spell_prob_list.lua bots/FunLib/rubick_hero/
+grep -rn "old_ability_name" bots/BotsLib/ bots/FuncLib/data/spell_list.lua bots/FuncLib/data/spell_prob_list.lua bots/FuncLib/hero/rubick_hero/
 ```
 
 ### 3B. Handle Renames
 
 Update all 4 locations:
-1. `bots/BotLib/hero_[name].lua` -- `GetAbilityByName` calls
-2. `bots/FunLib/spell_list.lua` -- ability weight entries
-3. `bots/FunLib/spell_prob_list.lua` -- probability entries
-4. `bots/FunLib/rubick_hero/[name].lua` -- Rubick spell-steal
+1. `bots/BotsLib/hero_[name].lua` -- `GetAbilityByName` calls
+2. `bots/FuncLib/data/spell_list.lua` -- ability weight entries
+3. `bots/FuncLib/data/spell_prob_list.lua` -- probability entries
+4. `bots/FuncLib/hero/rubick_hero/[name].lua` -- Rubick spell-steal
 
 Use fallback chains when the exact new name is uncertain:
 ```lua
@@ -378,16 +378,16 @@ end
 
 If the patch adds a new hero:
 
-1. **Create** `bots/BotLib/hero_[name].lua` -- copy an existing hero with similar role as template
+1. **Create** `bots/BotsLib/hero_[name].lua` -- copy an existing hero with similar role as template
 2. **Add to** `bots/FretBots/HeroNames.lua`:
 ```lua
 npc_dota_hero_[name] = 'Display Name',
 ```
-3. **Add to** `bots/FunLib/aba_hero_roles_map.lua`:
+3. **Add to** `bots/FuncLib/data/hero_roles_map.lua`:
 ```lua
 [HeroName.NewHero] = {carry=X, disabler=X, durable=X, ...}
 ```
-4. **Add abilities to** `bots/FunLib/spell_list.lua`
+4. **Add abilities to** `bots/FuncLib/data/spell_list.lua`
 
 ---
 
@@ -399,16 +399,16 @@ Some patches change map positions or game mechanics. Watch for:
 Patch notes like "Roshan's pit preference has switched" or "Tormentor's spawn preference has switched" mean the **day/night position mapping** inverted.
 
 Files to update:
-- **`FunLib/jmz_func.lua`**: `GetCurrentRoshanLocation()`, `GetTormentorLocation()`, `GetTormentorWaitingLocation()` -- swap the day/night return values
-- **`FunLib/aba_site.lua`**: Static `roshan` vector (~line 224) -- update to new default position
+- **`FuncLib/func_utils.lua`**: `GetCurrentRoshanLocation()`, `GetTormentorLocation()`, `GetTormentorWaitingLocation()` -- swap the day/night return values
+- **`FuncLib/data/site.lua`**: Static `roshan` vector (~line 224) -- update to new default position
 
 The coordinate vectors themselves don't change, only which time-of-day maps to which location.
 
 ### Other Map Changes
-- Rune positions: `FunLib/aba_site.lua` `top_power_rune` / `bot_power_rune`
-- Wisdom rune positions: `FunLib/utils.lua` `WisdomRunes`
-- Fountain positions: `FunLib/jmz_func.lua` `RadiantFountain` / `DireFountain`
-- Watchtower positions: `FunLib/aba_site.lua` `nWatchTower_1` / `nWatchTower_2`
+- Rune positions: `FuncLib/data/site.lua` `top_power_rune` / `bot_power_rune`
+- Wisdom rune positions: `FuncLib/systems/utils.lua` `WisdomRunes`
+- Fountain positions: `FuncLib/func_utils.lua` `RadiantFountain` / `DireFountain`
+- Watchtower positions: `FuncLib/data/site.lua` `nWatchTower_1` / `nWatchTower_2`
 
 ### Timing Changes
 - Neutral item tier timings: `Buff/NeutralItems.lua` and `FretBots/NeutralItems.lua`
@@ -424,13 +424,13 @@ Some Lua files are **generated from TypeScript** via TSTL. If you edit the Lua o
 **Always check:** Does a `.ts` file exist at the same relative path under `typescript/bots/`?
 
 Key TS-generated files that commonly need patch updates:
-- `aba_site.ts` → `aba_site.lua` (map positions like Roshan location)
-- `advanced_item_strategy.ts` → `advanced_item_strategy.lua` (fallback item builds)
+- `aba_site.ts` → `site.lua` (map positions like Roshan location)
+- `advanced_item_strategy.ts` → `item_strategy.lua` (fallback item builds)
 - `spell_prob_list.ts` → `spell_prob_list.lua` (ability cast probabilities)
 - `utils.ts` → `utils.lua` (Roshan/fountain coordinates)
-- `aba_hero_roles_map.ts` → `aba_hero_roles_map.lua` (hero role scores for new heroes)
+- `aba_hero_roles_map.ts` → `hero_roles_map.lua` (hero role scores for new heroes)
 
-**Pure Lua files** (no TS source, edit directly): `jmz_func.lua`, `aba_item.lua`, `aba_skill.lua`, `spell_list.lua`, `ability_item_usage_generic.lua`, all `BotLib/hero_*.lua`, all `Buff/*.lua`, all `FretBots/*.lua`.
+**Pure Lua files** (no TS source, edit directly): `func_utils.lua`, `item.lua`, `skill.lua`, `spell_list.lua`, `ability_item_usage_generic.lua`, all `BotsLib/hero_*.lua`, all `Buff/*.lua`, all `FretBots/*.lua`.
 
 See `docs/ARCHITECTURE.md` Section 13 for the complete mapping table.
 

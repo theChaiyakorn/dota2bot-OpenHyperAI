@@ -3,8 +3,8 @@ local function Init(Fu)
 
 local RadiantFountain = Vector( -6619, -6336, 384 )
 local DireFountain = Vector( 6928, 6372, 392 )
-local RadiantTormentorLoc = Vector(7499, -7847, 256)
-local DireTormentorLoc = Vector(-7229, 7933, 256)
+local RadiantTormentorLoc = Vector(7753.750488, -6217.413086, 0.000000)
+local DireTormentorLoc = Vector(-7678.044434, 6337.246094, 0.000000)
 
 
 function Fu.GetTeamFountain()
@@ -491,13 +491,18 @@ function Fu.GetTormentorLocation(team)
 end
 
 
+-- Team-specific waiting positions near Tormentor (approach from safe side)
+local vWaitRadiant_ForRadiant = Vector(7090, -7220, 256)
+local vWaitRadiant_ForDire    = Vector(8280, -5350, 128)
+local vWaitDire_ForRadiant    = Vector(-8130, 5450, 128)
+local vWaitDire_ForDire       = Vector(-6970, 7330, 256)
+
 function Fu.GetTormentorWaitingLocation(team)
-	-- 7.41: Tormentor's spawn preference switched (day/night swap)
-	local timeOfday = Fu.CheckTimeOfDay()
-	if timeOfday == 'day' then
-		return Vector(6792, -6815, 256)
+	local timeOfDay = Fu.CheckTimeOfDay()
+	if timeOfDay == 'day' then
+		return GetTeam() == TEAM_RADIANT and vWaitRadiant_ForRadiant or vWaitRadiant_ForDire
 	else
-		return Vector(-7041, 6796, 256)
+		return GetTeam() == TEAM_RADIANT and vWaitDire_ForRadiant or vWaitDire_ForDire
 	end
 end
 

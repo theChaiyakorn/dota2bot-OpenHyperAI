@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -127,6 +128,7 @@ local SpringEarly       = bot:GetAbilityByName('monkey_king_primal_spring_early'
 local Mischief          = bot:GetAbilityByName('monkey_king_mischief')
 local RevertForm        = bot:GetAbilityByName('monkey_king_untransform')
 local WukongsCommand    = bot:GetAbilityByName('monkey_king_wukongs_command')
+local ChangingOfTheGuard = bot:GetAbilityByName('monkey_king_transfiguration')
 
 local BoundlessStrikeDesire, BoundlessStrikeLocation
 local TreeDanceDesire, TreeDanceTarget
@@ -134,6 +136,7 @@ local PrimalSpringDesire, PrimalSpringLocation
 local SpringEarlyDesire
 local MischiefDesire
 local WukongsCommandDesire, WukongsCommandLocation
+local ChangingOfTheGuardDesire, ChangingOfTheGuardLocation
 
 local botTarget
 local bGoingOnSomeone
@@ -199,6 +202,13 @@ function X.SkillsComplement()
     -- SpringEarlyDesire = X.ConsiderSpringEarly()
 
     -- RevertFormDesire = X.ConsiderRevertForm()
+
+    ChangingOfTheGuardDesire, ChangingOfTheGuardLocation = X.ConsiderChangingOfTheGuard()
+    if ChangingOfTheGuardDesire > 0
+    then
+        bot:Action_UseAbilityOnLocation(ChangingOfTheGuard, ChangingOfTheGuardLocation)
+        return
+    end
 end
 
 function X.ConsiderBoundlessStrike()
@@ -751,6 +761,26 @@ function GetFurthestTree(nTrees)
 	end
 
 	return furthest
+end
+
+function X.ConsiderChangingOfTheGuard()
+    if not Fu.CanCastAbility(ChangingOfTheGuard)
+    or bot:IsRooted()
+    then
+        return BOT_ACTION_DESIRE_NONE
+    end
+
+    if bot:HasModifier('modifier_monkey_king_fur_army_bonus_damage') then
+        local nEnemyHeroes = Fu.GetNearbyHeroes(bot, 1600, true, BOT_MODE_NONE)
+        local nAllyHeroes = Fu.GetNearbyHeroes(bot, 1600, false, BOT_MODE_NONE)
+        if (Fu.IsStunProjectileIncoming(bot, 550) and #nEnemyHeroes > #nAllyHeroes)
+        or (Fu.GetAttackProjectileDamageByRange(bot, 900) > bot:GetHealth())
+        then
+            return BOT_ACTION_DESIRE_HIGH, bot:GetLocation()
+        end
+    end
+
+    return BOT_ACTION_DESIRE_NONE
 end
 
 return X

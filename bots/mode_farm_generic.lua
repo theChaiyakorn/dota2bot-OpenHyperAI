@@ -55,12 +55,13 @@ local runMode = false;
 if bot.farmLocation == nil then bot.farmLocation = bot:GetLocation() end
 
 function GetDesire()
+	if ShouldSkipBotThink(GetBot()) then return 0 end
 	-- local cacheKey = 'GetFarmDesire'..tostring(bot:GetPlayerID())
 	-- local cachedVar = Fu.Utils.GetCachedVars(cacheKey, 0.4)
 	-- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
 	local res = GetDesireHelper()
 	-- Fu.Utils.SetCachedVars(cacheKey, res)
-	return res
+	return GetAdjustedDesireValue(res)
 end
 
 function GetDesireHelper()

@@ -109,6 +109,23 @@ const SpellList: { [key: string]: number } = {
 
     rubick_empty1: 1,
     rubick_empty2: 1,
+    // 7.41 new/renamed abilities
+    beastmaster_summon_razorback: 1,
+    beastmaster_summon_raptor: 1,
+    beastmaster_inner_beast: 1,
+    chen_zealot: 1,
+    lich_death_charge: 0.5,
+    mirana_celestial_quiver: 0.9,
+    muerta_spectral_slug: 0.5,
+    night_stalker_midnight_feast: 0.8,
+    obsidian_destroyer_objurgation: 0.3,
+    shadow_shaman_urnaconda: 0.2,
+    techies_mutually_assured_destruction: 1,
+    techies_focused_detonate: 1,
+    tinker_deploy_turrets: 0.8,
+    venomancer_snakebite: 0.3,
+    monkey_king_transfiguration: 0.9,
+    faceless_void_time_zone: 0.4,
 };
 
 export function GetSpellReplaceWeight(ability: string): number {

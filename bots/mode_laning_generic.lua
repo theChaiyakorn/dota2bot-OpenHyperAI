@@ -30,6 +30,11 @@ local isChangePosMessageDone     = false
 if Utils.BuggyHeroesDueToValveTooLazy[botName] then local_mode_laning_generic = dofile( GetScriptDirectory().."/FuncLib/systems/override_generic/mode_laning_generic" ) end
 
 function GetDesire()
+	if ShouldSkipBotThink(GetBot()) then return 0 end
+	return GetAdjustedDesireValue(GetDesireRaw())
+end
+
+function GetDesireRaw()
 	PickOneAnnouncer()
 	AnnounceMessages()
 
@@ -135,41 +140,65 @@ function GetFurthestEnemyAttackRange(enemyList)
 	return attackRange
 end
 
+-- Score a creep by value: ranged > flagbearer > melee
+local function GetCreepScore(creep)
+	local name = creep:GetUnitName()
+	if string.find(name, 'ranged') then return 3 end
+	if string.find(name, 'flagbearer') then return 2 end
+	return 1
+end
+
 function GetBestLastHitCreep(hCreepList)
 	local dmgDelta = attackDamage * 0.7
 
+	-- Find best killable creep by value score
+	local bestCreep = nil
+	local bestScore = 0
 	local moveToCreep = nil
+	local moveToScore = 0
 	for _, creep in pairs(hCreepList) do
 		if Fu.IsValid(creep) and Fu.CanBeAttacked(creep) then
 			local nDelay = Fu.GetAttackProDelayTime(bot, creep)
+			local score = GetCreepScore(creep)
 			if Fu.WillKillTarget(creep, attackDamage, DAMAGE_TYPE_PHYSICAL, nDelay) then
-				return creep, false
-			end
-			if Fu.WillKillTarget(creep, attackDamage + dmgDelta, DAMAGE_TYPE_PHYSICAL, nDelay) then
-				moveToCreep = creep
+				if score > bestScore then
+					bestScore = score
+					bestCreep = creep
+				end
+			elseif Fu.WillKillTarget(creep, attackDamage + dmgDelta, DAMAGE_TYPE_PHYSICAL, nDelay) then
+				if score > moveToScore then
+					moveToScore = score
+					moveToCreep = creep
+				end
 			end
 		end
 	end
-	if moveToCreep then
-		return moveToCreep, true
-	end
+	if bestCreep then return bestCreep, false end
+	if moveToCreep then return moveToCreep, true end
 
 	return nil
 end
 
 function GetBestDenyCreep(hCreepList)
+	local bestDeny = nil
+	local bestScore = 0
 	for _, creep in pairs(hCreepList)
 	do
 		if Fu.IsValid(creep)
 		and Fu.GetHP(creep) < 0.49
 		and Fu.CanBeAttacked(creep)
 		and creep:GetHealth() <= attackDamage
+		and Fu.IsInRange(bot, creep, botAttackRange + 100)
 		then
-			return creep
+			local score = GetCreepScore(creep)
+			if score > bestScore then
+				bestScore = score
+				bestDeny = creep
+			end
 		end
 	end
 
-	return nil
+	return bestDeny
 end
 
 if local_mode_laning_generic or (Fu.GetPosition(bot) == 1 and Fu.IsPosxHuman(5)) then

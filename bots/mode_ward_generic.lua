@@ -20,13 +20,14 @@ local hTargetSpot = nil
 local fLastWardPlantTime = -math.huge
 
 function GetDesire()
+	if ShouldSkipBotThink(GetBot()) then return 0 end
 	if Fu.GetPosition(bot) <= 3 then return false end
 	-- local cacheKey = 'GetWardDesire'..tostring(bot:GetPlayerID())
 	-- local cachedVar = Fu.Utils.GetCachedVars(cacheKey, 0.6 * (1 + Customize.ThinkLess))
 	-- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
 	local res = GetDesireHelper()
 	-- Fu.Utils.SetCachedVars(cacheKey, res)
-	return RemapValClamped(Fu.GetHP(bot) * res, 0, 1, BOT_MODE_DESIRE_NONE, res)
+	return GetAdjustedDesireValue(RemapValClamped(Fu.GetHP(bot) * res, 0, 1, BOT_MODE_DESIRE_NONE, res))
 end
 function GetDesireHelper()
     if not X.IsSuitableToWard() then

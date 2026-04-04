@@ -2,7 +2,8 @@ local X             = {}
 local bot           = GetBot()
 
 local Fu             = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion        = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx    = require( GetScriptDirectory()..'/FuncLib/systems/ability_context' )
+local Minion        = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList   = Fu.Skill.GetTalentList( bot )
 local sAbilityList  = Fu.Skill.GetAbilityList( bot )
 local sRole   = Fu.Item.GetRoleItemsBuyList( bot )
@@ -150,6 +151,7 @@ function X.MinionThink(hMinionUnit)
 end
 
 local VenomousGale      = bot:GetAbilityByName('venomancer_venomous_gale')
+local Snakebite         = bot:GetAbilityByName('venomancer_snakebite')
 -- local PoisonSting       = bot:GetAbilityByName('venomancer_poison_sting')
 local PlagueWard        = bot:GetAbilityByName('venomancer_plague_ward')
 -- local LatentToxicity    = bot:GetAbilityByName('venomancer_latent_poison')
@@ -157,6 +159,7 @@ local PlagueWard        = bot:GetAbilityByName('venomancer_plague_ward')
 local NoxiousPlague     = bot:GetAbilityByName('venomancer_noxious_plague')
 
 local VenomousGaleDesire, VenomousGaleLocation
+local SnakebiteDesire, SnakebiteTarget
 local PlagueWardDesire, PlagueWardLocation, bTargetAlly
 -- local LatentToxicityDesire, LatentToxicityTarget
 local NoxiousPlagueDesire, NoxiousPlagueTarget
@@ -169,11 +172,12 @@ local nBotMP
 function X.SkillsComplement()
 	if Fu.CanNotUseAbility(bot) then return end
 
-	bGoingOnSomeone = Fu.IsGoingOnSomeone(bot)
+	local ctx = AbilityCtx.Build(bot)
+	bGoingOnSomeone = ctx.isEngaging
 	bAttacking = Fu.IsAttacking(bot)
-	nBotMP = Fu.GetMP(bot)
+	nBotMP = ctx.mp
 
-    botTarget = Fu.GetProperTarget(bot)
+    botTarget = ctx.target
 
     NoxiousPlagueDesire, NoxiousPlagueTarget = X.ConsiderNoxiousPlague()
     if NoxiousPlagueDesire > 0
@@ -188,6 +192,14 @@ function X.SkillsComplement()
     --     bot:Action_UseAbilityOnEntity(LatentToxicity, LatentToxicityTarget)
     --     return
     -- end
+
+    SnakebiteDesire, SnakebiteTarget = X.ConsiderSnakebite()
+    if SnakebiteDesire > 0
+    then
+        Fu.SetQueuePtToINT(bot, false)
+        bot:ActionQueue_UseAbilityOnEntity(Snakebite, SnakebiteTarget)
+        return
+    end
 
     VenomousGaleDesire, VenomousGaleLocation = X.ConsiderVenomousGale()
     if VenomousGaleDesire > 0
@@ -596,5 +608,84 @@ function X.ConsiderNoxiousPlague()
     return BOT_ACTION_DESIRE_NONE, nil
 end
 
+
+function X.ConsiderSnakebite()
+    if not Fu.CanCastAbility(Snakebite) then
+        return BOT_ACTION_DESIRE_NONE
+    end
+
+    local nCastRange = Snakebite:GetCastRange()
+    local nManaCost = Snakebite:GetManaCost()
+    local fManaAfter = Fu.GetManaAfter(nManaCost)
+    local fManaThreshold1 = Fu.GetManaThreshold(bot, nManaCost, {VenomousGale, PlagueWard, NoxiousPlague})
+
+    if Fu.IsGoingOnSomeone(bot) then
+        if  Fu.IsValidHero(botTarget)
+        and Fu.CanBeAttacked(botTarget)
+        and Fu.IsInRange(bot, botTarget, nCastRange + 300)
+        and Fu.CanCastOnNonMagicImmune(botTarget)
+        and Fu.CanCastOnTargetAdvanced(botTarget)
+        and not Fu.IsDisabled(botTarget)
+        and not botTarget:IsDisarmed()
+        and not botTarget:HasModifier('modifier_abaddon_borrowed_time')
+        and not botTarget:HasModifier('modifier_dazzle_shallow_grave')
+        and not botTarget:HasModifier('modifier_oracle_false_promise_timer')
+        and not botTarget:HasModifier('modifier_templar_assassin_refraction_absorb')
+        then
+            return BOT_ACTION_DESIRE_HIGH, botTarget
+        end
+    end
+
+    if Fu.IsRetreating(bot) and not Fu.IsRealInvisible(bot) then
+        local nEnemyHeroes = bot:GetNearbyHeroes(nCastRange, true, BOT_MODE_NONE)
+        for _, enemyHero in pairs(nEnemyHeroes) do
+            if  Fu.IsValidHero(enemyHero)
+            and Fu.CanBeAttacked(enemyHero)
+            and Fu.IsInRange(bot, enemyHero, nCastRange)
+            and Fu.CanCastOnNonMagicImmune(enemyHero)
+            and Fu.CanCastOnTargetAdvanced(enemyHero)
+            and not Fu.IsDisabled(enemyHero)
+            and not enemyHero:IsDisarmed()
+            and bot:WasRecentlyDamagedByHero(enemyHero, 2.0)
+            then
+                return BOT_ACTION_DESIRE_HIGH, enemyHero
+            end
+        end
+    end
+
+    if (Fu.IsPushing(bot) or Fu.IsDefending(bot) or Fu.IsFarming(bot)) and bAttacking and fManaAfter > fManaThreshold1 then
+        if  Fu.IsValid(botTarget)
+        and Fu.CanBeAttacked(botTarget)
+        and not botTarget:IsBuilding()
+        and not Fu.CanKillTarget(botTarget, bot:GetAttackDamage() * 3.5, DAMAGE_TYPE_PHYSICAL)
+        then
+            return BOT_ACTION_DESIRE_HIGH, botTarget
+        end
+    end
+
+    if Fu.IsDoingRoshan(bot) then
+        if  Fu.IsRoshan(botTarget)
+        and Fu.CanBeAttacked(botTarget)
+        and Fu.IsInRange(bot, botTarget, nCastRange)
+        and Fu.CanCastOnNonMagicImmune(botTarget)
+        and bAttacking
+        and fManaAfter > fManaThreshold1 + 0.1
+        then
+            return BOT_ACTION_DESIRE_HIGH, botTarget
+        end
+    end
+
+    if Fu.IsDoingTormentor(bot) then
+        if  Fu.IsTormentor(botTarget)
+        and Fu.IsInRange(bot, botTarget, nCastRange)
+        and bAttacking
+        and fManaAfter > fManaThreshold1 + 0.1
+        then
+            return BOT_ACTION_DESIRE_HIGH, botTarget
+        end
+    end
+
+    return BOT_ACTION_DESIRE_NONE
+end
 
 return X

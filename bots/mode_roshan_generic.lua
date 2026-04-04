@@ -20,10 +20,21 @@ local initDPSFlag = false
 
 local Roshan
 
+-- Human team Roshan handling:
+-- If human on team, bots stay outside pit (Valve Think behavior).
+-- Instead: ping for 30s asking human to join, then drop desire for 10min/6min.
+local hasHumanOnTeam = nil
+local roshPingStartTime = 0
+local roshCooldownUntil = 0
+local ROSH_PING_DURATION = 30
+local ROSH_COOLDOWN_NORMAL = 10 * 60
+local ROSH_COOLDOWN_TURBO = 6 * 60
+
 function GetDesire()
+	if ShouldSkipBotThink(GetBot()) then return 0 end
 	local res = GetDesireHelper()
 	if res > 0.6 then Fu.ModeAnnounce(bot, 'say_roshan', 30) end
-	return res
+	return GetAdjustedDesireValue(res)
 end
 function GetDesireHelper()
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return BOT_MODE_DESIRE_NONE end
@@ -102,6 +113,57 @@ function GetDesireHelper()
                 return BOT_ACTION_DESIRE_NONE
             end
             table.insert(aliveHeroesList, h)
+        end
+    end
+
+    -- Detect human on team (cache once)
+    if hasHumanOnTeam == nil then
+        hasHumanOnTeam = Fu.Utils.IsHumanPlayerInTeam(GetTeam())
+    end
+
+    -- Human team Roshan flow:
+    -- Bots can't properly enter pit with Valve's Think when human is on team.
+    -- Instead: ping to gather for 30s, then give up for a cooldown period.
+    if hasHumanOnTeam then
+        -- On cooldown — skip Roshan entirely
+        if DotaTime() < roshCooldownUntil then
+            return BOT_ACTION_DESIRE_NONE
+        end
+
+        -- If human pinged Roshan, let bots respond normally (handled below at line ~149)
+        local human, humanPing = Fu.GetHumanPing()
+        local humanPingedRosh = human ~= nil and humanPing ~= nil
+            and humanPing.normal_ping
+            and Fu.GetDistance(humanPing.location, Fu.GetCurrentRoshanLocation()) < 600
+            and DotaTime() < humanPing.time + 5.0
+
+        if not humanPingedRosh then
+            -- Bot wants Roshan but human hasn't responded
+            if Fu.IsRoshanAlive() and initDPSFlag and hasSameOrMoreHero then
+                if roshPingStartTime == 0 then
+                    -- Start pinging phase
+                    roshPingStartTime = DotaTime()
+                end
+
+                local timePinging = DotaTime() - roshPingStartTime
+                if timePinging < ROSH_PING_DURATION then
+                    -- Ping and announce during the 30s window
+                    Fu.ModeAnnounce(bot, 'say_roshan', 10)
+                    return BOT_MODE_DESIRE_MODERATE -- Keep desire moderate to signal intent
+                else
+                    -- 30s passed, human didn't join — give up
+                    roshPingStartTime = 0
+                    local cooldown = Fu.IsModeTurbo() and ROSH_COOLDOWN_TURBO or ROSH_COOLDOWN_NORMAL
+                    roshCooldownUntil = DotaTime() + cooldown
+                    return BOT_MODE_DESIRE_NONE
+                end
+            else
+                roshPingStartTime = 0 -- Reset if conditions no longer met
+            end
+        else
+            -- Human pinged Roshan — reset cooldown and let normal logic handle
+            roshPingStartTime = 0
+            roshCooldownUntil = 0
         end
     end
 

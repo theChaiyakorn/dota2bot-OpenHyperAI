@@ -6,9 +6,15 @@ function Fu.IsInTeamFight( bot, nRadius )
 
 	if nRadius == nil or nRadius > 1600 then nRadius = 1600 end
 
-	local attackModeAllyList = Fu.GetNearbyHeroes(bot, nRadius, false, BOT_MODE_ATTACK )
+	-- Bounded key: per-bot, single radius value (always 1200 in practice)
+	if bot._tfCache and DotaTime() - bot._tfCache[1] <= 0.2 then
+		return bot._tfCache[2]
+	end
 
-	return #attackModeAllyList >= 2 -- and bot:GetActiveMode() ~= BOT_MODE_RETREAT
+	local attackModeAllyList = Fu.GetNearbyHeroes(bot, nRadius, false, BOT_MODE_ATTACK )
+	local result = #attackModeAllyList >= 2
+	bot._tfCache = { DotaTime(), result }
+	return result
 
 end
 

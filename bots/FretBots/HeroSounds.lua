@@ -1,10 +1,10 @@
 -- Dependencies
 require 'bots.FretBots.Utilities'
-VoTypes				= dofile('bots.FretBots.VoiceoverTypes')
-VoAttitudes 		= dofile('bots.FretBots.VoiceoverAttitudes')
-VoHeroes			= dofile('bots.FretBots.VoiceoverHeroes')
+VoTypes				= require('bots.FretBots.VoiceoverTypes')
+VoAttitudes 		= require('bots.FretBots.VoiceoverAttitudes')
+VoHeroes			= require('bots.FretBots.VoiceoverHeroes')
 -- This needs to happen after the above because HeroSoundsTable references the above as globals
-local heroSounds	= dofile('bots.FretBots.HeroSoundsTable')
+local heroSounds	= require('bots.FretBots.HeroSoundsTable')
 
 -- Instantiate the class
 if HeroSounds == nil then

@@ -2,7 +2,8 @@ local X             = {}
 local bot           = GetBot()
 
 local Fu             = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion        = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion        = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList   = Fu.Skill.GetTalentList( bot )
 local sAbilityList  = Fu.Skill.GetAbilityList( bot )
 local sRole   = Fu.Item.GetRoleItemsBuyList( bot )
@@ -199,8 +200,9 @@ local bInTeamFight
 function X.SkillsComplement()
 	if Fu.CanNotUseAbility(bot) or bot:IsCastingAbility() or bot:IsChanneling() then return end
 
-	bGoingOnSomeone = Fu.IsGoingOnSomeone(bot)
-	bInTeamFight = Fu.IsInTeamFight(bot, 1200)
+	local ctx = AbilityCtx.Build(bot)
+	bGoingOnSomeone = ctx.isEngaging
+	bInTeamFight = ctx.isTeamFight
 
 	-- Re-fetch ability handles each tick
 	EchoStomp          = bot:GetAbilityByName('elder_titan_echo_stomp')
@@ -211,10 +213,10 @@ function X.SkillsComplement()
 	EarthSplitter      = bot:GetAbilityByName('elder_titan_earth_splitter')
 
 	-- Cache per-tick variables
-    nEnemyHeroes = Fu.GetNearbyHeroes(bot, 1600, true)
-    nAllyHeroes = Fu.GetNearbyHeroes(bot, 1600, false)
+    nEnemyHeroes = ctx.enemies
+    nAllyHeroes = ctx.allies
 
-    botTarget = Fu.GetProperTarget(bot)
+    botTarget = ctx.target
 
 	if ConsiderEchoStomp(bot) > 0 then
 		bot:Action_UseAbility(EchoStomp)

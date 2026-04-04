@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require( GetScriptDirectory()..'/FuncLib/systems/ability_context' )
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -178,9 +179,10 @@ local nBotMP
 function X.SkillsComplement()
     if Fu.CanNotUseAbility(bot) then return end
 
-	bGoingOnSomeone = Fu.IsGoingOnSomeone(bot)
-	bRetreating = Fu.IsRetreating(bot)
-	nBotMP = Fu.GetMP(bot)
+    local ctx = AbilityCtx.Build(bot)
+	bGoingOnSomeone = ctx.isEngaging
+	bRetreating = ctx.isRetreating
+	nBotMP = ctx.mp
 
     -- Re-fetch ability handles each tick for safety
     EarthBind      = bot:GetAbilityByName('meepo_earthbind')
@@ -191,8 +193,8 @@ function X.SkillsComplement()
 
     -- Cache per-tick variables
     Meepos       = Fu.GetMeepos()
-    botTarget    = Fu.GetProperTarget(bot)
-    botHP        = Fu.GetHP(bot)
+    botTarget    = ctx.target
+    botHP        = ctx.hp
     nAllyHeroes  = Fu.GetNearbyHeroes(bot, 1200, false, BOT_MODE_NONE)
     nEnemyHeroes = Fu.GetNearbyHeroes(bot, 1200, true, BOT_MODE_NONE)
     bAttacking   = Fu.IsAttacking(bot)

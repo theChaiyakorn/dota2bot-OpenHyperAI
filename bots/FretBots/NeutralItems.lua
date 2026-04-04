@@ -9,7 +9,7 @@ require 'bots.FretBots.Utilities'
 -- Flags for tracking status
 require 'bots.FretBots.Flags'
 
-local masterNeutralTable = dofile('bots.FretBots.SettingsNeutralItemTable')
+local masterNeutralTable = require('bots.FretBots.SettingsNeutralItemTable')
 
 -- local debug flag
 local thisDebug = true;

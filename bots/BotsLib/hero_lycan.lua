@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -210,7 +211,7 @@ function X.ConsiderSummonWolves()
 
         if bAttacking
         then
-            if nEnemyLaneCreeps ~= nil and #nEnemyLaneCreeps >= 0
+            if nEnemyLaneCreeps ~= nil and #nEnemyLaneCreeps >= 1
             then
                 return BOT_ACTION_DESIRE_HIGH
             end
@@ -346,7 +347,7 @@ function X.ConsiderHowl()
 
         if bAttacking
         then
-            if nEnemyLaneCreeps ~= nil and #nEnemyLaneCreeps >= 4
+            if nEnemyLaneCreeps ~= nil and #nEnemyLaneCreeps >= 2
             then
                 return BOT_ACTION_DESIRE_HIGH
             end
@@ -357,6 +358,14 @@ function X.ConsiderHowl()
             then
                 return BOT_ACTION_DESIRE_HIGH
             end
+        end
+
+        -- Buff allies during push even before engaging
+        local nNearbyAllies = Fu.GetNearbyHeroes(bot, 900, false, BOT_MODE_NONE)
+        if nNearbyAllies ~= nil and #nNearbyAllies >= 2
+        and nEnemyLaneCreeps ~= nil and #nEnemyLaneCreeps >= 1
+        then
+            return BOT_ACTION_DESIRE_MODERATE
         end
 	end
 
@@ -422,6 +431,34 @@ function X.ConsiderShapeShift()
 		then
 			return BOT_ACTION_DESIRE_HIGH
 		end
+    end
+
+    -- Chase fleeing enemies: use Shapeshift speed to close the gap
+    local nNearbyEnemies = Fu.GetNearbyHeroes(bot, 1200, true, BOT_MODE_NONE)
+    if nNearbyEnemies ~= nil and #nNearbyEnemies >= 1
+    then
+        for _, enemy in pairs(nNearbyEnemies) do
+            if Fu.IsValidTarget(enemy)
+            and not Fu.IsSuspiciousIllusion(enemy)
+            and Fu.GetHP(enemy) < 0.5
+            and not enemy:IsFacingLocation(bot:GetLocation(), 60)
+            then
+                return BOT_ACTION_DESIRE_HIGH
+            end
+        end
+    end
+
+    -- Escape: use Shapeshift speed boost to flee when low HP
+    if Fu.IsRetreating(bot)
+    then
+        local nInRangeEnemy = Fu.GetNearbyHeroes(bot, 900, true, BOT_MODE_NONE)
+
+        if nInRangeEnemy ~= nil and #nInRangeEnemy >= 1
+        and Fu.GetHP(bot) < 0.3
+        and bot:WasRecentlyDamagedByAnyHero(2.0)
+        then
+            return BOT_ACTION_DESIRE_HIGH
+        end
     end
 
     return BOT_ACTION_DESIRE_NONE

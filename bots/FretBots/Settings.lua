@@ -58,18 +58,18 @@ local hostID = Utilities:GetHostPlayerID()
 
 -- Instantiate ourself
 if Settings == nil then
-	Settings = dofile('bots.FretBots.SettingsDefault')
+	Settings = require('bots.FretBots.SettingsDefault')
 end
 Settings.difficultyMax = difficultyMax
 Settings.diffMaxDenominator = diffMaxDenominator
 Settings.allowPlayersToCheat = allowPlayersToCheat
 
 -- neutral item drop settings
-AllNeutrals = dofile('bots.FretBots.SettingsNeutralItemTable')
+AllNeutrals = require('bots.FretBots.SettingsNeutralItemTable')
 AllNeutrals = AllNeutrals.items
 
 -- cheat command list
-local cheats = dofile('bots.FretBots.CheatList')
+local cheats = require('bots.FretBots.CheatList')
 local cheatedList = {}
 
 local currentAnnouncePrintTime = 0

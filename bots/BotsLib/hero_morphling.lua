@@ -2,9 +2,10 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require( GetScriptDirectory()..'/FuncLib/systems/ability_context' )
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local SPL = require( GetScriptDirectory()..'/FuncLib/data/spell_list' )
-local M = dofile( GetScriptDirectory()..'/FuncLib/hero/morphling' )
+local M = require( GetScriptDirectory()..'/FuncLib/hero/morphling' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -154,7 +155,7 @@ local function HandleSpell(spell)
 
     if not heroAbilityUsage[heroName]
     then
-        heroAbilityUsage[heroName] = dofile(GetScriptDirectory()..'/BotsLib/'..string.gsub(heroName, 'npc_dota_', ''))
+        heroAbilityUsage[heroName] = require(GetScriptDirectory()..'/BotsLib/'..string.gsub(heroName, 'npc_dota_', ''))
     end
 
     local heroSpells = heroAbilityUsage[heroName]
@@ -172,15 +173,16 @@ local bAttacking
 function X.SkillsComplement()
     if Fu.CanNotUseAbility(bot) then return end
 
-	bGoingOnSomeone = Fu.IsGoingOnSomeone(bot)
-	bRetreating = Fu.IsRetreating(bot)
+    local ctx = AbilityCtx.Build(bot)
+	bGoingOnSomeone = ctx.isEngaging
+	bRetreating = ctx.isRetreating
 	bAttacking = Fu.IsAttacking(bot)
 
     nAllyHeroes = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE)
-    nEnemyHeroes = bot:GetNearbyHeroes(1600, true, BOT_MODE_NONE)
-    botTarget = Fu.GetProperTarget(bot)
-    botHP = Fu.GetHP(bot)
-    botMP = Fu.GetMP(bot)
+    nEnemyHeroes = ctx.enemies
+    botTarget = ctx.target
+    botHP = ctx.hp
+    botMP = ctx.mp
 
     bStrengthForm = bot:GetPrimaryAttribute() == ATTRIBUTE_STRENGTH and true or false
 

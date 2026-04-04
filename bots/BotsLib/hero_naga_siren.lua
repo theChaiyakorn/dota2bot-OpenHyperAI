@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils')
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion')
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion')
 local sTalentList = Fu.Skill.GetTalentList(bot)
 local sAbilityList = Fu.Skill.GetAbilityList(bot)
 local sRole = Fu.Item.GetRoleItemsBuyList(bot)
@@ -139,34 +140,35 @@ function X.SkillsComplement()
 	if Fu.CanNotUseAbility(bot) or bot:IsInvisible() then return end
 	
 	
+	local ctx = AbilityCtx.Build(bot)
 	nKeepMana = 400
-	aetherRange = 0
-	nLV = bot:GetLevel();
-	nMP = bot:GetMana()/bot:GetMaxMana();
-	nHP = bot:GetHealth()/bot:GetMaxHealth();
-	botTarget = Fu.GetProperTarget(bot);
-	hEnemyList = Fu.GetNearbyHeroes(bot,1600, true, BOT_MODE_NONE);
-	hAllyList = Fu.GetAlliesNearLoc(bot:GetLocation(), 1600);
-	
-	
-	local aether = Fu.IsItemAvailable("item_aether_lens");
-	if aether ~= nil then aetherRange = 250 end	
-	
-	
-	if ( castQDesire > 0 ) 
+	aetherRange = ctx.aetherRange
+	nLV = ctx.level
+	nMP = ctx.mp
+	nHP = ctx.hp
+	botTarget = ctx.target
+	hEnemyList = ctx.enemies
+	hAllyList = ctx.allies
+
+	castQDesire = X.ConsiderQ()
+	castWDesire, castWTarget = X.ConsiderW()
+	castRDesire = X.ConsiderR()
+	castSRDesire = X.ConsiderSR()
+
+	if ( castQDesire > 0 )
 	then
-	
+
 		bot:Action_ClearActions( false )
-	
+
 		bot:Action_UseAbility( abilityQ )
 		return;
 	end
-	
-	if ( castWDesire > 0 ) 
+
+	if ( castWDesire > 0 )
 	then
-	
+
 		Fu.SetQueuePtToINT(bot, true)
-	
+
 		bot:ActionQueue_UseAbilityOnEntity( abilityW, castWTarget )
 		return;
 	end
@@ -178,23 +180,23 @@ function X.SkillsComplement()
 		bot:Action_UseAbility(ReelIn)
 		return;
 	end
-	
-	if ( castRDesire > 0 ) 
+
+	if ( castRDesire > 0 )
 	then
-	
+
 		Fu.SetQueuePtToINT(bot, true)
-	
+
 		bot:ActionQueue_UseAbility( abilityR )
 		return;
-	
+
 	end
-	
-	if ( castSRDesire > 0 ) 
+
+	if ( castSRDesire > 0 )
 	then
-		
+
 		bot:Action_UseAbility( abilitySR )
 		return;
-	
+
 	end
 
 end

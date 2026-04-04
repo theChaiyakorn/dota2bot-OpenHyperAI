@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 // Define the path to version.ts
-const versionFilePath = path.join(__dirname, "../bots/FunLib/version.ts");
+const versionFilePath = path.join(__dirname, "../bots/FuncLib/systems/version.ts");
 
 // Get the current date in UTC and subtract one day - to ensure all players around the globe won't see a date in future.
 const currentDate = new Date();

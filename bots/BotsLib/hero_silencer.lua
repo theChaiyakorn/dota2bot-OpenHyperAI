@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -195,16 +196,13 @@ function X.SkillsComplement()
 
 	talent20Left = bot:GetAbilityByName('special_bonus_unique_silencer_4')
 
+	local ctx = AbilityCtx.Build(bot)
 	nKeepMana = 300
-	aetherRange = 0
-	nMP = bot:GetMana()/bot:GetMaxMana()
-	nHP = bot:GetHealth()/bot:GetMaxHealth()
-	nLV = bot:GetLevel()
-	hEnemyHeroList = bot:GetNearbyHeroes( 1600, true, BOT_MODE_NONE )
-
-	--计算天赋可能带来的变化
-	local aether = Fu.IsItemAvailable( "item_aether_lens" )
-	if aether ~= nil then aetherRange = 250 end
+	aetherRange = ctx.aetherRange
+	nMP = ctx.mp
+	nHP = ctx.hp
+	nLV = ctx.level
+	hEnemyHeroList = ctx.enemies
 
 
 	castRDesire			 = X.ConsiderR()

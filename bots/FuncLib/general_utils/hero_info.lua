@@ -152,6 +152,12 @@ function Fu.GetClosestTeamLane(unit)
 end
 
 function Fu.GetCoresAverageNetworth()
+	-- Bounded key: 1 value per bot
+	local bot = GetBot()
+	if bot._coreNWCache and DotaTime() - bot._coreNWCache[1] <= 2.0 then
+		return bot._coreNWCache[2]
+	end
+
 	local totalNetWorth = 0
 	local coreCount = 0
 	for i = 1, #GetTeamPlayers( GetTeam() )
@@ -164,7 +170,9 @@ function Fu.GetCoresAverageNetworth()
 			coreCount = coreCount + 1
 		end
 	end
-	return totalNetWorth / coreCount
+	local result = totalNetWorth / coreCount
+	bot._coreNWCache = { DotaTime(), result }
+	return result
 end
 
 function Fu.IsHaveAegis( bot )
@@ -172,6 +180,12 @@ function Fu.IsHaveAegis( bot )
 end
 
 function Fu.DoesTeamHaveAegis()
+	-- Bounded key: 1 value per bot
+	local bot = GetBot()
+	if bot._aegisCache and DotaTime() - bot._aegisCache[1] <= 2.0 then
+		return bot._aegisCache[2]
+	end
+
 	local numPlayer = GetTeamPlayers( GetTeam() )
 	for i = 1, #numPlayer
 	do
@@ -179,9 +193,11 @@ function Fu.DoesTeamHaveAegis()
 		if Fu.IsValidHero(member)
 		and Fu.IsHaveAegis(member)
 		then
+			bot._aegisCache = { DotaTime(), true }
 			return true
 		end
 	end
+	bot._aegisCache = { DotaTime(), false }
 	return false
 end
 

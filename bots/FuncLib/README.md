@@ -84,13 +84,13 @@ Fu.GetHP(bot)
 
 ## Sub-libraries on Fu
 
-| Field | Source |
-|---|---|
-| `Fu.Site` | `data/site.lua` |
-| `Fu.Buff` | `data/buff.lua` |
-| `Fu.Item` | `systems/item.lua` |
-| `Fu.Role` | `systems/role.lua` |
-| `Fu.Skill` | `systems/skill.lua` |
-| `Fu.Chat` | `systems/chat.lua` |
-| `Fu.Utils` | `systems/utils.lua` |
+| Field          | Source                      |
+| -------------- | --------------------------- |
+| `Fu.Site`      | `data/site.lua`             |
+| `Fu.Buff`      | `data/buff.lua`             |
+| `Fu.Item`      | `systems/item.lua`          |
+| `Fu.Role`      | `systems/role.lua`          |
+| `Fu.Skill`     | `systems/skill.lua`         |
+| `Fu.Chat`      | `systems/chat.lua`          |
+| `Fu.Utils`     | `systems/utils.lua`         |
 | `Fu.Customize` | `systems/custom_loader.lua` |

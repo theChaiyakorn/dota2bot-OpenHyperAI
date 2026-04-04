@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -154,15 +155,15 @@ function X.SkillsComplement()
 
 	if Fu.CanNotUseAbility( bot ) or bot:IsInvisible() then return end
 
-	botTarget = bot:GetAttackTarget()
+	local ctx = AbilityCtx.Build(bot)
 	nKeepMana = 220
-	aetherRange = 0
-	nMP = bot:GetMana()/bot:GetMaxMana()
-	nHP = bot:GetHealth()/bot:GetMaxHealth()
-	nLV = bot:GetLevel()
-	local aether = Fu.IsItemAvailable( 'item_aether_lens' )
-	if aether ~= nil then aetherRange = 250 end
---	if talent2:IsTrained() then aetherRange = aetherRange + talent2:GetSpecialValueInt( 'value' ) end
+	aetherRange = ctx.aetherRange
+	nLV = ctx.level
+	nMP = ctx.mp
+	nHP = ctx.hp
+	botTarget = ctx.target
+	hEnemyList = ctx.enemies
+	hAllyList = ctx.allies
 
 	ArcaneAuraDesire = X.ConsiderArcaneAura()
 	if ( ArcaneAuraDesire > 0 )

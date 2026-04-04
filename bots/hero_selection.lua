@@ -698,9 +698,15 @@ local function PickHeroForBotSlot(i, id)
 		end
 	end
 
-	-- Final safety: ensure policy still holds (e.g., late ban added)
-	if not X.CanPickHero(team, pick) then
-		pick = X.GetRandomAvailableHero(team, rolePool) or preselect
+	-- If user explicitly configured this hero, respect it — only fallback
+	-- if the hero name is not recognized (not in SupportedHeroes)
+	local isUserPick = X.IsInCustomizedPicks(preselect) and preselect == pick
+
+	if not isUserPick then
+		-- Final safety: ensure policy still holds (e.g., late ban added)
+		if not X.CanPickHero(team, pick) then
+			pick = X.GetRandomAvailableHero(team, rolePool) or preselect
+		end
 	end
 
 	-- Update per-team weak count if needed

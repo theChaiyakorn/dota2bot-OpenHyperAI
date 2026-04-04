@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -133,16 +134,18 @@ function X.SkillsComplement()
 
 	if Fu.CanNotUseAbility( bot ) or bot:IsInvisible() then return end
 
+	local ctx = AbilityCtx.Build(bot)
 	nKeepMana = 400
-	aetherRange = 0
-	nLV = bot:GetLevel()
-	nMP = bot:GetMana() / bot:GetMaxMana()
-	nHP = bot:GetHealth() / bot:GetMaxHealth()
-	botTarget = Fu.GetProperTarget( bot )
-	hEnemyList = Fu.GetNearbyHeroes(bot, 1600, true, BOT_MODE_NONE )
-	hAllyList = Fu.GetAlliesNearLoc( bot:GetLocation(), 1600 )
+	aetherRange = ctx.aetherRange
+	nLV = ctx.level
+	nMP = ctx.mp
+	nHP = ctx.hp
+	botTarget = ctx.target
+	hEnemyList = ctx.enemies
+	hAllyList = ctx.allies
 
 
+	castWDesire, castWTarget = X.ConsiderW()
 	if castWDesire > 0
 	then
 
@@ -153,6 +156,7 @@ function X.SkillsComplement()
 	end
 
 
+	castRDesire, castRTarget = X.ConsiderR()
 	if castRDesire > 0
 	then
 
@@ -161,8 +165,9 @@ function X.SkillsComplement()
 		bot:ActionQueue_UseAbilityOnEntity( abilityR, castRTarget )
 		return
 	end
-	
-	
+
+
+	castQDesire, castQTarget = X.ConsiderQ()
 	if castQDesire > 0
 	then
 

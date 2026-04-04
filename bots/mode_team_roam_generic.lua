@@ -10,7 +10,7 @@ Customize.ThinkLess = Customize.Enable and Customize.ThinkLess or 1
 local Fu = require(GetScriptDirectory()..'/FuncLib/func_utils')
 local Item = require(GetScriptDirectory()..'/FuncLib/systems/item')
 local Roles = require(GetScriptDirectory()..'/FuncLib/systems/role')
-local AttackSpecialUnit = dofile(GetScriptDirectory()..'/FuncLib/hero/special_units')
+local AttackSpecialUnit = require(GetScriptDirectory()..'/FuncLib/hero/special_units')
 
 local X = {}
 local team = GetTeam()
@@ -70,15 +70,39 @@ local function CapForLanePush(desire)
 end
 
 function GetDesire()
+	if ShouldSkipBotThink(GetBot()) then return 0 end
     -- local cacheKey = 'GetTeamRoamDesire'..tostring(bot:GetPlayerID())
     -- local cachedVar = Fu.Utils.GetCachedVars(cacheKey, 0.2 * (1 + Customize.ThinkLess))
     -- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
+
+    -- Unstuck: if bot is in a Valve-only mode for too long and enemies are nearby,
+    -- boost desire to take over and let team_roam Think handle the situation.
+    local activeMode = bot:GetActiveMode()
+    if activeMode == BOT_MODE_ITEM
+    or (BOT_MODE_WISDOM_SHRINE and activeMode == BOT_MODE_WISDOM_SHRINE)
+    or (BOT_MODE_WATCHER and activeMode == BOT_MODE_WATCHER)
+    or (BOT_MODE_LOTUS_POOL and activeMode == BOT_MODE_LOTUS_POOL)
+    then
+        if bot._stuckModeTime == nil then bot._stuckModeTime = DotaTime() end
+        if DotaTime() - bot._stuckModeTime > 8 then
+            local enemies = bot:GetNearbyHeroes(1200, true, BOT_MODE_NONE) or {}
+            if #enemies > 0 then
+                bot._stuckModeTime = nil
+                return GetAdjustedDesireValue(0.85)
+            end
+            -- No enemies but still stuck — move to lane
+            bot._stuckModeTime = nil
+            return GetAdjustedDesireValue(0.8)
+        end
+    else
+        bot._stuckModeTime = nil
+    end
 
     local res = GetDesireHelper()
     res = CapForLanePush(res)
 
     -- Fu.Utils.SetCachedVars(cacheKey, res)
-    return res
+    return GetAdjustedDesireValue(res)
 end
 function GetDesireHelper()
 	local nBotHP = Fu.GetHP(bot)

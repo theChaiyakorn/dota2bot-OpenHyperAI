@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList = Fu.Skill.GetTalentList( bot )
 local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
@@ -118,11 +119,13 @@ end
 local Void              = bot:GetAbilityByName('night_stalker_void')
 local CripplingFear     = bot:GetAbilityByName('night_stalker_crippling_fear')
 local HunterInTheNight  = bot:GetAbilityByName('night_stalker_hunter_in_the_night')
+local MidnightFeast     = bot:GetAbilityByName('night_stalker_midnight_feast')
 local DarkAscension     = bot:GetAbilityByName('night_stalker_darkness')
 
 local VoidDesire, VoidTarget
 local CripplingFearDesire
 local HunterInTheNightDesire, HunterInTheNightTarget
+local MidnightFeastDesire, MidnightFeastTarget
 local DarkAscensionDesire
 
 local botTarget
@@ -169,6 +172,13 @@ function X.SkillsComplement()
     if HunterInTheNightDesire > 0
     then
         bot:Action_UseAbilityOnEntity(HunterInTheNight, HunterInTheNightTarget)
+        return
+    end
+
+    MidnightFeastDesire, MidnightFeastTarget = X.ConsiderMidnightFeast()
+    if MidnightFeastDesire > 0
+    then
+        bot:Action_UseAbilityOnEntity(MidnightFeast, MidnightFeastTarget)
         return
     end
 end
@@ -572,6 +582,30 @@ function X.ConsiderDarkAscension()
     end
 
     return BOT_ACTION_DESIRE_NONE
+end
+
+function X.ConsiderMidnightFeast()
+    if not Fu.CanCastAbility(MidnightFeast)
+    or (Fu.IsRetreating(bot) and Fu.IsRealInvisible(bot)
+        and #Fu.GetNearbyHeroes(bot, 1600, true, BOT_MODE_NONE) > 0)
+    then
+        return BOT_ACTION_DESIRE_NONE, nil
+    end
+
+    local nEnemyCreeps = bot:GetNearbyCreeps(650, true)
+
+    if  Fu.IsValid(nEnemyCreeps[1])
+    and Fu.CanBeAttacked(nEnemyCreeps[1])
+    and Fu.CanCastOnTargetAdvanced(nEnemyCreeps[1])
+    and not nEnemyCreeps[1]:IsAncientCreep()
+    and not nEnemyCreeps[1]:IsDominated()
+    then
+        if Fu.GetHP(bot) < 0.5 or (nBotMP < 0.5 and Fu.GetHP(bot) < 0.75) then
+            return BOT_ACTION_DESIRE_HIGH, nEnemyCreeps[1]
+        end
+    end
+
+    return BOT_ACTION_DESIRE_NONE, nil
 end
 
 return X

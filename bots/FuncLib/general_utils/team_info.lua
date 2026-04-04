@@ -1,6 +1,57 @@
 -- Team/unit list queries: nearby heroes, creeps, counts
 local function Init(Fu)
 
+-- Frame-level cache for GetUnitList — valid for one game tick (~0.03s).
+-- GetUnitList builds lists on-demand no more than once per frame (Valve docs),
+-- but our wrapper filters (illusion removal etc.) still re-iterate every call.
+-- This caches the FILTERED result so subsequent calls in the same tick are free.
+local _unitListCache = {}
+local _unitListCacheTime = -1
+
+local function GetCachedUnitList(listType)
+	local now = GameTime()
+	-- Invalidate entire cache each frame (GameTime changes every frame)
+	if now ~= _unitListCacheTime then
+		_unitListCache = {}
+		_unitListCacheTime = now
+	end
+	if _unitListCache[listType] then
+		return _unitListCache[listType]
+	end
+	local result = GetUnitList(listType)
+	_unitListCache[listType] = result
+	return result
+end
+-- Expose for other modules
+Fu.GetCachedUnitList = GetCachedUnitList
+
+-- Pre-filtered enemy hero list: removes illusions/clones once per frame.
+-- All functions that need "real enemy heroes" should use this instead of
+-- iterating GetCachedUnitList(UNIT_LIST_ENEMY_HEROES) and filtering each time.
+local _realEnemyHeroesCache = nil
+local _realEnemyHeroesCacheTime = -1
+
+function Fu.GetRealEnemyHeroes()
+	local now = GameTime()
+	if now == _realEnemyHeroesCacheTime and _realEnemyHeroesCache then
+		return _realEnemyHeroesCache
+	end
+	local all = GetCachedUnitList(UNIT_LIST_ENEMY_HEROES)
+	local real = {}
+	for _, hero in pairs(all) do
+		if Fu.IsValidHero(hero)
+		and not Fu.IsSuspiciousIllusion(hero)
+		and not Fu.IsMeepoClone(hero)
+		and not hero:HasModifier('modifier_arc_warden_tempest_double')
+		then
+			table.insert(real, hero)
+		end
+	end
+	_realEnemyHeroesCache = real
+	_realEnemyHeroesCacheTime = now
+	return real
+end
+
 
 --友军生物数量
 function Fu.GetUnitAllyCountAroundEnemyTarget( target, nRadius )
@@ -60,7 +111,7 @@ function Fu.GetNearbyAroundLocationUnitCount( bEnemy, bHero, nRadius, vLoc )
 		end
 	else
 		if bEnemy then
-			for _, unit in pairs(GetUnitList(UNIT_LIST_ENEMIES))
+			for _, unit in pairs(GetCachedUnitList(UNIT_LIST_ENEMIES))
 			do
 				if Fu.IsValid(unit)
 				and GetUnitToLocationDistance(unit, vLoc) <= nRadius
@@ -69,7 +120,7 @@ function Fu.GetNearbyAroundLocationUnitCount( bEnemy, bHero, nRadius, vLoc )
 				end
 			end
 		else
-			for _, unit in pairs(GetUnitList(UNIT_LIST_ALLIES))
+			for _, unit in pairs(GetCachedUnitList(UNIT_LIST_ALLIES))
 			do
 				if Fu.IsValid(unit)
 				and GetUnitToLocationDistance(unit, vLoc) <= nRadius
@@ -136,9 +187,6 @@ end
 
 function Fu.GetAlliesNearLoc( vLoc, nRadius )
 	local allies = {}
-	-- local cacheKey = 'GetAlliesNearLoc'..tostring(nRadius) ..tostring(Fu.ToNearest500(vLoc.x))..'-'..tostring(Fu.ToNearest500(vLoc.y))
-	-- local cache = Fu.Utils.GetCachedVars(cacheKey, 0.5)
-	-- if cache ~= nil then return cache end
 
 	for i = 1, #GetTeamPlayers( GetTeam() )
 	do
@@ -151,32 +199,20 @@ function Fu.GetAlliesNearLoc( vLoc, nRadius )
 		end
 	end
 
-	-- Fu.Utils.SetCachedVars(cacheKey, allies)
-
 	return allies
-
 end
 
 
 function Fu.GetEnemiesNearLoc(vLoc, nRadius)
-	-- local cacheKey = 'GetEnemiesNearLoc'..tostring(nRadius) ..tostring(Fu.ToNearest500(vLoc.x))..'-'..tostring(Fu.ToNearest500(vLoc.y))
-	-- local cache = Fu.Utils.GetCachedVars(cacheKey, 0.5)
-	-- if cache ~= nil then return cache end
-
 	local enemies = {}
-	for _, enemyHero in pairs(GetUnitList(UNIT_LIST_ENEMY_HEROES))
+	-- Use pre-filtered list (illusions/clones already removed, cached per frame)
+	for _, enemyHero in pairs(Fu.GetRealEnemyHeroes())
 	do
-		if Fu.IsValidHero(enemyHero)
-		and GetUnitToLocationDistance(enemyHero, vLoc) <= nRadius
-		and not Fu.IsSuspiciousIllusion(enemyHero)
-		and not Fu.IsMeepoClone(enemyHero)
-		and not enemyHero:HasModifier('modifier_arc_warden_tempest_double')
+		if GetUnitToLocationDistance(enemyHero, vLoc) <= nRadius
 		then
 			table.insert(enemies, enemyHero)
 		end
 	end
-
-	-- Fu.Utils.SetCachedVars(cacheKey, enemies)
 
 	return enemies
 end
@@ -188,7 +224,7 @@ function Fu.GetIllusionsNearLoc(vLoc, nRadius)
 	-- if cache ~= nil then return cache end
 
 	local illusions = {}
-	for _, enemyHero in pairs(GetUnitList(UNIT_LIST_ENEMY_HEROES))
+	for _, enemyHero in pairs(GetCachedUnitList(UNIT_LIST_ENEMY_HEROES))
 	do
 		if Fu.IsValidHero(enemyHero)
 		and GetUnitToLocationDistance(enemyHero, vLoc) <= nRadius
@@ -224,7 +260,7 @@ end
 
 function Fu.GetSameUnitType(hUnit, nRadius, sUnitName, bAttacking)
     local tAttackingUnits = {}
-    local unitList = GetUnitList(UNIT_LIST_ALL)
+    local unitList = GetCachedUnitList(UNIT_LIST_ALL)
     for _, unit in pairs(unitList) do
         if Fu.IsValid(unit)
         and unit:GetUnitName() == sUnitName
@@ -392,19 +428,28 @@ end
 	-- 	}
 	-- }
 -- }
--- Cache duration in seconds
-local nearByHeroCacheDuration = 0.1
-local currentTime
-local cacheNearbyTable
-local printN = 0
+-- Lightweight per-bot cache: stores results on the bot handle itself.
+-- Key format: _c_{funcName}_{radius}_{enemy} → { time, result }
+-- Cache TTL: 0.15s (enough for one full mode cycle, short enough for responsiveness)
+local CACHE_TTL = 0.15
+
+local function _getCached(bot, key, ttl)
+	if bot._fc == nil then return nil end
+	local entry = bot._fc[key]
+	if entry and DotaTime() - entry[1] <= (ttl or CACHE_TTL) then
+		return entry[2]
+	end
+	return nil
+end
+
+local function _setCache(bot, key, value)
+	if bot._fc == nil then bot._fc = {} end
+	bot._fc[key] = { DotaTime(), value }
+end
 
 function Fu.GetNearbyHeroes(bot, nRadius, bEnemy, bBotMode)
 	if not bBotMode then bBotMode = BOT_MODE_NONE end
-	-- local nearbyHeroes = bot:GetNearbyHeroes(nRadius, bEnemy, bBotMode)
-	-- if printN <= 100000 then
-	-- 	printN = printN + 1
-	-- 	Fu.Utils.PrintTable(nearbyHeroes)
-	-- end
+
 	local nearby = bot:GetNearbyHeroes(nRadius, bEnemy, bBotMode)
 	if not nearby then
 		return nearby
@@ -419,6 +464,7 @@ function Fu.GetNearbyHeroes(bot, nRadius, bEnemy, bBotMode)
 			table.insert(heroes, hero)
 		end
 	end
+
 	return heroes
 
     -- Cap the radius to a maximum value
@@ -557,10 +603,6 @@ end
 
 
 function Fu.GetLastSeenEnemiesNearLoc(vLoc, nRadius)
-	-- local cacheKey = 'GetLastSeenEnemiesNearLoc'..tostring(nRadius) ..'-'..tostring(Fu.ToNearest500(vLoc.x))..'-'..tostring(Fu.ToNearest500(vLoc.y))
-	-- local cache = Fu.Utils.GetCachedVars(cacheKey, 0.5)
-	-- if cache ~= nil then return cache end
-
 	local enemies = {}
 
 	for i, id in pairs( GetTeamPlayers( GetOpposingTeam() ) )
@@ -579,20 +621,20 @@ function Fu.GetLastSeenEnemiesNearLoc(vLoc, nRadius)
 		end
 	end
 
-	-- Fu.Utils.SetCachedVars(cacheKey, enemies)
 	return enemies
 end
 
 
 function Fu.GetNumOfAliveHeroes( bEnemy )
-	local count = 0
+	-- Bounded key: 2 possible values (ally=80002, enemy=80003)
+	local bot = GetBot()
 	local nTeam = GetTeam()
 	if bEnemy then nTeam = GetOpposingTeam() end
+	local cKey = 80000 + nTeam
+	local cached = _getCached(bot, cKey, 1.0)
+	if cached then return cached end
 
-	-- local cacheKey = 'GetNumOfAliveHeroes'..tostring(nTeam)
-	-- local cache = Fu.Utils.GetCachedVars(cacheKey, 1)
-	-- if cache ~= nil then return cache end
-
+	local count = 0
 	for i, id in pairs( GetTeamPlayers( nTeam ) )
 	do
 		if IsHeroAlive( id )
@@ -601,7 +643,7 @@ function Fu.GetNumOfAliveHeroes( bEnemy )
 		end
 	end
 
-	-- Fu.Utils.SetCachedVars(cacheKey, count)
+	_setCache(bot, cKey, count)
 	return count
 
 end
@@ -609,7 +651,7 @@ end
 
 function Fu.GetHeroesNearLocation( bEnemy, location, distance )
 	local heroes = { }
-	local heroList = bEnemy and GetUnitList( UNIT_LIST_ENEMY_HEROES ) or GetUnitList( UNIT_LIST_ALLIED_HEROES )
+	local heroList = bEnemy and GetCachedUnitList( UNIT_LIST_ENEMY_HEROES ) or GetCachedUnitList( UNIT_LIST_ALLIED_HEROES )
 	for _, hero in pairs( heroList )
 	do
 		if hero ~= nil and hero:IsAlive() and hero:CanBeSeen() and GetUnitToLocationDistance(hero, location) <= distance then
@@ -622,15 +664,16 @@ end
 
 
 function Fu.GetAverageLevel( bEnemy )
-	local count = 0
-	local sum = 0
+	-- Bounded key: 2 possible values
+	local bot = GetBot()
 	local nTeam = GetTeam()
 	if bEnemy then nTeam = GetOpposingTeam() end
+	local cKey = 81000 + nTeam
+	local cached = _getCached(bot, cKey, 2.0)
+	if cached then return cached end
 
-	-- local cacheKey = 'GetAverageLevel'..tostring(nTeam)
-	-- local cache = Fu.Utils.GetCachedVars(cacheKey, 1)
-	-- if cache ~= nil then return cache end
-
+	local count = 0
+	local sum = 0
 	for i, id in pairs( GetTeamPlayers( nTeam ) )
 	do
 		sum = sum + GetHeroLevel( id )
@@ -638,8 +681,7 @@ function Fu.GetAverageLevel( bEnemy )
 	end
 
 	local res = sum / count
-
-	-- Fu.Utils.SetCachedVars(cacheKey, res)
+	_setCache(bot, cKey, res)
 	return res
 
 end
@@ -772,7 +814,7 @@ end
 
 function Fu.GetAliveAllyCoreCount()
 	local count = 0
-	for _, allyHero in pairs(GetUnitList(UNIT_LIST_ALLIED_HEROES))
+	for _, allyHero in pairs(GetCachedUnitList(UNIT_LIST_ALLIED_HEROES))
 	do
 		if Fu.IsValidHero(allyHero)
 		and Fu.IsCore(allyHero)
@@ -789,7 +831,7 @@ end
 function Fu.GetMeepos()
 	local Meepos = {}
 
-	for _, allyHero in pairs(GetUnitList(UNIT_LIST_ALLIED_HEROES))
+	for _, allyHero in pairs(GetCachedUnitList(UNIT_LIST_ALLIED_HEROES))
 	do
 		if Fu.IsValidHero(allyHero)
 		and allyHero:GetUnitName() == 'npc_dota_hero_meepo'
@@ -853,7 +895,7 @@ function Fu.GetEnemiesAroundLoc(vLoc, nRadius)
 		end
 	end
 
-	for _, unit in pairs(GetUnitList(UNIT_LIST_ENEMIES))
+	for _, unit in pairs(GetCachedUnitList(UNIT_LIST_ENEMIES))
 	do
 		if Fu.IsValid(unit)
 		and GetUnitToLocationDistance(unit, vLoc) <= nRadius
@@ -915,7 +957,7 @@ function Fu.GetInventoryNetworth()
 				end
 			end
 		end
-		for _, enemy in pairs(GetUnitList(UNIT_LIST_ENEMY_HEROES)) do
+		for _, enemy in pairs(GetCachedUnitList(UNIT_LIST_ENEMY_HEROES)) do
 			if Fu.IsValidHero(enemy)
 			and not Fu.IsSuspiciousIllusion(enemy)
 			and not enemy:HasModifier('modifier_arc_warden_tempest_double')
@@ -945,20 +987,22 @@ end
 
 
 function Fu.GetAliveCoreCount(nEnemy)
-	-- local cacheKey = 'GetAliveCoreCount'..tostring(GetTeam())
-	-- local cache = Fu.Utils.GetCachedVars(cacheKey, 0.5)
-	-- if cache ~= nil then return cache end
+	-- Bounded key: 2 possible values
+	local bot = GetBot()
+	local cKey = 82000 + (nEnemy and 1 or 0)
+	local cached = _getCached(bot, cKey, 1.0)
+	if cached then return cached end
 
 	local count = 0
 	if nEnemy then
-		for _, enemyHero in pairs(GetUnitList(UNIT_LIST_ENEMY_HEROES))
+		for _, enemyHero in pairs(GetCachedUnitList(UNIT_LIST_ENEMY_HEROES))
 		do
 			if Fu.IsValidHero(enemyHero) and not Fu.IsSuspiciousIllusion(enemyHero) and Fu.IsCore(enemyHero) then
 				count = count + 1
 			end
 		end
 	else
-		for _, allyHero in pairs(GetUnitList(UNIT_LIST_ALLIED_HEROES))
+		for _, allyHero in pairs(GetCachedUnitList(UNIT_LIST_ALLIED_HEROES))
 		do
 			if Fu.IsValidHero(allyHero) and not allyHero:IsIllusion() and Fu.IsCore(allyHero) then
 				count = count + 1
@@ -966,7 +1010,7 @@ function Fu.GetAliveCoreCount(nEnemy)
 		end
 	end
 
-	-- Fu.Utils.SetCachedVars(cacheKey, count)
+	_setCache(bot, cKey, count)
 	return count
 end
 

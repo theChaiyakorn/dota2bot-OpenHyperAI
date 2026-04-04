@@ -1,6 +1,6 @@
 local Fu = require(GetScriptDirectory()..'/FuncLib/func_utils')
 local U = require(GetScriptDirectory()..'/FuncLib/hero/minion_lib/utils')
-local I = dofile(GetScriptDirectory()..'/FuncLib/hero/minion_lib/illusions')
+local I = require(GetScriptDirectory()..'/FuncLib/hero/minion_lib/illusions')
 
 local X = {}
 
@@ -920,6 +920,107 @@ X.ConsiderSpellUsage['centaur_khan_war_stomp'] = function (hMinionUnit, ability)
     end
 
     return BOT_ACTION_DESIRE_NONE, nil, ''
+end
+
+-- Forest Troll High Priest: Heal allies
+X.ConsiderSpellUsage['forest_troll_high_priest_heal'] = function (hMinionUnit, ability)
+    local nCastRange = ability:GetSpecialValueInt('AbilityCastRange')
+    local bot = GetBot()
+    local nAllyHeroes = hMinionUnit:GetNearbyHeroes(nCastRange, false, BOT_MODE_NONE) or {}
+
+    for _, allyHero in pairs(nAllyHeroes) do
+        if Fu.IsValidHero(allyHero)
+        and Fu.CanBeAttacked(allyHero)
+        and Fu.IsInRange(hMinionUnit, allyHero, nCastRange)
+        and not allyHero:IsIllusion()
+        and not allyHero:HasModifier('modifier_abaddon_borrowed_time')
+        and Fu.GetHP(allyHero) < 0.5
+        then
+            return BOT_ACTION_DESIRE_HIGH, allyHero, 'unit'
+        end
+    end
+
+    return BOT_ACTION_DESIRE_NONE
+end
+
+-- Chen Martyrdom (heals dominated creep on death)
+X.ConsiderSpellUsage['chen_martyrdom'] = function (hMinionUnit, ability)
+    -- Only use when the creep is about to die and allies are nearby
+    local bot = GetBot()
+    local minionHP = Fu.GetHP(hMinionUnit)
+    local nAllyHeroes = hMinionUnit:GetNearbyHeroes(900, false, BOT_MODE_NONE) or {}
+
+    if minionHP < 0.2 and #nAllyHeroes >= 1 then
+        for _, ally in pairs(nAllyHeroes) do
+            if Fu.IsValidHero(ally) and Fu.GetHP(ally) < 0.6 then
+                return BOT_ACTION_DESIRE_HIGH, nil, 'none'
+            end
+        end
+    end
+
+    return BOT_ACTION_DESIRE_NONE
+end
+
+-- Necronomicon Archer Purge
+X.ConsiderSpellUsage['necronomicon_archer_purge'] = function (hMinionUnit, ability)
+    local nCastRange = ability:GetCastRange()
+    local nEnemyHeroes = hMinionUnit:GetNearbyHeroes(nCastRange, true, BOT_MODE_NONE) or {}
+
+    for _, enemyHero in pairs(nEnemyHeroes) do
+        if Fu.IsValidHero(enemyHero)
+        and Fu.CanBeAttacked(enemyHero)
+        and Fu.IsInRange(hMinionUnit, enemyHero, nCastRange)
+        and not enemyHero:IsMagicImmune()
+        -- Purge is most useful on hasted/buffed enemies
+        and (enemyHero:GetCurrentMovementSpeed() > 400
+            or enemyHero:HasModifier('modifier_ghost_state')
+            or enemyHero:HasModifier('modifier_item_ghost'))
+        then
+            return BOT_ACTION_DESIRE_HIGH, enemyHero, 'unit'
+        end
+    end
+
+    return BOT_ACTION_DESIRE_NONE
+end
+
+-- Spawnlord Master Freeze (root)
+X.ConsiderSpellUsage['spawnlord_master_freeze'] = function (hMinionUnit, ability)
+    local nCastRange = ability:GetCastRange()
+    local nEnemyHeroes = hMinionUnit:GetNearbyHeroes(nCastRange, true, BOT_MODE_NONE) or {}
+
+    for _, enemyHero in pairs(nEnemyHeroes) do
+        if Fu.IsValidHero(enemyHero)
+        and Fu.CanBeAttacked(enemyHero)
+        and Fu.IsInRange(hMinionUnit, enemyHero, nCastRange)
+        and not enemyHero:IsMagicImmune()
+        and not Fu.IsDisabled(enemyHero)
+        then
+            return BOT_ACTION_DESIRE_HIGH, enemyHero, 'unit'
+        end
+    end
+
+    return BOT_ACTION_DESIRE_NONE
+end
+
+-- Spawnlord Master Stomp (AoE stun)
+X.ConsiderSpellUsage['spawnlord_master_stomp'] = function (hMinionUnit, ability)
+    local nRadius = ability:GetSpecialValueInt('radius')
+    local nEnemyHeroes = hMinionUnit:GetNearbyHeroes(nRadius, true, BOT_MODE_NONE) or {}
+
+    if #nEnemyHeroes >= 2 then
+        return BOT_ACTION_DESIRE_HIGH, nil, 'none'
+    end
+
+    for _, enemyHero in pairs(nEnemyHeroes) do
+        if Fu.IsValidHero(enemyHero)
+        and Fu.IsInRange(hMinionUnit, enemyHero, nRadius)
+        and enemyHero:IsChanneling()
+        then
+            return BOT_ACTION_DESIRE_HIGH, nil, 'none'
+        end
+    end
+
+    return BOT_ACTION_DESIRE_NONE
 end
 
 return X

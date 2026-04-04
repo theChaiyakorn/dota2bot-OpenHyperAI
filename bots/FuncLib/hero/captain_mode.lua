@@ -85,11 +85,11 @@ local GameState = ____dota.GameState
 local HeroPickState = ____dota.HeroPickState
 local Lane = ____dota.Lane
 local Team = ____dota.Team
-local ____aba_role = require(GetScriptDirectory().."/FuncLib/systems/role")
-local CanBeOfflaner = ____aba_role.CanBeOfflaner
-local CanBeMidlaner = ____aba_role.CanBeMidlaner
-local CanBeSupport = ____aba_role.CanBeSupport
-local CanBeSafeLaneCarry = ____aba_role.CanBeSafeLaneCarry
+local ____role = require(GetScriptDirectory().."/FuncLib/systems/role")
+local CanBeOfflaner = ____role.CanBeOfflaner
+local CanBeMidlaner = ____role.CanBeMidlaner
+local CanBeSupport = ____role.CanBeSupport
+local CanBeSafeLaneCarry = ____role.CanBeSafeLaneCarry
 function ____exports.PickCaptain()
     if not ____exports.IsHumanPlayerExist() or DotaTime() > -1 then
         if GetCMCaptain() == -1 then

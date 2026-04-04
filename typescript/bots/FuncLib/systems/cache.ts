@@ -51,8 +51,8 @@ interface GlobalLocationState {
     tormentorWaitingLocation: Vector;
 }
 
-// Global cache storage
-const globalCache: Record<string, GlobalCacheEntry> = {};
+// Global cache storage — supports both string and numeric keys
+const globalCache: Record<string | number, GlobalCacheEntry> = {};
 const GLOBAL_CACHE_TTL = 0.5; // 500ms TTL for global cache
 
 // Specific cache objects
@@ -164,7 +164,7 @@ export function getGlobalLocationState(): GlobalLocationState {
 /**
  * Generic cache function for arbitrary data
  */
-export function getCachedData<T>(key: string, ttl: number, fetchFn: () => T): T {
+export function getCachedData<T>(key: string | number, ttl: number, fetchFn: () => T): T {
     const now = DotaTime();
     const cached = globalCache[key];
 
@@ -208,25 +208,22 @@ export function clearAllCaches(): void {
 }
 
 /**
- * Get cached allies near location
+ * Get cached allies near location.
+ * Now delegates to Fu.GetAlliesNearLoc which has its own function-level
+ * cache (0.15s TTL with grid-snapped numeric keys). No extra caching needed here.
  */
 export function getCachedAlliesNearLoc(location: Vector, radius: number): Unit[] {
-    const key = `allies_${Math.floor(location.x)}_${Math.floor(location.y)}_${radius}_${Math.floor(DotaTime() * 2)}`;
-    return getCachedData(key, 0.5, () => {
-        const Fu = require("bots/FuncLib/func_utils");
-        return Fu.GetAlliesNearLoc(location, radius);
-    });
+    const Fu = require("bots/FuncLib/func_utils");
+    return Fu.GetAlliesNearLoc(location, radius);
 }
 
 /**
- * Get cached enemies near location
+ * Get cached enemies near location.
+ * Delegates to Fu.GetEnemiesNearLoc which has its own function-level cache.
  */
 export function getCachedEnemiesNearLoc(location: Vector, radius: number): Unit[] {
-    const key = `enemies_${Math.floor(location.x)}_${Math.floor(location.y)}_${radius}_${Math.floor(DotaTime() * 2)}`;
-    return getCachedData(key, 0.5, () => {
-        const Fu = require("bots/FuncLib/func_utils");
-        return Fu.GetEnemiesNearLoc(location, radius);
-    });
+    const Fu = require("bots/FuncLib/func_utils");
+    return Fu.GetEnemiesNearLoc(location, radius);
 }
 
 // Auto-cleanup every 30 seconds

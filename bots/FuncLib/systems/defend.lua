@@ -709,25 +709,25 @@ function GetHighGroundEdgeWaitPoint(team, lane)
     end
     local raxR = ____temp_7
     local anc = GetAncient(team)
-    local ____jmz_IsValidBuilding_result_10
+    local ____Fu_IsValidBuilding_result_10
     if Fu.IsValidBuilding(t3) then
-        ____jmz_IsValidBuilding_result_10 = t3
+        ____Fu_IsValidBuilding_result_10 = t3
     else
-        local ____jmz_IsValidBuilding_result_9
+        local ____Fu_IsValidBuilding_result_9
         if Fu.IsValidBuilding(raxM) then
-            ____jmz_IsValidBuilding_result_9 = raxM
+            ____Fu_IsValidBuilding_result_9 = raxM
         else
-            local ____jmz_IsValidBuilding_result_8
+            local ____Fu_IsValidBuilding_result_8
             if Fu.IsValidBuilding(raxR) then
-                ____jmz_IsValidBuilding_result_8 = raxR
+                ____Fu_IsValidBuilding_result_8 = raxR
             else
-                ____jmz_IsValidBuilding_result_8 = nil
+                ____Fu_IsValidBuilding_result_8 = nil
             end
-            ____jmz_IsValidBuilding_result_9 = ____jmz_IsValidBuilding_result_8
+            ____Fu_IsValidBuilding_result_9 = ____Fu_IsValidBuilding_result_8
         end
-        ____jmz_IsValidBuilding_result_10 = ____jmz_IsValidBuilding_result_9
+        ____Fu_IsValidBuilding_result_10 = ____Fu_IsValidBuilding_result_9
     end
-    local anchorBuilding = ____jmz_IsValidBuilding_result_10
+    local anchorBuilding = ____Fu_IsValidBuilding_result_10
     if anchorBuilding and Fu.IsValidBuilding(anc) then
         local t = anchorBuilding:GetLocation()
         local a = anc:GetLocation()
@@ -881,7 +881,6 @@ function ConsiderPingedDefend(bot, lane, desire, building, tier, nEffAllies, nEn
     end
 end
 function ____exports.GetDefendDesireHelper(bot, lane)
-	local nBotHP = Fu.GetHP(bot)
     if bot.laneToDefend == nil then
         bot.laneToDefend = lane
     end
@@ -901,17 +900,6 @@ function ____exports.GetDefendDesireHelper(bot, lane)
     end
     if botLevel < 3 then
         return BotModeDesire.None
-    end
-    local closeEnemiesDefend = Fu.GetEnemiesNearLoc(
-        bot:GetLocation(),
-        900
-    )
-    local closeAlliesDefend = Fu.GetAlliesNearLoc(
-        bot:GetLocation(),
-        900
-    )
-    if #closeEnemiesDefend > 0 and #closeAlliesDefend >= #closeEnemiesDefend then
-        return math.min(0.3, BotModeDesire.Moderate)
     end
     local teamIsPushing = false
     do
@@ -1099,7 +1087,7 @@ function ____exports.GetDefendDesireHelper(bot, lane)
     maxDesire = math.min(maxDesire, 1)
     local baseFloor = shouldDef and BotActionDesire.Low or BotActionDesire.VeryLow
     nDefendDesire = RemapValClamped(
-        nBotHP,
+        Fu.GetHP(bot),
         0.75,
         0.2,
         RemapValClamped(
@@ -1124,7 +1112,7 @@ function ____exports.GetDefendDesireHelper(bot, lane)
         end
     end
     local botTarget = Fu.GetProperTarget(bot)
-    if Fu.IsValidHero(botTarget) and Fu.GetHP(botTarget) < 0.6 and nBotHP > Fu.GetHP(botTarget) and GetUnitToUnitDistance(bot, botTarget) < 1500 then
+    if Fu.IsValidHero(botTarget) and Fu.GetHP(botTarget) < 0.6 and Fu.GetHP(bot) > Fu.GetHP(botTarget) and GetUnitToUnitDistance(bot, botTarget) < 1500 then
         nDefendDesire = nDefendDesire * 0.4
     end
     do

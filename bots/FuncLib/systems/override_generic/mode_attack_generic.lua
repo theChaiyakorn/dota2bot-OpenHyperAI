@@ -111,8 +111,12 @@ function Generic.GetDesire()
 				end
 			end
 
-			-- Laning: allow hero attacks if not recently damaged and numbers ok
-			if Fu.IsInLaningPhase() and not bot:WasRecentlyDamagedByAnyHero(3.0) and not bot:WasRecentlyDamagedByCreep(2.0) and #nInRangeAlly >= #nInRangeEnemy then
+			-- Laning: allow hero attacks if healthy, not recently damaged, and numbers ok
+			if Fu.IsInLaningPhase()
+			and botHP > 0.4
+			and not bot:WasRecentlyDamagedByAnyHero(3.0)
+			and not bot:WasRecentlyDamagedByCreep(2.0)
+			and #nInRangeAlly >= #nInRangeEnemy then
 				if not Fu.IsRetreating(bot) and GetUnitToUnitDistance(bot, enemyHero) < botAttackRange then
 					return GetActualDesire(BOT_MODE_DESIRE_VERYHIGH)
 				end
@@ -342,32 +346,34 @@ function Generic.Think()
 		botTarget.id = __target:GetPlayerID()
 		bot:SetTarget(__target)
 
-		-- Melee vs ranged positioning
+		-- Don't interrupt ongoing attack on the correct target
+		local currentTarget = bot:GetAttackTarget()
+		if currentTarget == __target and Fu.IsAttacking(bot) then
+			return
+		end
+
+		-- Melee: chase with Action_AttackUnit(false) to let Valve handle approach
 		if botAttackRange < 330 and botName ~= 'npc_dota_hero_templar_assassin' then
-			if dist < botAttackRange then
-				if not Fu.CanBeAttacked(__target) then
-					bot:Action_MoveToLocation(__target:GetLocation())
-				else
-					bot:Action_AttackUnit(__target, true)
-				end
+			if Fu.CanBeAttacked(__target) then
+				bot:Action_AttackUnit(__target, false)
 			else
 				bot:Action_MoveToLocation(__target:GetLocation())
 			end
 			return
 		else
 			-- Ranged: kite when target can't be attacked
-			if dist < botAttackRange then
+			if dist <= botAttackRange then
 				if not Fu.CanBeAttacked(__target) then
+					-- Maintain attack range distance
 					if dist < botAttackRange - 100 then
 						bot:Action_MoveToLocation(Fu.VectorAway(botLocation, __target:GetLocation(), botAttackRange - dist - 100))
-					elseif dist > botAttackRange - 100 then
-						bot:Action_MoveToLocation(Fu.VectorTowards(botLocation, __target:GetLocation(), dist - botAttackRange - 100))
 					end
 				else
-					bot:Action_AttackUnit(__target, true)
+					bot:Action_AttackUnit(__target, false)
 				end
 			else
-				bot:Action_MoveToLocation(__target:GetLocation())
+				-- Out of range: move toward target
+				bot:Action_AttackUnit(__target, false)
 			end
 			return
 		end
@@ -406,9 +412,9 @@ function Generic.Think()
 	bClearMode = true
 end
 
--- Desire smoothing (reference pattern)
+-- Desire smoothing — faster ramp-up to avoid sluggish engagement
 function GetActualDesire(nDesire)
-	local alpha = 0.3
+	local alpha = 0.5
 	nDesire = fLastAttackDesire * (1 - alpha) + nDesire * alpha
 	fLastAttackDesire = nDesire
 	return nDesire

@@ -1,4 +1,4 @@
-dofile('bots/Buff/Helper')
+require('bots/Buff/Helper')
 
 if XP == nil
 then

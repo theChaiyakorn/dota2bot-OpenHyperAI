@@ -19,8 +19,8 @@ GameState = nil
 -- team that killed it (well, not actually, since they could be denied.
 -- The other team, anyway).  As such, there is no need for these to be
 -- named, we'll just iterate ipairs over the whole table in OnEntityKilled.
-local radiantBuildings 	= dofile('bots.FretBots.RadiantBuildings')
-local direBuildings		= dofile('bots.FretBots.DireBuildings')
+local radiantBuildings 	= require('bots.FretBots.RadiantBuildings')
+local direBuildings		= require('bots.FretBots.DireBuildings')
 local RADIANT			= 2
 local DIRE				= 3
 

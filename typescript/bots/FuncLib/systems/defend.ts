@@ -651,12 +651,8 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
         return BotModeDesire.None;
     }
 
-    // Cap defend desire when enemy heroes are very close — bot should fight, not defend
-    const closeEnemiesDefend = Fu.GetEnemiesNearLoc(bot.GetLocation(), 900);
-    const closeAlliesDefend = Fu.GetAlliesNearLoc(bot.GetLocation(), 900);
-    if (closeEnemiesDefend.length > 0 && closeAlliesDefend.length >= closeEnemiesDefend.length) {
-        return math.min(0.3, BotModeDesire.Moderate) as BotModeDesire;
-    }
+    // (Removed enemy-nearby cap — defend desire must stay high when
+    // enemies are pushing base. Attack mode handles fighting separately.)
 
     // Don't abandon a team push to defend a tower from creeps.
     // If 3+ allies are grouped together pushing, defend desire is very low.

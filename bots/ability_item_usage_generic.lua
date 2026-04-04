@@ -13,6 +13,8 @@ local BotBuild = dofile( GetScriptDirectory().."/BotsLib/"..string.gsub( botName
 local Localization = require( GetScriptDirectory()..'/FuncLib/systems/localization' )
 local Customize = require(GetScriptDirectory()..'/Customize/general')
 Customize.ThinkLess = Customize.Enable and Customize.ThinkLess or 1
+local okDispel, Dispel = pcall(require, GetScriptDirectory()..'/FuncLib/systems/dispel')
+if not okDispel then Dispel = nil end
 if GAMEMODE_TURBO == nil then GAMEMODE_TURBO = 23 end
 if GAMEMODE_ARDM == nil then GAMEMODE_ARDM = 20 end
 
@@ -86,7 +88,7 @@ local function RefreshBotHandle()
 		bot = freshBot
 	end
 
-	-- Reload BotLib when hero changed and is alive (abilities initialized)
+	-- Reload BotsLib when hero changed and is alive (abilities initialized)
 	if bNeedARDMReload and bot:IsAlive() then
 		bNeedARDMReload = false
 		local heroFile = string.gsub(botName, "npc_dota_", "")
@@ -100,11 +102,11 @@ local function RefreshBotHandle()
 			bDeafaultAbilityHero = BotBuild['bDeafaultAbility']
 			bDeafaultItemHero = BotBuild['bDeafaultItem']
 			sAbilityLevelUpList = BotBuild['sSkillList']
-			print("[ARDM] Loaded BotLib for "..botName.." with "..#sAbilityLevelUpList.." skill entries, first: "..tostring(sAbilityLevelUpList[1]))
+			print("[ARDM] Loaded BotsLib for "..botName.." with "..#sAbilityLevelUpList.." skill entries, first: "..tostring(sAbilityLevelUpList[1]))
 		else
 			local abilityList = Fu.Skill.GetAbilityList(bot)
 			local talentList = Fu.Skill.GetTalentList(bot)
-			print("[ARDM] BotLib load failed or empty for "..botName..", abilities: "..#abilityList..", talents: "..#talentList)
+			print("[ARDM] BotsLib load failed or empty for "..botName..", abilities: "..#abilityList..", talents: "..#talentList)
 			if #abilityList > 0 then
 				BotBuild = nil
 				bDeafaultAbilityHero = false
@@ -975,14 +977,16 @@ local function ItemUsageComplement()
 		or bot:IsStunned()
 		or bot:IsChanneling()
 		or bot:IsInvulnerable()
-		or bot:IsUsingAbility()
 		or bot:IsCastingAbility()
-		or bot:NumQueuedActions() > 0
 		or bot:HasModifier( 'modifier_teleporting' )
 		or bot:HasModifier( 'modifier_doom_bringer_doom' )
 		or bot:HasModifier( 'modifier_phantom_lancer_phantom_edge_boost' )
 		or X.WillBreakInvisible( bot )
 	then return	BOT_ACTION_DESIRE_NONE end
+	-- NOTE: removed IsUsingAbility() and NumQueuedActions() checks.
+	-- IsUsingAbility() returns true during attack animations and queued spell casts,
+	-- which blocked ALL item usage (wand, flask, BKB, etc.) nearly 100% of the time.
+	-- IsCastingAbility() + IsChanneling() are sufficient to prevent item interrupts.
 
 	hNearbyEnemyHeroList = Fu.GetNearbyHeroes(bot, 1000, true, BOT_MODE_NONE )
 	hNearbyEnemyTowerList = bot:GetNearbyTowers( 888, true )
@@ -1283,45 +1287,69 @@ X.ConsiderItemDesire["item_armlet"] = function( hItem )
 	local nInRangeEnmyList = Fu.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
 
 	local bActive = hItem:GetToggleState()
+	local nRealHP = bot:OriginalGetHealth()
+	local bInFight = bot:WasRecentlyDamagedByAnyHero(3.0) or (#nInRangeEnmyList > 0 and Fu.IsAttacking(bot))
+	local bAttackingHero = Fu.IsValidHero(botTarget) and Fu.IsInRange(bot, botTarget, bot:GetAttackRange() + 180)
 
-	if ( Fu.IsValid( botTarget ) or Fu.IsValidBuilding( botTarget ) )
-		and not botTarget:IsAttackImmune()
-		and not botTarget:IsInvulnerable()
-		and ( not botTarget:IsBuilding() or not Fu.IsKeyWordUnit( "OutpostName", botTarget ) )
-		and not Fu.HasForbiddenModifier( botTarget )
-		and Fu.IsInRange( bot, botTarget, bot:GetAttackRange() + 180 )
-		and not bot:IsDisarmed()
-	then
-		nLastActiveArmletTime = DotaTime()
-		if not bActive
+	-- ACTIVATE: when fighting enemy heroes or buildings (not just creeps)
+	if not bActive then
+		-- Activate for hero combat
+		if bAttackingHero
+			and not botTarget:IsAttackImmune()
+			and not botTarget:IsInvulnerable()
+			and not Fu.HasForbiddenModifier(botTarget)
+			and not bot:IsDisarmed()
+			and nRealHP > 400
 		then
-			hEffectTarget = botTarget
-			sCastMotive = '激活臂章攻击'..( hEffectTarget:IsHero() and Fu.Chat.GetNormName( hEffectTarget ) or "非英雄" )
-			return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
+			nLastActiveArmletTime = DotaTime()
+			return BOT_ACTION_DESIRE_HIGH, botTarget, sCastType, 'Armlet on: hero fight'
+		end
+
+		-- Activate for building attack (pushing)
+		if Fu.IsValidBuilding(botTarget)
+			and not botTarget:IsAttackImmune()
+			and not botTarget:IsInvulnerable()
+			and not Fu.IsKeyWordUnit("OutpostName", botTarget)
+			and Fu.IsInRange(bot, botTarget, bot:GetAttackRange() + 180)
+			and #nInRangeEnmyList == 0
+			and nRealHP > 500
+		then
+			nLastActiveArmletTime = DotaTime()
+			return BOT_ACTION_DESIRE_HIGH, botTarget, sCastType, 'Armlet on: push'
+		end
+
+		-- Activate for survival (about to die, need the HP burst)
+		if nRealHP <= 600
+			and (bot:WasRecentlyDamagedByAnyHero(2.0) or Fu.IsAttackProjectileIncoming(bot, 1600))
+		then
+			nLastActiveArmletTime = DotaTime()
+			return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Armlet on: survival'
 		end
 	end
 
-
-	if bot:OriginalGetHealth() <= 600
-		and ( bot:WasRecentlyDamagedByAnyHero( 2.0 ) or Fu.IsAttackProjectileIncoming( bot, 1600 ) )
-	then
-		nLastActiveArmletTime = DotaTime()
-		if not bActive
-		then
-			hEffectTarget = bot
-			sCastMotive = '激活临时血量'
-			return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
+	-- DEACTIVATE: when no longer in a fight or HP getting dangerously low
+	if bActive then
+		-- Emergency deactivate: HP draining to dangerous level with no fight
+		if nRealHP < 350 and not bInFight then
+			return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Armlet off: HP drain'
 		end
-	end
 
+		-- Deactivate when safe: no enemies, not attacking heroes, not recently in fight
+		if DotaTime() > nLastActiveArmletTime + 2.0
+			and #nInRangeEnmyList == 0
+			and not bInFight
+			and not bAttackingHero
+		then
+			return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Armlet off: safe'
+		end
 
-	if bActive
-		and DotaTime() > nLastActiveArmletTime + 0.9
-		and ( #nInRangeEnmyList == 0 or bot:OriginalGetHealth() > 990 )
-	then
-		hEffectTarget = bot
-		sCastMotive = '关闭臂章'
-		return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType --, '关闭臂章'
+		-- Deactivate when not pushing (no building target) and no enemies
+		if DotaTime() > nLastActiveArmletTime + 3.0
+			and #nInRangeEnmyList == 0
+			and not Fu.IsValidBuilding(botTarget)
+		then
+			return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Armlet off: idle'
+		end
 	end
 
 	return BOT_ACTION_DESIRE_NONE
@@ -3230,37 +3258,34 @@ end
 --魔棒
 X.ConsiderItemDesire["item_magic_stick"] = function( hItem )
 
-	local nCastRange = 1000
-	local sCastType = 'none'
-	local hEffectTarget = nil
-	local sCastMotive = nil
-	local nInRangeEnmyList = Fu.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
+	if hItem:GetCurrentCharges() <= 0 then return BOT_ACTION_DESIRE_NONE end
 
+	local sCastType = 'none'
+	local nInRangeEnmyList = Fu.GetNearbyHeroes(bot, 1200, true, BOT_MODE_NONE )
 
 	local nEnemyCount = #nInRangeEnmyList
-	local nHPrate = bot:GetHealth() / bot:GetMaxHealth()
-	local nMPrate = bot:GetMana() / bot:GetMaxMana()
+	local nHPrate = Fu.GetHP(bot)
+	local nMPrate = Fu.GetMP(bot)
 	local nCharges = hItem:GetCurrentCharges()
 
-	if ( nHPrate < 0.5 or nMPrate < 0.3 ) and nEnemyCount >= 1 and nCharges >= 1
-	then
-		hEffectTarget = bot
-		sCastMotive = '用途1'
-		return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
+	-- Emergency: about to die
+	if nHPrate < 0.2 and nCharges >= 1 and (bot:WasRecentlyDamagedByAnyHero(3.0) or nEnemyCount >= 1) then
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Stick: emergency'
 	end
 
-	if ( nHPrate + nMPrate < 1.1 and nCharges >= 7 and nEnemyCount >= 1 )
-	then
-		hEffectTarget = bot
-		sCastMotive = '用途2'
-		return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
+	-- Retreating and hurt
+	if Fu.IsRetreating(bot) and nHPrate < 0.5 and nCharges >= 2 then
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Stick: retreat'
 	end
 
-	if ( nCharges >= 9 and bot:GetItemInSlot( 6 ) ~= nil and ( nHPrate <= 0.7 or nMPrate <= 0.6 ) )
-	then
-		hEffectTarget = bot
-		sCastMotive = '用途3'
-		return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
+	-- In fight and low resources
+	if nEnemyCount >= 1 and nCharges >= 1 and (nHPrate < 0.5 or nMPrate < 0.3) then
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Stick: fight'
+	end
+
+	-- Max charges (10 for stick), use to not waste
+	if nCharges >= 10 and (nHPrate < 0.8 or nMPrate < 0.7) then
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Stick: max charges'
 	end
 
 	return BOT_ACTION_DESIRE_NONE
@@ -3272,47 +3297,40 @@ X.ConsiderItemDesire["item_magic_wand"] = function( hItem )
 
 	if hItem:GetCurrentCharges() <= 0 then return BOT_ACTION_DESIRE_NONE end
 
-	local nCastRange = 1000
 	local sCastType = 'none'
 	if hItem:GetName() == 'item_holy_locket' then sCastType = 'unit' end
-	local hEffectTarget = nil
-	local sCastMotive = nil
-	local nInRangeEnmyList = Fu.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
-
+	local nInRangeEnmyList = Fu.GetNearbyHeroes(bot, 1200, true, BOT_MODE_NONE )
 
 	local nEnemyCount = #nInRangeEnmyList
-	local nHPrate = bot:GetHealth() / bot:GetMaxHealth()
-	local nMPrate = bot:GetMana() / bot:GetMaxMana()
-	local nLostHP = bot:GetMaxHealth() - bot:GetHealth()
-	local nLostMP = bot:GetMaxMana() - bot:GetMana()
+	local nHPrate = Fu.GetHP(bot)
+	local nMPrate = Fu.GetMP(bot)
 	local nCharges = hItem:GetCurrentCharges()
+	local bRetreating = Fu.IsRetreating(bot)
+	local bRecentlyDamaged = bot:WasRecentlyDamagedByAnyHero(3.0)
 
-	if ( ( nHPrate < 0.4 or nMPrate < 0.3 ) and nEnemyCount >= 1 and nCharges >= 1 )
-	then
-		hEffectTarget = bot
-		sCastMotive = '用途1'
-		return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
+	-- EMERGENCY: about to die — use with ANY charges
+	if nHPrate < 0.2 and nCharges >= 1 and (bRecentlyDamaged or nEnemyCount >= 1) then
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Wand: emergency'
 	end
 
-	if ( nHPrate < 0.7 and nMPrate < 0.7 and nCharges >= 12 and nEnemyCount >= 1 ) 
-	then
-		hEffectTarget = bot
-		sCastMotive = '用途2'
-		return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
+	-- RETREATING: use when being chased and hurt
+	if bRetreating and nHPrate < 0.5 and nCharges >= 3 then
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Wand: retreat'
 	end
 
-	if ( nCharges >= 19 and bot:GetItemInSlot( 6 ) ~= nil and ( nHPrate <= 0.6 or nMPrate <= 0.5 ) ) 
-	then
-		hEffectTarget = bot
-		sCastMotive = '用途3'
-		return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
+	-- FIGHTING: use when in combat and HP or mana is low
+	if nEnemyCount >= 1 and nCharges >= 1 and (nHPrate < 0.4 or nMPrate < 0.25) then
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Wand: fight'
 	end
 
-	if ( nCharges == 20 and nEnemyCount >= 1 and nLostHP > 350 and nLostMP > 350 ) 
-	then
-		hEffectTarget = bot
-		sCastMotive = '用途4'
-		return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
+	-- HIGH CHARGES: use when reasonably hurt and have many charges
+	if nCharges >= 10 and nEnemyCount >= 1 and (nHPrate < 0.7 or nMPrate < 0.5) then
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Wand: high charges'
+	end
+
+	-- MAX CHARGES: use when capped to not waste further charges
+	if nCharges >= 20 and (nHPrate < 0.8 or nMPrate < 0.7) then
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Wand: max charges'
 	end
 
 	return BOT_ACTION_DESIRE_NONE
@@ -8373,10 +8391,49 @@ end
 
 function ItemUsageThink()
 	if RefreshBotHandle() then return end
+
+	-- Idle/stuck check — does NOT block item usage (removed 'return' on idle action)
+	HandleIdleBotState(bot)
+
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
+
 	if bot.lastItemFrameProcessTime == nil then bot.lastItemFrameProcessTime = DotaTime() end
 	if DotaTime() > 30 and (DotaTime() - bot.lastItemFrameProcessTime < (bot.frameProcessTime * (1 + Customize.ThinkLess))) then return end
 	bot.lastItemFrameProcessTime = DotaTime()
+
+	-- Dispel check: use dispel items when under dangerous debuffs
+	if Dispel and not bot:IsChanneling() and not bot:IsUsingAbility() then
+		-- Manta projectile dodge (highest priority — time-critical)
+		local mantaDodgeSlot = Dispel.ShouldMantaDodge(bot)
+		if mantaDodgeSlot >= 0 then
+			local hItem = bot:GetItemInSlot(mantaDodgeSlot)
+			if hItem then
+				bot:Action_UseAbility(hItem)
+				return
+			end
+		end
+
+		-- Self-dispel with items (BKB, Manta, Eul's, etc.)
+		local selfDispelSlot = Dispel.ShouldUseSelfDispelItem(bot)
+		if selfDispelSlot >= 0 then
+			local hItem = bot:GetItemInSlot(selfDispelSlot)
+			if hItem then
+				bot:Action_UseAbility(hItem)
+				return
+			end
+		end
+
+		-- Ally-dispel with Lotus Orb (includes preemptive usage)
+		local allyDispelSlot, allyTarget = Dispel.ShouldUseAllyDispelItem(bot)
+		if allyDispelSlot >= 0 and allyTarget then
+			local hItem = bot:GetItemInSlot(allyDispelSlot)
+			if hItem then
+				bot:Action_UseAbilityOnEntity(hItem, allyTarget)
+				return
+			end
+		end
+	end
+
 	if not Fu.IsNoItemIllution(bot) then ItemUsageComplement() end
 end
 

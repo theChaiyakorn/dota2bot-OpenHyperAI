@@ -1,6 +1,6 @@
 local Fu = require(GetScriptDirectory()..'/FuncLib/func_utils')
 local U = require(GetScriptDirectory()..'/FuncLib/hero/minion_lib/utils')
-local I = dofile(GetScriptDirectory()..'/FuncLib/hero/minion_lib/illusions')
+local I = require(GetScriptDirectory()..'/FuncLib/hero/minion_lib/illusions')
 
 local X = {}
 local bot

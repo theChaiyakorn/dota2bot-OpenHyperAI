@@ -2,7 +2,8 @@ local X = {}
 local bot = GetBot()
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils')
-local Minion = dofile( GetScriptDirectory()..'/FuncLib/hero/minion')
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion = require( GetScriptDirectory()..'/FuncLib/hero/minion')
 local sTalentList = Fu.Skill.GetTalentList(bot)
 local sAbilityList = Fu.Skill.GetAbilityList(bot)
 local sRole = Fu.Item.GetRoleItemsBuyList(bot)
@@ -140,12 +141,14 @@ local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
 local abilityW = bot:GetAbilityByName( sAbilityList[2] )
 local abilityE = bot:GetAbilityByName( sAbilityList[3] )
 local abilityR = bot:GetAbilityByName( sAbilityList[6] )
+local CelestialQuiver = bot:GetAbilityByName('mirana_celestial_quiver')
 
 
 local castQDesire, castQTarget
 local castWDesire, castWTarget
 local castEDesire, castETarget
 local castRDesire, castRTarget
+local CelestialQuiverDesire, CelestialQuiverTarget
 
 
 local aetherRange = 0
@@ -155,54 +158,63 @@ function X.SkillsComplement()
 	
 	if Fu.CanNotUseAbility(bot) then return end
 	
+	local ctx = AbilityCtx.Build(bot)
 	nKeepMana = 400
-	aetherRange = 0
-	nLV = bot:GetLevel();
-	nMP = bot:GetMana()/bot:GetMaxMana();
-	nHP = bot:GetHealth()/bot:GetMaxHealth();
-	botTarget = Fu.GetProperTarget(bot);
-	hEnemyList = Fu.GetNearbyHeroes(bot,1600, true, BOT_MODE_NONE);
-	hAllyList = Fu.GetAlliesNearLoc(bot:GetLocation(), 1600);
-	
-	local aether = Fu.IsItemAvailable("item_aether_lens");
-	if aether ~= nil then aetherRange = 250 end	
+	aetherRange = ctx.aetherRange
+	nLV = ctx.level
+	nMP = ctx.mp
+	nHP = ctx.hp
+	botTarget = ctx.target
+	hEnemyList = ctx.enemies
+	hAllyList = ctx.allies
 	
 	
-	if ( castQDesire > 0 ) 
+	castQDesire, castQTarget = X.ConsiderQ()
+	if ( castQDesire > 0 )
 	then
-	
+
 		Fu.SetQueuePtToINT(bot, true)
-	
+
 		bot:ActionQueue_UseAbility( abilityQ )
 		return;
 	end
-	
-	if ( castWDesire > 0 ) 
+
+	castWDesire, castWTarget = X.ConsiderW()
+	if ( castWDesire > 0 )
 	then
-	
+
 		Fu.SetQueuePtToINT(bot, true)
-	
+
 		bot:ActionQueue_UseAbilityOnLocation( abilityW, castWTarget )
 		return;
 	end
-	
-	if ( castEDesire > 0 ) 
+
+	castEDesire, castETarget = X.ConsiderE()
+	if ( castEDesire > 0 )
 	then
-	
+
 		Fu.SetQueuePtToINT(bot, false)
-	
+
 		bot:ActionQueue_UseAbility( abilityE )
 		return;
 	end
-	
-	if ( castRDesire > 0 ) 
+
+	castRDesire, castRTarget = X.ConsiderR()
+	if ( castRDesire > 0 )
 	then
-	
+
 		Fu.SetQueuePtToINT(bot, true)
-	
+
 		bot:ActionQueue_UseAbility( abilityR )
 		return;
-	
+
+	end
+
+	CelestialQuiverDesire, CelestialQuiverTarget = X.ConsiderCelestialQuiver()
+	if CelestialQuiverDesire > 0
+	then
+		bot:Action_UseAbilityOnEntity(CelestialQuiver, CelestialQuiverTarget)
+		return
 	end
 
 end
@@ -708,6 +720,77 @@ function X.IsEnemyCreepBetweenEnemyHero( hSource, hTarget, nRadius )
 	return false
 end
 
+function X.ConsiderCelestialQuiver()
+	if not Fu.CanCastAbility(CelestialQuiver)
+	or bot:IsDisarmed()
+	then
+		return BOT_ACTION_DESIRE_NONE
+	end
+
+	local nDamage = CelestialQuiver:GetSpecialValueInt('bonus_damage')
+	local bIsAutoCasted = CelestialQuiver:GetAutoCastState()
+	local nEnemyHeroes = bot:GetNearbyHeroes(bot:GetAttackRange() + 300, true, BOT_MODE_NONE)
+
+	for _, enemyHero in pairs(nEnemyHeroes) do
+		if  Fu.IsValidHero(enemyHero)
+		and Fu.CanBeAttacked(enemyHero)
+		and Fu.IsInRange(bot, enemyHero, bot:GetAttackRange() + 150)
+		and not Fu.IsSuspiciousIllusion(enemyHero)
+		and not enemyHero:HasModifier('modifier_abaddon_borrowed_time')
+		and not enemyHero:HasModifier('modifier_dazzle_shallow_grave')
+		and not enemyHero:HasModifier('modifier_necrolyte_reapers_scythe')
+		and not enemyHero:HasModifier('modifier_oracle_false_promise_timer')
+		and not enemyHero:HasModifier('modifier_templar_assassin_refraction_absorb')
+		then
+			if  Fu.WillKillTarget(enemyHero, bot:GetAttackDamage() + nDamage, DAMAGE_TYPE_MAGICAL, bot:GetAttackSpeed())
+			and not Fu.WillKillTarget(enemyHero, bot:GetAttackDamage(), DAMAGE_TYPE_PHYSICAL, bot:GetAttackSpeed())
+			then
+				return BOT_ACTION_DESIRE_HIGH, enemyHero
+			end
+		end
+	end
+
+	if Fu.IsGoingOnSomeone(bot) then
+		if  Fu.IsValidHero(botTarget)
+		and Fu.CanBeAttacked(botTarget)
+		and Fu.IsInRange(bot, botTarget, bot:GetAttackRange() + 300)
+		and not Fu.IsSuspiciousIllusion(botTarget)
+		and not botTarget:HasModifier('modifier_abaddon_borrowed_time')
+		and not botTarget:HasModifier('modifier_dazzle_shallow_grave')
+		and not botTarget:HasModifier('modifier_necrolyte_reapers_scythe')
+		and not botTarget:HasModifier('modifier_oracle_false_promise_timer')
+		and not botTarget:HasModifier('modifier_templar_assassin_refraction_absorb')
+		then
+			if not bIsAutoCasted then
+				CelestialQuiver:ToggleAutoCast()
+			end
+
+			return BOT_ACTION_DESIRE_NONE
+		end
+	end
+
+	local nEnemyCreeps = bot:GetNearbyCreeps(Min(bot:GetAttackRange() + 300, 1600), true)
+
+	if Fu.IsLaning(bot) and Fu.IsEarlyGame() then
+		for _, creep in pairs(nEnemyCreeps) do
+			if  Fu.IsValid(creep)
+			and Fu.CanBeAttacked(creep)
+			and Fu.IsKeyWordUnit('ranged', creep)
+			and not Fu.CanKillTarget(creep, bot:GetAttackDamage(), DAMAGE_TYPE_PHYSICAL)
+			then
+				local nLocationAoE = bot:FindAoELocation(true, true, creep:GetLocation(), 0, 650, 0, 0)
+				if Fu.WillKillTarget(creep, bot:GetAttackDamage() + nDamage, DAMAGE_TYPE_MAGICAL, bot:GetAttackSpeed()) then
+					if nLocationAoE.count > 0 or Fu.IsUnitTargetedByTower(creep, false) or Fu.IsEnemyTargetUnit(creep, 1200) then
+						return BOT_ACTION_DESIRE_HIGH, creep
+					end
+				end
+			end
+		end
+	end
+
+	if bIsAutoCasted then CelestialQuiver:ToggleAutoCast() end
+
+	return BOT_ACTION_DESIRE_NONE
+end
+
 return X
-
-

@@ -2,7 +2,8 @@ local X             = {}
 local bot           = GetBot()
 
 local Fu             = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Minion        = dofile( GetScriptDirectory()..'/FuncLib/hero/minion' )
+local AbilityCtx = require(GetScriptDirectory()..'/FuncLib/systems/ability_context')
+local Minion        = require( GetScriptDirectory()..'/FuncLib/hero/minion' )
 local sTalentList   = Fu.Skill.GetTalentList( bot )
 local sAbilityList  = Fu.Skill.GetAbilityList( bot )
 local sRole   = Fu.Item.GetRoleItemsBuyList( bot )
@@ -147,12 +148,14 @@ local Penitence         = bot:GetAbilityByName('chen_penitence')
 local HolyPersuasion    = bot:GetAbilityByName('chen_holy_persuasion')
 local DivineFavor       = bot:GetAbilityByName('chen_divine_favor')
 local SummonConvert     = bot:GetAbilityByName('chen_summon_convert')
+local Zealot            = bot:GetAbilityByName('chen_zealot')
 local HandOfGod         = bot:GetAbilityByName('chen_hand_of_god')
 
 local PenitenceDesire, PenitenceTarget
 local HolyPersuasionDesire, HolyPersuasionTarget
 local DivineFavorDesire, DivineFavorTarget
 local SummonConvertDesire
+local ZealotDesire
 local HandOfGodDesire
 
 local nChenCreeps = {}
@@ -163,9 +166,10 @@ local bAttacking
 function X.SkillsComplement()
 	if Fu.CanNotUseAbility(bot) then return end
 
+	local ctx = AbilityCtx.Build(bot)
 	bAttacking = Fu.IsAttacking(bot)
 
-    botTarget = Fu.GetProperTarget(bot)
+    botTarget = ctx.target
 
     HandOfGodDesire = X.ConsiderHandOfGod()
     if HandOfGodDesire > 0
@@ -185,6 +189,13 @@ function X.SkillsComplement()
     if SummonConvertDesire > 0
     then
         bot:Action_UseAbility(SummonConvert)
+        return
+    end
+
+    ZealotDesire = X.ConsiderZealot()
+    if ZealotDesire > 0
+    then
+        bot:Action_UseAbility(Zealot)
         return
     end
 
@@ -441,28 +452,6 @@ function X.ConsiderDivineFavor()
         end
 	end
 
-    if Fu.IsInTeamFight(bot, 1200)
-    then
-        local totDist = 0
-
-        for _, creep in pairs(nChenCreeps)
-        do
-            local dist = GetUnitToUnitDistance(bot, creep)
-            if dist > 1600
-            then
-                totDist = totDist + dist
-            end
-        end
-
-        if nChenCreeps ~= nil and #nChenCreeps > 0
-        then
-            if (totDist / #nChenCreeps) > 1600
-            then
-                return BOT_ACTION_DESIRE_HIGH, bot
-            end
-        end
-    end
-
     if Fu.IsRetreating(bot)
 	then
         local nInRangeEnemy = Fu.GetNearbyHeroes(bot,nCastRange, true, BOT_MODE_NONE)
@@ -529,6 +518,36 @@ function X.ConsiderSummonConvert()
             return BOT_ACTION_DESIRE_HIGH
         end
 	end
+
+    return BOT_ACTION_DESIRE_NONE
+end
+
+function X.ConsiderZealot()
+    if not Zealot:IsFullyCastable()
+    then
+        return BOT_ACTION_DESIRE_NONE
+    end
+
+    if Fu.IsInTeamFight(bot, 1200)
+    then
+        local totDist = 0
+
+        for _, creep in pairs(nChenCreeps)
+        do
+            if Fu.IsValid(creep)
+            then
+                totDist = totDist + GetUnitToUnitDistance(bot, creep)
+            end
+        end
+
+        if nChenCreeps ~= nil and #nChenCreeps > 0
+        then
+            if (totDist / #nChenCreeps) > 1200
+            then
+                return BOT_ACTION_DESIRE_HIGH
+            end
+        end
+    end
 
     return BOT_ACTION_DESIRE_NONE
 end

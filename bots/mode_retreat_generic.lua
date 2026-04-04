@@ -118,12 +118,13 @@ end
 -- === existing functions, now reusing context ===
 
 function GetDesire()
+	if ShouldSkipBotThink(GetBot()) then return 0 end
     -- local cacheKey = 'GetRetreatDesire'..tostring(bot:GetPlayerID())
     -- local cachedVar = Fu.Utils.GetCachedVars(cacheKey, 0.35 * (1 + Customize.ThinkLess))
     -- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
     local res = GetDesireHelper()
     -- Fu.Utils.SetCachedVars(cacheKey, res)
-    return res
+    return GetAdjustedDesireValue(res)
 end
 
 function GetDesireHelper()
@@ -390,6 +391,18 @@ function GetDesireHelper()
         then
             nDesire = nDesire - 0.75
         end
+    end
+
+    -- Safe-to-heal check: if bot has healing items, no enemies nearby,
+    -- not recently damaged — don't retreat, stay and heal in place.
+    if nEnemyNearbyCount == 0
+        and not bot:WasRecentlyDamagedByAnyHero(5.0)
+        and not bot:WasRecentlyDamagedByTower(3.0)
+        and botHP > 0.15
+        and bot:DistanceFromFountain() > 3000
+        and (Fu.HasHealingItem(bot) or bot:GetHealthRegen() > 20)
+    then
+        nDesire = nDesire - 0.5
     end
 
     -- nDesire = nDesire + X.GetUnitDesire(1200) -- (left commented as original)
@@ -778,6 +791,129 @@ function X.ConsiderCompleteItem()
         end
     end
     return 0
+end
+
+--------------------------------------------------------------------
+-- Think: full retreat behavior (replaces Valve's default)
+--------------------------------------------------------------------
+function Think()
+    if not bot:IsAlive() or bot:IsChanneling() or bot:IsUsingAbility() then return end
+
+    local nEnemyHeroes = bot:GetNearbyHeroes(1600, true, BOT_MODE_NONE) or {}
+    local isSafe = #nEnemyHeroes == 0
+        and not bot:WasRecentlyDamagedByAnyHero(5.0)
+        and not bot:WasRecentlyDamagedByTower(3.0)
+        and bot:DistanceFromFountain() > 3000
+
+    local nBotHP = Fu.GetHP(bot)
+
+    -- SAFE + has healing: stop retreating and heal in place
+    if isSafe and nBotHP > 0.15 then
+        -- Already healing — stop moving, let regen tick
+        if bot:HasModifier('modifier_flask_healing')
+        or bot:HasModifier('modifier_tango_heal')
+        or bot:HasModifier('modifier_bottle_regeneration')
+        then
+            bot:Action_ClearActions(false)
+            return
+        end
+
+        -- Try to use a healing item
+        if Fu.HasHealingItem(bot) then
+            -- Flask
+            local flaskSlot = Fu.FindItemSlotNotInNonbackpack(bot, 'item_flask')
+            if flaskSlot >= 0 then
+                local flask = bot:GetItemInSlot(flaskSlot)
+                if flask and flask:IsFullyCastable() and bot:OriginalGetMaxHealth() - bot:OriginalGetHealth() > 500 then
+                    bot:Action_UseAbilityOnEntity(flask, bot)
+                    return
+                end
+            end
+
+            -- Tango
+            local tangoSlot = Fu.FindItemSlotNotInNonbackpack(bot, 'item_tango')
+            if tangoSlot < 0 then tangoSlot = Fu.FindItemSlotNotInNonbackpack(bot, 'item_tango_single') end
+            if tangoSlot >= 0 then
+                local tango = bot:GetItemInSlot(tangoSlot)
+                if tango and tango:IsFullyCastable() and bot:OriginalGetMaxHealth() - bot:OriginalGetHealth() > 200 then
+                    local trees = bot:GetNearbyTrees(800)
+                    if trees and #trees > 0 then
+                        bot:Action_UseAbilityOnTree(tango, trees[1])
+                        return
+                    end
+                end
+            end
+
+            -- Bottle
+            local bottleSlot = Fu.FindItemSlotNotInNonbackpack(bot, 'item_bottle')
+            if bottleSlot >= 0 then
+                local bottle = bot:GetItemInSlot(bottleSlot)
+                if bottle and bottle:IsFullyCastable() and bottle:GetCurrentCharges() > 0 then
+                    bot:Action_UseAbility(bottle)
+                    return
+                end
+            end
+
+            -- Faerie Fire (instant heal when low)
+            local faerieSlot = Fu.FindItemSlotNotInNonbackpack(bot, 'item_faerie_fire')
+            if faerieSlot >= 0 and nBotHP < 0.3 then
+                local faerie = bot:GetItemInSlot(faerieSlot)
+                if faerie and faerie:IsFullyCastable() then
+                    bot:Action_UseAbility(faerie)
+                    return
+                end
+            end
+
+            -- Mango (mana restore)
+            local mangoSlot = Fu.FindItemSlotNotInNonbackpack(bot, 'item_enchanted_mango')
+            if mangoSlot >= 0 and Fu.GetMP(bot) < 0.3 then
+                local mango = bot:GetItemInSlot(mangoSlot)
+                if mango and mango:IsFullyCastable() then
+                    bot:Action_UseAbility(mango)
+                    return
+                end
+            end
+
+            -- Healing Lotus
+            for _, lotusName in pairs({'item_famango', 'item_great_famango', 'item_greater_famango'}) do
+                local lotusSlot = Fu.FindItemSlotNotInNonbackpack(bot, lotusName)
+                if lotusSlot >= 0 then
+                    local lotus = bot:GetItemInSlot(lotusSlot)
+                    if lotus and lotus:IsFullyCastable() then
+                        bot:Action_UseAbilityOnEntity(lotus, bot)
+                        return
+                    end
+                end
+            end
+        end
+    end
+
+    -- DEFAULT RETREAT: walk toward fountain (replaces Valve's default)
+    -- Use TP scroll if available and far from fountain
+    if bot:DistanceFromFountain() > 5000 and #nEnemyHeroes == 0 and nBotHP < 0.3 then
+        local tpSlot = Fu.FindItemSlotNotInNonbackpack(bot, 'item_tpscroll')
+        if tpSlot >= 0 then
+            local tp = bot:GetItemInSlot(tpSlot)
+            if tp and tp:IsFullyCastable() then
+                local fountain = Fu.GetTeamFountain()
+                bot:Action_UseAbilityOnLocation(tp, fountain)
+                return
+            end
+        end
+    end
+
+    -- Walk toward fountain, avoiding enemies
+    local retreatTarget = Fu.GetTeamFountain()
+    if #nEnemyHeroes > 0 then
+        -- Run away from nearest enemy, angled toward fountain
+        local nearestEnemy = nEnemyHeroes[1]
+        if Fu.IsValidHero(nearestEnemy) then
+            local awayDir = Fu.VectorAway(bot:GetLocation(), nearestEnemy:GetLocation(), 500)
+            retreatTarget = awayDir
+        end
+    end
+
+    bot:Action_MoveToLocation(retreatTarget)
 end
 
 return X
