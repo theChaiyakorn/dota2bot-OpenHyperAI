@@ -4,18 +4,19 @@ local function Init(Fu)
 
 
 function Fu.IsOtherAllyCanKillTarget( bot, target )
-	-- local cacheKey = 'IsOtherAllyCanKillTarget'..tostring(target:GetPlayerID())
-	-- local cache = Fu.Utils.GetCachedVars(cacheKey, 0.5)
-	-- if cache ~= nil then return cache end
-
 	if not Fu.IsValid(target) then
-		-- Fu.Utils.SetCachedVars(cacheKey, false)
 		return false
+	end
+
+	local CK = Fu.CK
+	if CK then
+		local cache = Fu.Utils.GetCachedVars(CK.IS_OTHER_ALLY_CAN_KILL + target:GetPlayerID(), 0.5)
+		if cache ~= nil then return cache end
 	end
 
 	if target:GetHealth() / target:GetMaxHealth() > 0.38
 	then
-		-- Fu.Utils.SetCachedVars(cacheKey, false)
+		if CK then Fu.Utils.SetCachedVars(CK.IS_OTHER_ALLY_CAN_KILL + target:GetPlayerID(), false) end
 		return false
 	end
 
@@ -42,14 +43,9 @@ function Fu.IsOtherAllyCanKillTarget( bot, target )
 		end
 	end
 
-	if nTotalDamage > target:GetHealth()
-	then
-		-- Fu.Utils.SetCachedVars(cacheKey, true)
-		return true
-	end
-
-	-- Fu.Utils.SetCachedVars(cacheKey, false)
-	return false
+	local res = nTotalDamage > target:GetHealth()
+	if CK then Fu.Utils.SetCachedVars(CK.IS_OTHER_ALLY_CAN_KILL + target:GetPlayerID(), res) end
+	return res
 end
 
 
@@ -69,6 +65,44 @@ function Fu.IsNotImmune(botTarget)
 	and botTarget:CanBeSeen()
 	and not botTarget:IsInvulnerable()
 	and not botTarget:IsMagicImmune()
+end
+
+-- Tower dive check
+-- Returns true if bot is near enemy tower and team can't guarantee the kill on target.
+-- Call this before committing to an attack to prevent suicidal tower dives.
+function Fu.IsRecklesslyDivingTower(bot, target)
+	if not Fu.IsValidHero(target) then return false end
+	local nEnemyTowers = bot:GetNearbyTowers(800, true)
+	if not Fu.IsValidBuilding(nEnemyTowers[1]) then return false end
+
+	-- Count allied DPS on this target (only allies actually engaging it)
+	local nInRangeAlly = target:GetNearbyHeroes(900, true, BOT_MODE_NONE)
+	local ourDamage = 0
+	for _, ally in pairs(nInRangeAlly) do
+		if Fu.IsValidHero(ally) and Fu.IsGoingOnSomeone(ally) and not Fu.IsSuspiciousIllusion(ally) then
+			local allyTarget = Fu.GetProperTarget(ally)
+			if allyTarget == target then
+				local timeToReach = math.max(0, (GetUnitToUnitDistance(ally, target) - ally:GetAttackRange()) / math.max(1, ally:GetCurrentMovementSpeed()))
+				ourDamage = ourDamage + ally:GetAttackDamage() * ally:GetAttackSpeed() * math.max(1, 3 - timeToReach)
+			end
+		end
+	end
+
+	-- Can't kill target in 3 seconds under tower → reckless dive
+	local targetSurvival = target:GetHealth() + target:GetHealthRegen() * 3
+	if target:GetActualIncomingDamage(ourDamage, DAMAGE_TYPE_PHYSICAL) < targetSurvival then
+		return true
+	end
+
+	return false
+end
+
+-- Check if unit has active spell reflection (Lotus Orb, Anti-Mage Counterspell, Mirror Shield)
+function Fu.IsReflectingSpells(unit)
+	if unit == nil then return false end
+	return unit:HasModifier('modifier_item_lotus_orb_active')
+		or unit:HasModifier('modifier_antimage_counterspell')
+		or unit:HasModifier('modifier_mirror_shield')
 end
 
 
@@ -340,8 +374,8 @@ end
 --以下可少算但不可多算
 function Fu.GetAttackProDelayTime( bot, nCreep )
 	if nCreep == nil then
-		print('[ERROR] nil creep target')
-		print("Stack Trace:", debug.traceback())
+		log('[ERROR] nil creep target')
+		log("Stack Trace:", debug.traceback())
 		return 0
 	end
 
@@ -561,9 +595,11 @@ end
 
 
 function Fu.WeAreStronger(bot, nRadius)
-	local cacheKey = 'WeAreStronger'..tostring(bot:GetPlayerID())..'-'..tostring(nRadius)
-	local cachedVar = Fu.Utils.GetCachedVars(cacheKey, 0.5)
-	if cachedVar ~= nil then return cachedVar end
+	local CK = Fu.CK
+	if CK then
+		local cachedVar = Fu.Utils.GetCachedVars(CK.WE_ARE_STRONGER + bot:GetPlayerID(), 0.5)
+		if cachedVar ~= nil then return cachedVar end
+	end
 
 	local tAllyHeroes = {}
 	local tEnemyHeroes = {}
@@ -650,7 +686,7 @@ function Fu.WeAreStronger(bot, nRadius)
 	end
 
 	local res = ourPowerRaw > enemyPower
-	Fu.Utils.SetCachedVars(cacheKey, res)
+	if CK then Fu.Utils.SetCachedVars(CK.WE_ARE_STRONGER + bot:GetPlayerID(), res) end
 	return res
 end
 
@@ -720,8 +756,8 @@ function Fu.HasEnoughDPSForRoshan(heroes)
         DPS = DPS + dps
     end
 
-    DPS =  DPS / #heroes
-
+    -- Use TOTAL team DPS (not average per hero).
+    -- Old code divided by hero count, which penalized large teams.
     DPSThreshold = roshanHealth / plannedTimeToKill
     return DPS >= DPSThreshold
 end

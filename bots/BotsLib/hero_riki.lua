@@ -133,14 +133,14 @@ modifier_riki_tricks_of_the_trade_phase
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityAS = bot:GetAbilityByName( sAbilityList[4] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local talent5 = bot:GetAbilityByName( sTalentList[5] )
-local talent6 = bot:GetAbilityByName( sTalentList[6] )
-local talent8 = bot:GetAbilityByName( sTalentList[8] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'riki')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'riki')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'riki')
+local abilityAS = SafeAbility(bot:GetAbilityByName(sAbilityList[4]), 'sAbilityList[4]', 'riki')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'riki')
+local talent5 = SafeAbility(bot:GetAbilityByName(sTalentList[5]), 'sTalentList[5]', 'riki')
+local talent6 = SafeAbility(bot:GetAbilityByName(sTalentList[6]), 'sTalentList[6]', 'riki')
+local talent8 = SafeAbility(bot:GetAbilityByName(sTalentList[8]), 'sTalentList[8]', 'riki')
 
 local castQDesire, castQTarget
 local castWDesire, castWTarget
@@ -192,14 +192,17 @@ function X.SkillsComplement()
 	castEDesire, castETarget = X.ConsiderE()
 	if ( castEDesire > 0 )
 	then
-
 		Fu.SetQueuePtToINT( bot, true )
-
 		bot:ActionQueue_UseAbilityOnLocation( abilityE, castETarget )
 		return
-
 	end
 
+	castASDesire, castASTarget = X.ConsiderAS()
+	if ( castASDesire > 0 )
+	then
+		bot:Action_UseAbilityOnEntity( abilityAS, castASTarget )
+		return
+	end
 
 end
 

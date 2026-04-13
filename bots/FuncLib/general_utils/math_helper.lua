@@ -1,7 +1,20 @@
 -- Math helpers, HP/MP queries, table utilities, timing
 local function Init(Fu)
 
+-- Shared nil/invalid unit check. Use before accessing any unit methods.
+function Fu.IsUnitValid( unit )
+	if unit == nil then return false end
+	local ok, result = pcall(function() return not unit:IsNull() end)
+	if not ok or not result then return false end
+	return true
+end
+
 function Fu.GetHP( unit )
+	if not Fu.IsUnitValid(unit)
+	or not unit:CanBeSeen()
+	or not unit:IsAlive() then
+		return 0
+	end
 	local nCurHealth = unit:GetHealth()
     local nMaxHealth = unit:GetMaxHealth()
 	if GetTeam() == unit:GetTeam() then
@@ -13,6 +26,7 @@ function Fu.GetHP( unit )
 end
 
 function Fu.GetMP( bot )
+	if not Fu.IsUnitValid(bot) then return 0 end
 	if bot:GetUnitName() == 'npc_dota_hero_huskar' then
 		return bot:GetHealth() / bot:GetMaxHealth()
 	end

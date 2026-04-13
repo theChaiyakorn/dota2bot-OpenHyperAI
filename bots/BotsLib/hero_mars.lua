@@ -104,10 +104,10 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local SpearOfMars 	= bot:GetAbilityByName('mars_spear')
-local GodsRebuke 	= bot:GetAbilityByName('mars_gods_rebuke')
-local Bulwark 		= bot:GetAbilityByName('mars_bulwark')
-local ArenaOfBlood 	= bot:GetAbilityByName('mars_arena_of_blood')
+local SpearOfMars 	= SafeAbility(bot:GetAbilityByName('mars_spear'), 'mars_spear', 'mars')
+local GodsRebuke 	= SafeAbility(bot:GetAbilityByName('mars_gods_rebuke'), 'mars_gods_rebuke', 'mars')
+local Bulwark 		= SafeAbility(bot:GetAbilityByName('mars_bulwark'), 'mars_bulwark', 'mars')
+local ArenaOfBlood 	= SafeAbility(bot:GetAbilityByName('mars_arena_of_blood'), 'mars_arena_of_blood', 'mars')
 
 local SpearOfMarsDesire, SpearOfMarsLocation
 local GodsRebukeDesire, GodsRebukeLocation
@@ -132,10 +132,10 @@ function X.SkillsComplement()
 	bAttacking = Fu.IsAttacking(bot)
 	nBotMP = Fu.GetMP(bot)
 
-	SpearOfMars = bot:GetAbilityByName('mars_spear')
-	GodsRebuke = bot:GetAbilityByName('mars_gods_rebuke')
-	Bulwark = bot:GetAbilityByName('mars_bulwark')
-	ArenaOfBlood = bot:GetAbilityByName('mars_arena_of_blood')
+	SpearOfMars = SafeAbility(bot:GetAbilityByName('mars_spear'), 'mars_spear', 'mars')
+	GodsRebuke = SafeAbility(bot:GetAbilityByName('mars_gods_rebuke'), 'mars_gods_rebuke', 'mars')
+	Bulwark = SafeAbility(bot:GetAbilityByName('mars_bulwark'), 'mars_bulwark', 'mars')
+	ArenaOfBlood = SafeAbility(bot:GetAbilityByName('mars_arena_of_blood'), 'mars_arena_of_blood', 'mars')
 
 	botTarget = Fu.GetProperTarget(bot)
 	nAllyHeroes = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE)

@@ -122,11 +122,11 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local Vacuum            = bot:GetAbilityByName('dark_seer_vacuum')
-local IonShell          = bot:GetAbilityByName('dark_seer_ion_shell')
-local Surge             = bot:GetAbilityByName('dark_seer_surge')
+local Vacuum            = SafeAbility(bot:GetAbilityByName('dark_seer_vacuum'), 'dark_seer_vacuum', 'dark_seer')
+local IonShell          = SafeAbility(bot:GetAbilityByName('dark_seer_ion_shell'), 'dark_seer_ion_shell', 'dark_seer')
+local Surge             = SafeAbility(bot:GetAbilityByName('dark_seer_surge'), 'dark_seer_surge', 'dark_seer')
 -- local NormalPunch       = bot:GetAbilityByName('dark_seer_normal_punch')
-local WallOfReplica     = bot:GetAbilityByName('dark_seer_wall_of_replica')
+local WallOfReplica     = SafeAbility(bot:GetAbilityByName('dark_seer_wall_of_replica'), 'dark_seer_wall_of_replica', 'dark_seer')
 
 local VacuumDesire, VacuumLocation
 local IonShellDesire, IonShellTarget

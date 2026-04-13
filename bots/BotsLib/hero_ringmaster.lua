@@ -122,21 +122,21 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local TameTheBeasts         = bot:GetAbilityByName('ringmaster_tame_the_beasts')
-local TameTheBeastsCrack    = bot:GetAbilityByName('ringmaster_tame_the_beasts_crack')
-local EscapeAct             = bot:GetAbilityByName('ringmaster_the_box')
-local ImpalementArts        = bot:GetAbilityByName('ringmaster_impalement')
-local Spotlight             = bot:GetAbilityByName('ringmaster_spotlight')
-local WheelOfWonder         = bot:GetAbilityByName('ringmaster_wheel')
+local TameTheBeasts         = SafeAbility(bot:GetAbilityByName('ringmaster_tame_the_beasts'), 'ringmaster_tame_the_beasts', 'ringmaster')
+local TameTheBeastsCrack    = SafeAbility(bot:GetAbilityByName('ringmaster_tame_the_beasts_crack'), 'ringmaster_tame_the_beasts_crack', 'ringmaster')
+local EscapeAct             = SafeAbility(bot:GetAbilityByName('ringmaster_the_box'), 'ringmaster_the_box', 'ringmaster')
+local ImpalementArts        = SafeAbility(bot:GetAbilityByName('ringmaster_impalement'), 'ringmaster_impalement', 'ringmaster')
+local Spotlight             = SafeAbility(bot:GetAbilityByName('ringmaster_spotlight'), 'ringmaster_spotlight', 'ringmaster')
+local WheelOfWonder         = SafeAbility(bot:GetAbilityByName('ringmaster_wheel'), 'ringmaster_wheel', 'ringmaster')
 
 -- Souvernirs
-local EmptySouvenir         = bot:GetAbilityByName('ringmaster_empty_souvenir')
-local FunhouseMirror        = bot:GetAbilityByName('ringmaster_funhouse_mirror')
-local StrongmanTonic        = bot:GetAbilityByName('ringmaster_strongman_tonic')
-local WhoopeeCushion        = bot:GetAbilityByName('ringmaster_whoopee_cushion')
-local CrystalBall           = bot:GetAbilityByName("ringmaster_crystal_ball")
-local WeightedPie           = bot:GetAbilityByName("ringmaster_weighted_pie")
-local Unicycle              = bot:GetAbilityByName("ringmaster_summon_unicycle")
+local EmptySouvenir         = SafeAbility(bot:GetAbilityByName('ringmaster_empty_souvenir'), 'ringmaster_empty_souvenir', 'ringmaster')
+local FunhouseMirror        = SafeAbility(bot:GetAbilityByName('ringmaster_funhouse_mirror'), 'ringmaster_funhouse_mirror', 'ringmaster')
+local StrongmanTonic        = SafeAbility(bot:GetAbilityByName('ringmaster_strongman_tonic'), 'ringmaster_strongman_tonic', 'ringmaster')
+local WhoopeeCushion        = SafeAbility(bot:GetAbilityByName('ringmaster_whoopee_cushion'), 'ringmaster_whoopee_cushion', 'ringmaster')
+local CrystalBall           = SafeAbility(bot:GetAbilityByName("ringmaster_crystal_ball"), 'ringmaster_crystal_ball', 'ringmaster')
+local WeightedPie           = SafeAbility(bot:GetAbilityByName("ringmaster_weighted_pie"), 'ringmaster_weighted_pie', 'ringmaster')
+local Unicycle              = SafeAbility(bot:GetAbilityByName("ringmaster_summon_unicycle"), 'ringmaster_summon_unicycle', 'ringmaster')
 
 local TameTheBeastsDesire, TameTheBeastsLocation
 local TameTheBeastsCrackDesire

@@ -17,6 +17,8 @@ local EdictTowerTarget = nil
 
 local ShouldMoveOutsideFountain = false
 local ShouldMoveOutsideFountainCheckTime = 0
+local ShouldTPToLane = false
+local TPToLaneLocation = nil
 local MoveOutsideFountainDistance = 1500
 local BearAttackLimitDistance = 1100
 local TetherBreakDistance = 1000
@@ -48,15 +50,22 @@ local laneAndT1s = {
 	{LANE_BOT, TOWER_BOT_1}
 }
 
+local _roamReason = 'none'
+local _lastRoamLog = 0
 function GetDesire()
 	if ShouldSkipBotThink(GetBot()) then return 0 end
-	-- local cacheKey = 'GetRoamDesire'..tostring(bot:GetPlayerID())
-	-- local cachedVar = Fu.Utils.GetCachedVars(cacheKey, 0.5 * (1 + Customize.ThinkLess))
-	-- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
 	local res = GetDesireHelper()
-	-- Fu.Utils.SetCachedVars(cacheKey, res)
-	return GetAdjustedDesireValue(res)
+	if res > 0 then
+		_lastRoamLog = DotaTime()
+		log('[ROAM] %s t=%.0f desire=%.2f reason=%s hp=%.2f enemies=%d allies=%d',
+			bot:GetUnitName(), DotaTime(), res, _roamReason,
+			Fu.GetHP(bot),
+			nInRangeEnemy and #nInRangeEnemy or -1,
+			nInRangeAlly and #nInRangeAlly or -1)
+	end
+	return res
 end
+
 function GetDesireHelper()
 	botName = bot:GetUnitName()
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return BOT_MODE_DESIRE_NONE end
@@ -78,18 +87,32 @@ function GetDesireHelper()
 	-- 	return BOT_ACTION_DESIRE_ABSOLUTE
 	-- end
 
-	tangoDesire, tangoTarget = ConsiderUseTango()
-	if tangoDesire > 0 then
-		return BOT_MODE_DESIRE_ABSOLUTE
+	-- Wraith King scepter / Undying helm: fight aggressively since already "dead"
+	if bot:HasModifier('modifier_skeleton_king_reincarnation_scepter_active')
+	or bot:HasModifier('modifier_item_helm_of_the_undying_active')
+	then
+		local weakestEnemy = Fu.GetVulnerableWeakestUnit(bot, true, true, bot:GetAttackRange() + 250)
+		if Fu.IsValidHero(weakestEnemy) then
+			bot:SetTarget(weakestEnemy)
+			_roamReason = 'wk_scepter_undying'
+			return BOT_MODE_DESIRE_ABSOLUTE * 1.5
+		end
 	end
+
+	-- tangoDesire, tangoTarget = ConsiderUseTango()
+	-- if tangoDesire > 0 and not Fu.IsInLaningPhase() then
+	-- 	return BOT_MODE_DESIRE_ABSOLUTE
+	-- end
 
 	TinkerShouldWaitInBaseToHeal = TinkerWaitInBaseAndHeal()
 	if TinkerShouldWaitInBaseToHeal
 	then
+		_roamReason = 'tinker_base_heal'
 		return BOT_ACTION_DESIRE_ABSOLUTE
 	end
 
 	if bot:HasModifier('modifier_fountain_aura_buff') and DotaTime() > 0 and DotaTime() - ShouldMoveOutsideFountainCheckTime < 2 then
+		_roamReason = 'fountain_move_outside'
 		return Clamp(bot:GetActiveModeDesire() + 0.2, 0, 1.1)
 	else
 		ShouldMoveOutsideFountain = false
@@ -98,15 +121,53 @@ function GetDesireHelper()
 	if ConsiderHeroMoveOutsideFountain() then
 		ShouldMoveOutsideFountain = true
 		ShouldMoveOutsideFountainCheckTime = DotaTime()
+		_roamReason = 'hero_move_outside_fountain'
 		return Clamp(bot:GetActiveModeDesire() + 0.2, 0, 1.1)
 	end
+
+	-- Ranged core frontline safety: when facing 2+ healthy enemies with no melee
+	-- ally in front, take over from attack mode to hold position behind frontline.
+	-- Skip during laning phase — dual lanes naturally have 2+ enemies nearby.
+	-- shouldTempRetreat = false
+	-- if not Fu.IsInLaningPhase()
+	-- and bot:GetAttackRange() >= 400 and Fu.IsCore(bot)
+	-- and nInRangeEnemy ~= nil and #nInRangeEnemy >= 2
+	-- and nInRangeAlly ~= nil and #nInRangeAlly >= 2 then
+	-- 	local healthyEnemyCount = 0
+	-- 	for _, e in pairs(nInRangeEnemy) do
+	-- 		if Fu.IsValidHero(e) and Fu.GetHP(e) >= 0.5 then
+	-- 			healthyEnemyCount = healthyEnemyCount + 1
+	-- 		end
+	-- 	end
+	-- 	if healthyEnemyCount >= 2 then
+	-- 		local enemyCenter = Fu.GetCenterOfUnits(nInRangeEnemy)
+	-- 		local distToEnemies = GetUnitToLocationDistance(bot, enemyCenter)
+	-- 		local hasMeleeFrontliner = false
+	-- 		for _, ally in pairs(nInRangeAlly or {}) do
+	-- 			if Fu.IsValidHero(ally) and ally ~= bot and ally:IsAlive() then
+	-- 				local allyDist = GetUnitToLocationDistance(ally, enemyCenter)
+	-- 				if allyDist < distToEnemies - 150 then
+	-- 					hasMeleeFrontliner = true
+	-- 					break
+	-- 				end
+	-- 			end
+	-- 		end
+	-- 		if not hasMeleeFrontliner and distToEnemies < bot:GetAttackRange() + 200 then
+	-- 			shouldTempRetreat = true
+	-- 			_roamReason = 'ranged_frontline_safety'
+	-- 			return Clamp(bot:GetActiveModeDesire() + 0.1, 0, 0.99)
+	-- 		end
+	-- 	end
+	-- end
+
+	-- Tower dive prevention is handled in team_roam Think (runs every frame for all bots)
 
 	-- unit special abilities
 	local specialRoaming = ConsiderHeroSpecificRoaming[botName]
 	if specialRoaming then
-		-- return specialRoaming
 		local specialDesire = specialRoaming()
 		if specialDesire and specialDesire > 0 then
+			_roamReason = 'hero_specific_'..botName
 			if specialDesire <= 1 then
 				return Clamp(specialDesire, 0, 0.99)
 			else
@@ -119,8 +180,10 @@ function GetDesireHelper()
 	local generalRoaming = ConsiderGeneralRoamingInConditions()
 	if generalRoaming then
 		if generalRoaming > 0 and generalRoaming <= 1 then
+			_roamReason = 'general_condition'
 			return Clamp(generalRoaming, 0, 0.99)
 		else
+			_roamReason = 'general_condition_override'
 			return generalRoaming
 		end
 	end
@@ -141,13 +204,73 @@ end
 
 function Think()
     if Fu.CanNotUseAction(bot) then return end
-	if Fu.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "roam") then return end
+
+	-- Healing at fountain (walked back, not respawn TP): stay put until healthy
+	if bot:HasModifier('modifier_fountain_aura_buff') and ShouldTPToLane == false
+	and (Fu.GetHP(bot) < 0.8 or Fu.GetMP(bot) < 0.8) then
+		return
+	end
 
 	nInRangeEnemy = bot:GetNearbyHeroes(1200, true, BOT_MODE_NONE)
+
+	-- Ranged core frontline safety: hold position behind melee allies
+	if shouldTempRetreat and nInRangeEnemy and #nInRangeEnemy >= 2 then
+		local attackRange = bot:GetAttackRange()
+		-- Find nearest melee ally to hide behind
+		local bestAlly = nil
+		local bestDist = math.huge
+		local nAlly = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE)
+		for _, ally in pairs(nAlly or {}) do
+			if Fu.IsValidHero(ally) and ally ~= bot and ally:GetAttackRange() < 350 and ally:IsAlive() then
+				local d = GetUnitToUnitDistance(bot, ally)
+				if d < bestDist then
+					bestDist = d
+					bestAlly = ally
+				end
+			end
+		end
+
+		-- Position: stay behind melee ally relative to enemy center
+		if bestAlly ~= nil then
+			local enemyCenter = Fu.GetCenterOfUnits(nInRangeEnemy)
+			local safePos = Fu.VectorAway(bestAlly:GetLocation(), enemyCenter, 250)
+			-- Attack anything in range from safe position, otherwise move there
+			local target = Fu.GetAttackableWeakestUnit(bot, attackRange, true, true)
+			if target then
+				bot:Action_AttackUnit(target, false)
+			else
+				bot:Action_MoveToLocation(safePos)
+			end
+			return
+		else
+			-- No melee ally: back off toward fountain side
+			local enemyCenter = Fu.GetCenterOfUnits(nInRangeEnemy)
+			local safePos = Fu.VectorAway(bot:GetLocation(), enemyCenter, 200)
+			local target = Fu.GetAttackableWeakestUnit(bot, attackRange, true, true)
+			if target then
+				bot:Action_AttackUnit(target, false)
+			else
+				bot:Action_MoveToLocation(safePos)
+			end
+			return
+		end
+	end
 
 	ThinkIndividualRoaming() -- unit special abilities
 	ThinkGeneralRoaming() -- general items or conditions.
 	ThinkActualGankingInLanes()
+
+	-- Fallback: if roam is active but no Think function issued an action,
+	-- the bot idles at 0.9+ desire blocking retreat. Attack nearest enemy or move to safety.
+	if bot:GetCurrentActionType() == BOT_ACTION_TYPE_NONE then
+		local enemies = bot:GetNearbyHeroes(bot:GetAttackRange() + 100, true, BOT_MODE_NONE)
+		if enemies and #enemies >= 1 and Fu.IsValidHero(enemies[1]) and Fu.CanBeAttacked(enemies[1]) then
+			bot:Action_AttackUnit(enemies[1], false)
+		else
+			-- No target in range: move toward fountain (disengage)
+			bot:Action_MoveToLocation(Fu.AdjustLocationWithOffsetTowardsFountain(bot:GetLocation(), 300))
+		end
+	end
 end
 
 function ThinkIndividualRoaming()
@@ -183,6 +306,7 @@ function ThinkIndividualRoaming()
 				and not TPScroll:IsNull()
 				and TPScroll:IsFullyCastable()
 				then
+					log('[TP] %s t=%.0f ROAM tp to fountain', bot:GetUnitName(), DotaTime())
 					bot:Action_UseAbilityOnLocation(TPScroll, Fu.GetTeamFountain())
 					return
 				end
@@ -190,13 +314,6 @@ function ThinkIndividualRoaming()
 		else
 			if nBotHP < 0.85 or Fu.GetMP(bot) < 0.85
 			then
-				if Fu.Item.GetItemCharges(bot, 'item_tpscroll') <= 1
-				and bot:GetGold() >= GetItemCost('item_tpscroll')
-				then
-					bot:ActionImmediate_PurchaseItem('item_tpscroll')
-					return
-				end
-
 				bot:Action_MoveToLocation(bot:GetLocation() + 150)
 				return
 			else
@@ -205,12 +322,12 @@ function ThinkIndividualRoaming()
 		end
 	end
 
-	-- Tinker
+	-- Tinker: wait in base to heal — walk to fountain instead of clearing actions
 	if TinkerShouldWaitInBaseToHeal
 	then
 		if nBotHP < 0.8 or Fu.GetMP(bot) < 0.8
 		then
-			bot:Action_ClearActions(true)
+			bot:Action_MoveToLocation(Fu.GetTeamFountain())
 			return
 		end
 	end
@@ -218,7 +335,6 @@ function ThinkIndividualRoaming()
 	-- Spirit Breaker
 	if bot:HasModifier('modifier_spirit_breaker_charge_of_darkness')
 	then
-		bot:Action_ClearActions(false)
 		if bot.chargeRetreat and #nInRangeEnemy == 0 then
 			if IsLocationPassable(bot:GetLocation()) then
 				bot.chargeRetreat = false
@@ -226,7 +342,6 @@ function ThinkIndividualRoaming()
 				return
 			end
 		end
-		return
 	end
 
 	-- Batrider
@@ -725,6 +840,18 @@ end
 
 function ThinkGeneralRoaming()
 	local nBotHP = Fu.GetHP(bot)
+
+	-- TP back to lane (flag set by GetDesire)
+	if ShouldTPToLane and TPToLaneLocation ~= nil then
+		local tpScroll = Fu.Utils.GetItemFromFullInventory(bot, 'item_tpscroll')
+		if Fu.CanCastAbility(tpScroll) then
+			log('[TP] %s t=%.0f ROAM tp to lane at (%.0f,%.0f)', bot:GetUnitName(), DotaTime(), TPToLaneLocation.x, TPToLaneLocation.y)
+			bot:Action_UseAbilityOnLocation(tpScroll, TPToLaneLocation)
+			ShouldTPToLane = false
+			return
+		end
+	end
+
 	-- Get out of fountain if in item mode
 	if ShouldMoveOutsideFountain
 	then
@@ -777,7 +904,7 @@ function ThinkGeneralRoaming()
 	end
 
 	if Fu.GetModifierTime(bot, "modifier_flask_healing") >= 1 then
-		if #bot:GetNearbyHeroes(1000, true, BOT_MODE_NONE) >= 1 and nBotHP < 0.8 then
+		if #(bot:GetNearbyHeroes(1000, true, BOT_MODE_NONE) or {}) >= 1 and nBotHP < 0.8 then
 			bot:Action_MoveToLocation(Fu.GetTeamFountain())
 			return
 		end
@@ -785,7 +912,9 @@ function ThinkGeneralRoaming()
 
 	if bot:HasModifier("modifier_skeleton_king_reincarnation_scepter_active") or bot:HasModifier("modifier_item_helm_of_the_undying_active") then
 		local botTarget = Fu.GetProperTarget(bot)
-		if Fu.IsValid(botTarget) then
+		if not Fu.IsValid() then
+			botTarget = Fu.GetVulnerableWeakestUnit(bot, true, true, bot:GetAttackRange() + 350)
+		else
 			if GetUnitToUnitDistance(bot, botTarget) > bot:GetAttackRange() + 200
 			then
 				bot:Action_MoveToLocation(botTarget:GetLocation())
@@ -929,8 +1058,10 @@ function ActualGankDesire()
 	and not bot:WasRecentlyDamagedByAnyHero(2)
 	and (botTarget == nil or #nInRangeEnemy <= 0 or nInRangeEnemy[1] ~= botTarget) then
 		local botLvl = bot:GetLevel()
-		if (Fu.GetPosition(bot) == 2 and botLvl >= 6 and Fu.GetHP(bot) > 0.7 and Fu.GetMP(bot) > 0.5) -- mid player roaming
-		or (Fu.GetPosition(bot) > 3 and botLvl > 3 and Fu.GetHP(bot) > 0.6 and Fu.GetMP(bot) > 0.5) -- supports roaming
+		-- Only gank with strong conditions: high HP/mana, reasonable level
+		if (Fu.GetPosition(bot) == 2 and botLvl >= 6 and Fu.GetHP(bot) > 0.8 and Fu.GetMP(bot) > 0.6)
+		or (Fu.GetPosition(bot) == 4 and botLvl >= 5 and Fu.GetHP(bot) > 0.7 and Fu.GetMP(bot) > 0.6)
+		or (Fu.GetPosition(bot) == 5 and botLvl >= 4 and Fu.GetHP(bot) > 0.7 and Fu.GetMP(bot) > 0.6)
 		then
 			return CheckLaneToGank(Fu.GetPosition(bot))
 		end
@@ -946,7 +1077,7 @@ function SetupTwinGates()
 			if name == 'npc_dota_unit_twin_gate'
 			then
 				table.insert(TwinGates, unit)
-				print("Twin gate: " .. name .. ". " .. tostring(unit:GetLocation()))
+				log("Twin gate: " .. name .. ". " .. tostring(unit:GetLocation()))
 			end
 			if #TwinGates >= 2 then
 				break
@@ -961,6 +1092,8 @@ function ThinkActualGankingInLanes()
 		local nEnemiesInGankLane = Fu.GetEnemyCountInLane(laneToGank)
 		if nEnemiesInGankLane == 0 then
 			laneToGank = nil
+			-- Gank cancelled — move to assigned lane front instead of standing idle
+			bot:Action_MoveToLocation(GetLaneFrontLocation(GetTeam(), bot:GetAssignedLane(), 0))
 			return
 		end
 
@@ -971,7 +1104,7 @@ function ThinkActualGankingInLanes()
 			and targetGate ~= nil
 			and enableGateUsage
 			then
-				print('Trying to use gate '..botName)
+				log('Trying to use gate '..botName)
 				local distanceToGate = GetUnitToUnitDistance(bot, targetGate)
 				if distanceToGate > 350 then
 					bot:Action_MoveToLocation(targetGate:GetLocation())
@@ -1041,9 +1174,9 @@ function CheckLaneToGank(botPosition)
 
 	local botLvlTooLow = (nPos == 1 and botLevel < 10) or
 		(nPos == 2 and botLevel < 8) or
-		(nPos == 3 and botLevel < 6) or
-		(nPos == 4 and botLevel < 4) or
-		(nPos == 5 and botLevel < 3)
+		(nPos == 3 and botLevel < 8) or
+		(nPos == 4 and botLevel < 5) or
+		(nPos == 5 and botLevel < 4)
 
 	if (DotaTime() - lastGankDecisionTime < gankGapTime and lastGankDecisionTime ~= 0)
 		or botLvlTooLow then
@@ -1078,9 +1211,9 @@ function CheckLaneToGank(botPosition)
 					goto continue_lane
 				end
 
-				-- Better gank conditions: enemy is pushed forward (closer to our tower)
-				-- AND we have at least 1 ally there to help
-				local bEnemyOverextended = laneFrontToT1Dist < 2500
+				-- Gank conditions: enemy pushed past river (close to our tower)
+				-- AND ally present to help — don't gank 1v1
+				local bEnemyOverextended = laneFrontToT1Dist < 2000
 				local bAllyPresent = #nInRangeAlly >= 1
 
 				if bEnemyOverextended and bAllyPresent then
@@ -1184,10 +1317,9 @@ function ConsiderUseTango()
 		tangoSlot = Fu.FindItemSlotNotInNonbackpack(bot, "item_tango_single")
 	end
 	if tangoSlot >= 0
-	and bot:OriginalGetMaxHealth() - bot:OriginalGetHealth() > 250
-	and Fu.GetHP(bot) < 0.6
-	and not Fu.IsAttacking(bot)
-	and not bot:WasRecentlyDamagedByAnyHero(2) then
+	and bot:OriginalGetMaxHealth() - bot:OriginalGetHealth() > 150
+	and Fu.GetHP(bot) < 0.75
+	then
 		local trees = bot:GetNearbyTrees( 800 )
 		local targetTree = trees[1]
 		local nearEnemyList = Fu.GetNearbyHeroes(bot, 1000, true, BOT_MODE_NONE )
@@ -1256,6 +1388,8 @@ end
 function ConsiderHeroMoveOutsideFountain()
 	if DotaTime() < 0 then return false end
 	if bot:DistanceFromFountain() > MoveOutsideFountainDistance then return false end
+	-- Don't use roam to move out of fountain when ancient is under threat — let defend handle it
+	if Fu.GetEnemiesAroundAncient(bot, 3200) > 0 then return false end
 
 	if ((bot:HasModifier('modifier_fountain_aura_buff') -- in fountain with high hp
 		and Fu.GetHP(bot) > 0.95)
@@ -1303,6 +1437,12 @@ end
 function ConsiderGeneralRoamingInConditions()
 	local nBotHP = Fu.GetHP(bot)
 	if nBotHP < 0.35 then
+		return BOT_ACTION_DESIRE_NONE
+	end
+
+	-- Don't lock roam high when outnumbered in enemy territory (let retreat win)
+	if nInRangeEnemy and nInRangeAlly and #nInRangeEnemy > #nInRangeAlly + 1
+	and not Fu.WeAreStronger(bot, 1200) then
 		return BOT_ACTION_DESIRE_NONE
 	end
 
@@ -1433,10 +1573,14 @@ function ConsiderGeneralRoamingInConditions()
 		
 	-- end
 
-	-- 目前可能会导致bot往敌方队伍里走或者浪费时间乱走被团灭
-	local isBotTryingHardToAttack = Fu.IsAttacking(bot) or (bot:GetActiveMode() == BOT_MODE_ATTACK and bot:GetActiveModeDesire() > 0.7)
-	ShouldBotsSpreadOut = not isBotTryingHardToAttack and Fu.Utils.ShouldBotsSpreadOut(bot, 450)
+	local isBotInCombat = Fu.IsAttacking(bot)
+		or (bot:GetActiveMode() == BOT_MODE_ATTACK and bot:GetActiveModeDesire() > 0.5)
+		or bot:WasRecentlyDamagedByAnyHero(2.0)
+		or Fu.IsGoingOnSomeone(bot)
+		or Fu.IsInTeamFight(bot, 1200)
+	ShouldBotsSpreadOut = not isBotInCombat and not Fu.IsInLaningPhase() and Fu.Utils.ShouldBotsSpreadOut(bot, 450)
 	if ShouldBotsSpreadOut then
+		_roamReason = 'spread_out_aoe'
 		return 0.91
 	end
 
@@ -1445,7 +1589,7 @@ function ConsiderGeneralRoamingInConditions()
 		-- 状态不好 回泉水补给
 		if not bot:WasRecentlyDamagedByAnyHero(1.5)
 		and not Fu.HasHealingItem(bot)
-		and not botName == 'npc_dota_hero_huskar'
+		and botName ~= 'npc_dota_hero_huskar'
 		and (
 			(shouldGoBackToFountain and not IsInHealthyState())
 			or (nBotHP < 0.22 or (nBotHP < 0.3 and Fu.GetMP(bot) < 0.22))
@@ -1606,7 +1750,7 @@ function CheckHighPriorityChannelAbility(abilityName)
 	local nBotHP = Fu.GetHP(bot)
 	if cAbility == nil then cAbility = bot:GetAbilityByName(abilityName) end;
 	if cAbility:IsTrained() and (cAbility:IsInAbilityPhase() or bot:IsChanneling()) then
-		return BOT_MODE_DESIRE_ABSOLUTE;
+		return BOT_DESIRE_OVERRIDE * 1.5; -- must beat everything, never cancel channel
 	end
 	return BOT_MODE_DESIRE_NONE
 end
@@ -1636,7 +1780,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_hoodwink'] = function ()
 	if cAbility:IsTrained()
 	then
 		if cAbility:IsInAbilityPhase() or bot:HasModifier('modifier_hoodwink_sharpshooter_windup') then
-			return BOT_MODE_DESIRE_ABSOLUTE
+			return BOT_DESIRE_OVERRIDE * 1.5
 		end
 	end
 end
@@ -1647,7 +1791,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_void_spirit'] = function ()
 	then
 		if cAbility:IsInAbilityPhase() or bot:HasModifier("modifier_void_spirit_dissimilate_phase")
 		then
-			return BOT_MODE_DESIRE_ABSOLUTE
+			return BOT_DESIRE_OVERRIDE * 1.5
 		end
 	end
 	return BOT_MODE_DESIRE_NONE
@@ -1662,7 +1806,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_primal_beast'] = function ()
 	if cAbility:IsTrained()
 	then
 		if cAbility:IsInAbilityPhase() or bot:HasModifier('modifier_primal_beast_onslaught_windup') or bot:HasModifier('modifier_prevent_taunts') or bot:HasModifier('modifier_primal_beast_onslaught_movement_adjustable') then
-			return BOT_MODE_DESIRE_ABSOLUTE
+			return BOT_DESIRE_OVERRIDE * 1.5
 		end
 	end
 
@@ -1670,7 +1814,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_primal_beast'] = function ()
 	if cAbility:IsTrained()
 	then
 		if cAbility:IsInAbilityPhase() or (bot:HasModifier('modifier_primal_beast_trample') and nBotHP > 0.3) then
-			return BOT_MODE_DESIRE_ABSOLUTE
+			return BOT_DESIRE_OVERRIDE * 1.5
 		end
 	end
 
@@ -1678,7 +1822,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_primal_beast'] = function ()
 	if cAbility:IsTrained()
 	then
 		if cAbility:IsInAbilityPhase() or bot:HasModifier('modifier_primal_beast_pulverize_self') then
-			return BOT_MODE_DESIRE_ABSOLUTE
+			return BOT_DESIRE_OVERRIDE * 1.5
 		end
 	end
 	return BOT_MODE_DESIRE_NONE
@@ -1690,7 +1834,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_batrider'] = function ()
 	then
 		if cAbility:IsInAbilityPhase() or bot:HasModifier("modifier_batrider_flaming_lasso_self")
 		then
-			return BOT_MODE_DESIRE_ABSOLUTE
+			return BOT_DESIRE_OVERRIDE * 1.5
 		end
 	end
 	return BOT_MODE_DESIRE_NONE
@@ -1703,7 +1847,7 @@ end
 ConsiderHeroSpecificRoaming['npc_dota_hero_keeper_of_the_light'] = function ()
 	if cAbility == nil then cAbility = bot:GetAbilityByName("keeper_of_the_light_illuminate") end
 	if cAbility:IsInAbilityPhase() or bot:IsChanneling() or bot:HasModifier('modifier_keeper_of_the_light_illuminate') then
-		return BOT_MODE_DESIRE_ABSOLUTE
+		return BOT_DESIRE_OVERRIDE * 1.5
 	end
 	return BOT_MODE_DESIRE_NONE
 end
@@ -1717,7 +1861,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_monkey_king'] = function ()
 	cAbility = bot:GetAbilityByName("monkey_king_primal_spring")
 	if cAbility ~= nil and cAbility:IsTrained() then
 		if cAbility:IsInAbilityPhase() or bot:IsChanneling() then
-			return BOT_MODE_DESIRE_ABSOLUTE
+			return BOT_DESIRE_OVERRIDE * 1.5
 		end
 	end
 
@@ -1727,7 +1871,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_monkey_king'] = function ()
 		local eta = bot.tree_dance_status.eta or 0
 		local elapsed = DotaTime() - (bot.tree_dance_status.cast_time or 0)
 		if elapsed > (3.0 + eta) and elapsed < (4.0 + eta) then
-			return BOT_MODE_DESIRE_ABSOLUTE
+			return BOT_DESIRE_OVERRIDE * 1.5
 		end
 	end
 
@@ -1742,7 +1886,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_nyx_assassin'] = function ()
 		then
 			if bot.canVendettaKill
 			then
-				return BOT_MODE_DESIRE_ABSOLUTE
+				return BOT_DESIRE_OVERRIDE * 1.5
 			end
 		end
 	end
@@ -1755,7 +1899,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_pangolier'] = function ()
 	then
 		if cAbility:IsInAbilityPhase() or bot:HasModifier('modifier_pangolier_gyroshell')
 		then
-			return BOT_MODE_DESIRE_ABSOLUTE
+			return BOT_DESIRE_OVERRIDE * 1.5
 		end
 	end
 	return BOT_MODE_DESIRE_NONE
@@ -1766,7 +1910,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_phoenix'] = function ()
 	if cAbility:IsTrained()
 	then
 		if bot:HasModifier('modifier_phoenix_supernova_hiding') then
-			return BOT_MODE_DESIRE_ABSOLUTE
+			return BOT_DESIRE_OVERRIDE * 1.5
 		end
 	end
 
@@ -1775,7 +1919,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_phoenix'] = function ()
 	then
 		if bot:HasModifier('modifier_phoenix_sun_ray')
 		then
-			return BOT_MODE_DESIRE_ABSOLUTE
+			return BOT_DESIRE_OVERRIDE * 1.5
 		end
 	end
 end
@@ -1785,7 +1929,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_puck'] = function ()
 	if cAbility:IsTrained()
 	then
 		if cAbility:IsInAbilityPhase() or bot:HasModifier('modifier_puck_phase_shift') then
-			return BOT_MODE_DESIRE_ABSOLUTE
+			return BOT_DESIRE_OVERRIDE * 1.5
 		end
 	end
 	return BOT_MODE_DESIRE_NONE
@@ -1796,7 +1940,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_ringmaster'] = function ()
 	if cAbility:IsTrained()
 	then
 		if cAbility:IsInAbilityPhase() or bot:HasModifier("modifier_ringmaster_tame_the_beasts") then
-			return BOT_MODE_DESIRE_ABSOLUTE
+			return BOT_DESIRE_OVERRIDE * 1.5
 		end
 	end
 	return BOT_MODE_DESIRE_NONE
@@ -1807,7 +1951,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_snapfire'] = function ()
 	if cAbility:IsTrained()
 	then
 		if cAbility:IsInAbilityPhase() or bot:HasModifier('modifier_snapfire_mortimer_kisses') then
-			return BOT_MODE_DESIRE_ABSOLUTE
+			return BOT_DESIRE_OVERRIDE * 1.5
 		end
 	end
 	return BOT_MODE_DESIRE_NONE
@@ -1818,7 +1962,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_spirit_breaker'] = function ()
 	if cAbility:IsTrained()
 	then
 		if cAbility:IsInAbilityPhase() or bot:HasModifier('modifier_spirit_breaker_charge_of_darkness') then
-			return BOT_MODE_DESIRE_ABSOLUTE * 1.2
+			return BOT_DESIRE_OVERRIDE * 1.2
 		end
 	end
 	return BOT_MODE_DESIRE_NONE
@@ -1833,7 +1977,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_invoker'] = function ()
 	and (botTarget:HasModifier("modifier_invoker_tornado") or botTarget:HasModifier("modifier_item_wind_waker")
 		or botTarget:HasModifier("modifier_eul_cyclone") or botTarget:HasModifier("modifier_item_cyclone") or botTarget:IsInvulnerable())
 	and (Fu.GetHP(botTarget) > 0.3 or Fu.GetHP(botTarget) > nBotHP) then
-		return BOT_MODE_DESIRE_ABSOLUTE * 0.96
+		return BOT_DESIRE_OVERRIDE * 0.96
 	end
 end
 
@@ -1842,7 +1986,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_tinker'] = function ()
 	if cAbility:IsTrained()
 	then
 		if cAbility:IsInAbilityPhase() or bot:IsChanneling() or bot:HasModifier('modifier_tinker_rearm') then
-			return BOT_MODE_DESIRE_ABSOLUTE
+			return BOT_DESIRE_OVERRIDE * 1.5
 		end
 	end
 	return BOT_MODE_DESIRE_NONE
@@ -1899,7 +2043,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_lone_druid_bear'] = function ()
 	and not hasUltimateScepter
 	then
         if distanceFromHero > BearAttackLimitDistance then
-			return BOT_MODE_DESIRE_ABSOLUTE * 1.2
+			return BOT_DESIRE_OVERRIDE * 1.2
         end
 		local avoidDangerous = (#bot:GetNearbyLaneCreeps(400, true) < 3 and #bot:GetNearbyTowers(800, true) == 0) or bot:GetLevel() >= 3
 		if Fu.Utils.IsValidUnit(heroTarget)
@@ -1907,14 +2051,14 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_lone_druid_bear'] = function ()
 		and GetUnitToUnitDistance(hero, heroTarget) < BearAttackLimitDistance + 250
 		and avoidDangerous
 		then
-			return BOT_MODE_DESIRE_ABSOLUTE * 1.2
+			return BOT_DESIRE_OVERRIDE * 1.2
 		end
 
 		local target = Fu.GetAttackableWeakestUnitFromList(hero, hero:GetNearbyHeroes(BearAttackLimitDistance + 250, true, BOT_MODE_NONE))
 		if target ~= nil
 		and avoidDangerous
 		then
-			return BOT_MODE_DESIRE_ABSOLUTE * 1.2
+			return BOT_DESIRE_OVERRIDE * 1.2
 		end
     end
 	return BOT_MODE_DESIRE_NONE
@@ -1929,7 +2073,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_marci'] = function ()
 				return BOT_MODE_DESIRE_VERYHIGH
 			end
 			if Fu.IsGoingOnSomeone(bot) and #nInRangeEnemy >= 1 then
-				return BOT_MODE_DESIRE_ABSOLUTE
+				return BOT_DESIRE_OVERRIDE * 1.5
 			end
 		end
 	end
@@ -1942,7 +2086,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_wisp'] = function ()
 		if Fu.IsValid(bot.stateTetheredHero)
 		and nBotHP > 0.5
 		and GetUnitToUnitDistance(bot, bot.stateTetheredHero) > TetherBreakDistance - 200 then
-			return BOT_MODE_DESIRE_ABSOLUTE * 0.85
+			return BOT_DESIRE_OVERRIDE * 0.85
 		end
 	end
 	return BOT_MODE_DESIRE_NONE
@@ -1954,7 +2098,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_pudge'] = function ()
 	then
 		local botTarget = Fu.GetProperTarget(bot)
 		if Fu.IsValidTarget(botTarget) and nBotHP > Fu.GetHP(botTarget) then
-			return BOT_MODE_DESIRE_ABSOLUTE * 0.85
+			return BOT_DESIRE_OVERRIDE * 0.85
 		end
 	end
 	return BOT_MODE_DESIRE_NONE
@@ -1969,7 +2113,7 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_muerta'] = function ()
 				return BOT_MODE_DESIRE_VERYHIGH
 			end
 			if Fu.IsGoingOnSomeone(bot) and #nInRangeEnemy >= 1 then
-				return BOT_MODE_DESIRE_ABSOLUTE
+				return BOT_DESIRE_OVERRIDE * 1.5
 			end
 		end
 	end
@@ -2015,4 +2159,12 @@ ConsiderHeroSpecificRoaming['npc_dota_hero_nevermore'] = function ()
 		end
 	end
 	return BOT_MODE_DESIRE_NONE
+end
+
+-- SafeCall wrapping for error protection
+if SafeCall then
+  local _origGetDesire = GetDesire
+  local _origThink = Think
+  if _origGetDesire then GetDesire = SafeCall(_origGetDesire, 0, 'ROAM_GetDesire') end
+  if _origThink then Think = SafeCall(_origThink, nil, 'ROAM_Think') end
 end

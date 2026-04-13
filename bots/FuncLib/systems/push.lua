@@ -23,9 +23,9 @@ local function __TS__StringIncludes(self, searchString, position)
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local updateGameStateCache, updateLocationStateCache, updateUnitStateCache, presence_adjust, pingTimeDelta, StartToPushTime, BOT_MODE_DESIRE_EXTRA_LOW, hEnemyAncient, PUSH_CACHE_TTL, gameStateCache, locationStateCache, unitStateCache, BASE_ANC_RADIUS
-local Fu = require("bots/FuncLib/func_utils")
-local ____dota = require("bots.ts_libs.dota.index")
+local refreshPushCache, updateGameStateCache, updateLocationStateCache, updateUnitStateCache, presence_adjust, pingTimeDelta, hEnemyAncient, _pushCacheTick, _pushCacheBestLane, _pushCacheEnemiesAtAncient, _pushCacheEnemiesOnHG, _pushCacheLaneBlocked, _pushCacheDefendPingSuppressed, _pushCacheRecentDefendTime, nMaxDesire, _fiveManPushLane, _fiveManPushUntil, _isAllBotsGame, _postDefendBoost, _prevDefendDesire, POST_DEFEND_PUSH_DURATION, PUSH_CACHE_TTL, gameStateCache, locationStateCache, unitStateCache, BASE_ANC_RADIUS
+local Fu = require(GetScriptDirectory().."/FuncLib/func_utils")
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Barracks = ____dota.Barracks
 local BotMode = ____dota.BotMode
 local BotModeDesire = ____dota.BotModeDesire
@@ -34,18 +34,43 @@ local Lane = ____dota.Lane
 local Team = ____dota.Team
 local Tower = ____dota.Tower
 local UnitType = ____dota.UnitType
-local ____utils = require("bots.FuncLib.systems.utils")
+local ____utils = require(GetScriptDirectory().."/FuncLib/systems/utils")
 local IsValidUnit = ____utils.IsValidUnit
 local GetLocationToLocationDistance = ____utils.GetLocationToLocationDistance
 local RadiantFountainTpPoint = ____utils.RadiantFountainTpPoint
 local DireFountainTpPoint = ____utils.DireFountainTpPoint
-local ____cache = require("bots.FuncLib.systems.cache")
+local ____cache = require(GetScriptDirectory().."/FuncLib/systems/cache")
 local getGlobalGameState = ____cache.getGlobalGameState
 local getGlobalLocationState = ____cache.getGlobalLocationState
 local getCachedAlliesNearLoc = ____cache.getCachedAlliesNearLoc
 local getCachedEnemiesNearLoc = ____cache.getCachedEnemiesNearLoc
 local autoCleanupCache = ____cache.autoCleanupCache
-local getCachedData = ____cache.getCachedData
+local ____native_2Doperators = require(GetScriptDirectory().."/ts_libs/utils/native-operators")
+local add = ____native_2Doperators.add
+local CK = require(GetScriptDirectory().."/FuncLib/systems/cache_keys")
+function refreshPushCache(team)
+    local now = GameTime()
+    if math.floor(now * 10) == _pushCacheTick then
+        return
+    end
+    _pushCacheTick = math.floor(now * 10)
+    local gameState = getGlobalGameState()
+    local ourAncient = gameState.ourAncient
+    _pushCacheEnemiesAtAncient = ourAncient ~= nil and Fu.Utils.CountEnemyHeroesNear(
+        ourAncient:GetLocation(),
+        BASE_ANC_RADIUS
+    ) or 0
+    _pushCacheEnemiesOnHG = Fu.Utils.CountEnemyHeroesOnHighGround(team)
+    _pushCacheLaneBlocked = {}
+    for ____, dl in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
+        local dlFront = GetLaneFrontLocation(team, dl, 0)
+        _pushCacheLaneBlocked[dl] = Fu.Utils.CountEnemyHeroesNear(dlFront, 2200) >= 2
+    end
+    local gs = Fu.Utils.GameStates
+    _pushCacheDefendPingSuppressed = gs ~= nil and gs.defendPings ~= nil and now - gs.defendPings.pingedTime <= 5
+    _pushCacheRecentDefendTime = (gs or ({})).recentDefendTime or 0
+    _pushCacheBestLane = nil
+end
 function updateGameStateCache()
     local now = DotaTime()
     if gameStateCache and now - gameStateCache.lastUpdate < PUSH_CACHE_TTL then
@@ -131,56 +156,58 @@ function ____exports.GetPushDesireHelper(bot, lane)
     autoCleanupCache()
     local gameState = getGlobalGameState()
     local locationState = getGlobalLocationState()
-    local nMaxDesire = 0.82
-    local nSearchRange = 2000
-    local botActiveMode = bot:GetActiveMode()
-    local nModeDesire = bot:GetActiveModeDesire()
-    local bMyLane = bot:GetAssignedLane() == lane
-    local isMidOrEarlyGame = gameState.isEarlyGame or gameState.isMidGame
-    hEnemyAncient = gameState.enemyAncient
-    local alliesHere = getCachedAlliesNearLoc(
-        bot:GetLocation(),
-        1600
-    )
-    local enemiesHere = getCachedEnemiesNearLoc(
-        bot:GetLocation(),
-        1600
-    )
     local team = gameState.team
-    local ourAncient = gameState.ourAncient
-    local enemiesAtAncient = Fu.Utils.CountEnemyHeroesNear(
-        ourAncient:GetLocation(),
-        BASE_ANC_RADIUS
-    )
-    if enemiesAtAncient >= 1 then
-        return BotModeDesire.None
-    end
-    local defendLanes = {Lane.Top, Lane.Mid, Lane.Bot}
-    for ____, dl in ipairs(defendLanes) do
-        local laneFront = GetLaneFrontLocation(team, dl, 0)
-        local enemiesAtLane = Fu.Utils.CountEnemyHeroesNear(laneFront, 2200)
-        if enemiesAtLane >= 2 then
-            return BotModeDesire.None
-        end
-    end
-    if #alliesHere <= 1 and gameState.aliveEnemyCount >= 3 then
+    refreshPushCache(team)
+    local botActiveMode = bot:GetActiveMode()
+    local bMyLane = bot:GetAssignedLane() == lane
+    hEnemyAncient = gameState.enemyAncient
+    if gameState.isLaningPhase and not bMyLane and Fu.IsCore(bot) then
         return BotModeDesire.None
     end
     if gameState.aliveAllyCount <= gameState.aliveEnemyCount - 2 then
         return BotModeDesire.None
     end
-    local enemyFountain = gameState.team == Team.Radiant and DireFountainTpPoint or RadiantFountainTpPoint
-    local laneFront = GetLaneFrontLocation(gameState.team, lane, 0)
-    if GetLocationToLocationDistance(laneFront, enemyFountain) < 5000 then
-        if #alliesHere < 3 or gameState.aliveAllyCount < gameState.aliveEnemyCount then
-            nMaxDesire = math.min(nMaxDesire, 0.08)
+    if _pushCacheDefendPingSuppressed then
+        return BotModeDesire.None
+    end
+    if _pushCacheEnemiesAtAncient >= 1 then
+        return BotModeDesire.None
+    end
+    if _pushCacheLaneBlocked[lane] then
+        return BotModeDesire.None
+    end
+    do
+        local i = 1
+        while i <= 5 do
+            local member = GetTeamMember(i)
+            if member ~= nil and member:GetLevel() < 6 then
+                return BotModeDesire.None
+            end
+            i = i + 1
         end
     end
-    if Fu.GetHP(bot) < 0.5 then
-        nMaxDesire = math.min(nMaxDesire, 0.25)
+    local nInRangeAlly = Fu.GetAlliesNearLoc(
+        bot:GetLocation(),
+        1600
+    )
+    local nInRangeEnemy = Fu.GetEnemiesNearLoc(
+        bot:GetLocation(),
+        1600
+    )
+    local nInRangeAllyCore = 0
+    local nInRangeEnemyCore = 0
+    for ____, ally in ipairs(nInRangeAlly) do
+        if Fu.IsValidHero(ally) and Fu.IsCore(ally) then
+            nInRangeAllyCore = nInRangeAllyCore + 1
+        end
     end
-    if gameState.aliveEnemyCount >= 5 and gameState.aliveAllyCount <= gameState.aliveEnemyCount then
-        nMaxDesire = math.min(nMaxDesire, 0.41)
+    for ____, enemy in ipairs(nInRangeEnemy) do
+        if Fu.IsValidHero(enemy) and Fu.IsCore(enemy) then
+            nInRangeEnemyCore = nInRangeEnemyCore + 1
+        end
+    end
+    if #nInRangeAlly < #nInRangeEnemy and nInRangeAllyCore < nInRangeEnemyCore or #nInRangeAlly <= 1 and #nInRangeEnemy > 0 then
+        return BotModeDesire.None
     end
     if botActiveMode == BotMode.PushTowerTop then
         bot.laneToPush = Lane.Top
@@ -189,31 +216,31 @@ function ____exports.GetPushDesireHelper(bot, lane)
     elseif botActiveMode == BotMode.PushTowerBot then
         bot.laneToPush = Lane.Bot
     end
-    local currentTime = gameState.currentTime
-    Fu.Utils.GameStates = Fu.Utils.GameStates or ({})
-    Fu.Utils.GameStates.defendPings = Fu.Utils.GameStates.defendPings or ({pingedTime = GameTime()})
-    if GameTime() - Fu.Utils.GameStates.defendPings.pingedTime <= 5 then
+    local alliesHere = getCachedAlliesNearLoc(
+        bot:GetLocation(),
+        1600
+    )
+    local enemiesHere = getCachedEnemiesNearLoc(
+        bot:GetLocation(),
+        1600
+    )
+    local enemyFountain = team == Team.Radiant and DireFountainTpPoint or RadiantFountainTpPoint
+    local laneFront = GetLaneFrontLocation(team, lane, 0)
+    if #alliesHere <= 1 and gameState.aliveEnemyCount >= 3 then
         return BotModeDesire.None
     end
-    if not bMyLane and Fu.IsCore(bot) and gameState.isLaningPhase or Fu.IsDoingRoshan(bot) and #Fu.GetAlliesNearLoc(locationState.roshanLocation, 2800) >= 3 or isMidOrEarlyGame and (#Fu.GetAlliesNearLoc(locationState.tormentorLocation, 1600) >= 3 or #Fu.GetAlliesNearLoc(locationState.tormentorWaitingLocation, 2500) >= 3) then
-        return BOT_MODE_DESIRE_EXTRA_LOW
+    local isDeepPush = GetLocationToLocationDistance(laneFront, enemyFountain) < 5000
+    if isDeepPush and (#alliesHere < 3 or gameState.aliveAllyCount < gameState.aliveEnemyCount) then
+        nMaxDesire = math.min(nMaxDesire, 0.15)
     end
-    do
-        local i = 1
-        while i <= #GetTeamPlayers(team) do
-            local member = GetTeamMember(i)
-            if member ~= nil and member:GetLevel() < 6 then
-                return BotModeDesire.None
-            end
-            i = i + 1
-        end
+    if Fu.GetHP(bot) < 0.5 then
+        nMaxDesire = math.min(nMaxDesire, 0.25)
     end
-    local nH = Fu.Utils.NumHumanBotPlayersInTeam(GetOpposingTeam())
-    if nH > 0 and currentTime <= StartToPushTime then
-        return BOT_MODE_DESIRE_EXTRA_LOW
+    if gameState.aliveEnemyCount >= 5 and gameState.aliveAllyCount <= gameState.aliveEnemyCount then
+        nMaxDesire = math.min(nMaxDesire, 0.41)
     end
-    if Fu.IsDefending(bot) and nModeDesire >= 0.8 then
-        nMaxDesire = 0.75
+    if Fu.IsDoingRoshan(bot) and #Fu.GetAlliesNearLoc(locationState.roshanLocation, 2800) >= 3 then
+        return BotModeDesire.None
     end
     local human, humanPing = Fu.GetHumanPing()
     if human ~= nil and humanPing ~= nil and not humanPing.normal_ping and DotaTime() > 0 then
@@ -224,119 +251,205 @@ function ____exports.GetPushDesireHelper(bot, lane)
             5
         )
         if isPinged and lane == pingedLane and GameTime() < humanPing.time + pingTimeDelta then
-            return 0.9
+            return 0.6
         end
     end
-    if hEnemyAncient and hEnemyAncient ~= nil then
-        if Fu.IsDoingTormentor(bot) and GetUnitToUnitDistance(bot, hEnemyAncient) > 4000 then
-            return BOT_MODE_DESIRE_EXTRA_LOW
+    if hEnemyAncient and GetUnitToUnitDistance(bot, hEnemyAncient) < 1000 and Fu.CanBeAttacked(hEnemyAncient) and Fu.GetHP(bot) > 0.4 and not ____exports.HasBackdoorProtect(hEnemyAncient) then
+        bot:SetTarget(hEnemyAncient)
+        bot:Action_AttackUnit(hEnemyAncient, true)
+        return 0.6
+    end
+    local botTarget = bot:GetAttackTarget()
+    if Fu.IsValidBuilding(botTarget) and ____exports.HasBackdoorProtect(botTarget) then
+        return BotModeDesire.None
+    end
+    local anyBarracksDown = not Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Top) or not Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Mid) or not Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Bot)
+    local barracksDownBoost = false
+    if anyBarracksDown and hEnemyAncient then
+        local ancientDist = GetUnitToUnitDistance(bot, hEnemyAncient)
+        local alliesNearAncient = Fu.GetAlliesNearLoc(
+            hEnemyAncient:GetLocation(),
+            3000
+        )
+        if ancientDist < 3000 and #alliesNearAncient >= 2 then
+            barracksDownBoost = true
         end
     end
     local aAliveCount = gameState.aliveAllyCount
     local eAliveCount = gameState.aliveEnemyCount
+    if _pushCacheBestLane == nil then
+        _pushCacheBestLane = ____exports.WhichLaneToPush(bot, lane)
+    end
+    local isCurrentLanePushLane = _pushCacheBestLane == lane
+    local distToEnemyFountain = GetLocationToLocationDistance(
+        bot:GetLocation(),
+        enemyFountain
+    )
+    local isDeepInEnemyTerritory = distToEnemyFountain < 5000
+    local botCurrentPushLane = bot.laneToPush
+    local laneHasBarracks = Fu.Utils.IsAnyBarracksOnLaneAlive(false, lane)
+    if isDeepInEnemyTerritory and lane == botCurrentPushLane and laneHasBarracks then
+    elseif not isCurrentLanePushLane then
+        return BotModeDesire.None
+    end
+    local alliesPushing = 0
+    local teamPlayers = GetTeamPlayers(gameState.team)
+    do
+        local i = 1
+        while i <= #teamPlayers do
+            local member = GetTeamMember(i)
+            if member ~= nil and member:IsAlive() and member ~= bot then
+                local memberMode = member:GetActiveMode()
+                local isPushMode = memberMode == BotMode.PushTowerTop or memberMode == BotMode.PushTowerMid or memberMode == BotMode.PushTowerBot
+                local nearLaneFront = GetUnitToLocationDistance(member, laneFront) < 2500
+                if isPushMode or nearLaneFront then
+                    alliesPushing = alliesPushing + 1
+                end
+            end
+            i = i + 1
+        end
+    end
+    if _isAllBotsGame == nil then
+        _isAllBotsGame = not Fu.Utils.IsHumanPlayerInTeam(GetTeam()) and not Fu.Utils.IsHumanPlayerInTeam(GetOpposingTeam())
+    end
+    if _isAllBotsGame and not gameState.isLaningPhase and not gameState.isEarlyGame then
+        if alliesPushing >= 2 and lane == _pushCacheBestLane then
+            _fiveManPushLane = lane
+            _fiveManPushUntil = DotaTime() + 8
+        end
+        if _fiveManPushLane ~= nil and DotaTime() < _fiveManPushUntil then
+            if lane == _fiveManPushLane then
+                return math.max(
+                    0.55,
+                    RemapValClamped(
+                        GetPushLaneDesire(lane),
+                        0,
+                        1,
+                        0,
+                        nMaxDesire
+                    )
+                )
+            else
+                return BotModeDesire.None
+            end
+        else
+            _fiveManPushLane = nil
+        end
+    end
+    local nPushDesire = RemapValClamped(
+        GetPushLaneDesire(lane),
+        0,
+        1,
+        0,
+        nMaxDesire
+    )
+    local botLevel = bot:GetLevel()
+    local botHP = Fu.GetHP(bot)
     local aAliveCoreCount = gameState.aliveAllyCoreCount
     local eAliveCoreCount = gameState.aliveEnemyCoreCount
-    local hAncient = gameState.ourAncient
-    local nPushDesire = 0.5
-    local teamAncientLoc = hAncient:GetLocation()
-    local nEffAlliesNearAncient = #Fu.GetAlliesNearLoc(teamAncientLoc, 4500) + #Fu.Utils.GetAllyIdsInTpToLocation(teamAncientLoc, 4500)
-    local nEnemiesAroundAncient = Fu.GetEnemiesAroundLoc(teamAncientLoc, 4500)
-    if nEnemiesAroundAncient > 0 and nEffAlliesNearAncient < 1 then
-        nMaxDesire = 0.65
+    local bFavorableConditions = eAliveCount == 0 or aAliveCoreCount >= eAliveCoreCount or aAliveCoreCount >= 1 and aAliveCount >= eAliveCount + 2 or hEnemyAncient and GetUnitToUnitDistance(bot, hEnemyAncient) < 3500 and #alliesHere >= #enemiesHere
+    if not bFavorableConditions then
+        return BotModeDesire.None
     end
-    local networthAdvantage = gameState.teamNetworth - gameState.enemyNetworth
-    local enemyAverageLevel = Fu.GetAverageLevel(true)
-    local levelAdvantage = gameState.averageLevel - enemyAverageLevel
-    local hasSignificantAdvantage = networthAdvantage > 15000 or levelAdvantage > 2
-    if #alliesHere < #enemiesHere and #alliesHere <= eAliveCount - 1 and aAliveCount < eAliveCount then
-        if hasSignificantAdvantage and #alliesHere >= #enemiesHere - 1 then
-            nMaxDesire = math.min(nMaxDesire, 0.6)
-        else
-            return BotModeDesire.VeryLow
-        end
-    end
-    local vEnemyLaneFrontLocation = GetLaneFrontLocation(gameState.enemyTeam, lane, 0)
-    local waitForSpells = ____exports.ShouldWaitForImportantItemsSpells(vEnemyLaneFrontLocation)
-    if waitForSpells and eAliveCount >= aAliveCount and eAliveCoreCount >= aAliveCoreCount then
-        nMaxDesire = math.min(nMaxDesire, 0.5)
-    end
-    local botTarget = bot:GetAttackTarget()
-    if Fu.IsValidBuilding(botTarget) and not __TS__StringIncludes(
-        botTarget:GetUnitName(),
-        "tower1"
-    ) and not __TS__StringIncludes(
-        botTarget:GetUnitName(),
-        "tower2"
-    ) then
-        if ____exports.HasBackdoorProtect(botTarget) then
-            return BOT_MODE_DESIRE_EXTRA_LOW
-        end
-    end
-    if hEnemyAncient and GetUnitToUnitDistance(bot, hEnemyAncient) < nSearchRange * 0.5 and Fu.CanBeAttacked(hEnemyAncient) and not bot:WasRecentlyDamagedByAnyHero(1) and Fu.GetHP(bot) > 0.5 and not ____exports.HasBackdoorProtect(hEnemyAncient) then
-        bot:SetTarget(hEnemyAncient)
-        bot:Action_AttackUnit(hEnemyAncient, true)
-        return RemapValClamped(
-            Fu.GetHP(bot),
-            0,
-            0.5,
-            BotModeDesire.None,
-            0.98
-        )
-    end
-    local pushLane = ____exports.WhichLaneToPush(bot, lane)
-    local isCurrentLanePushLane = pushLane == lane
-    if not Fu.IsCore(bot) and isCurrentLanePushLane or Fu.IsCore(bot) and (Fu.IsLateGame() and isCurrentLanePushLane or isMidOrEarlyGame) then
-        local allowNumbers = eAliveCount == 0 or aAliveCoreCount >= eAliveCoreCount or aAliveCoreCount >= 1 and aAliveCount >= eAliveCount + 2 or networthAdvantage > 8000 and aAliveCount >= eAliveCount - 1 or levelAdvantage > 2 and aAliveCount >= eAliveCount - 1
-        if allowNumbers then
-            if gameState.hasAegis then
-                nPushDesire = nPushDesire + 0.3
-            end
-            if aAliveCount >= eAliveCount - 1 then
-                local networthBonus = RemapValClamped(
-                    networthAdvantage,
-                    3000,
-                    20000,
-                    0,
-                    1.5
-                )
-                nPushDesire = nPushDesire + networthBonus
-            end
-            if levelAdvantage > 0 then
-                local levelBonus = RemapValClamped(
-                    levelAdvantage,
-                    0,
-                    8,
-                    0,
-                    0.8
-                )
-                nPushDesire = nPushDesire + levelBonus
-            end
-            if aAliveCount > eAliveCount then
-                local groupBonus = RemapValClamped(
-                    aAliveCount - eAliveCount,
-                    1,
-                    3,
-                    0.1,
-                    0.4
-                )
-                nPushDesire = nPushDesire + groupBonus
-            end
-            return RemapValClamped(
-                nPushDesire * Fu.GetHP(bot),
+    if not gameState.isEarlyGame then
+        if gameState.hasAegis and aAliveCount >= 4 then
+            nPushDesire = nPushDesire + RemapValClamped(
+                0.25,
                 0,
                 1,
                 0,
-                nMaxDesire
+                0.7
+            )
+        end
+        if aAliveCount >= eAliveCount and gameState.averageLevel >= 12 then
+            local networthAdvantage = gameState.teamNetworth - gameState.enemyNetworth
+            nPushDesire = nPushDesire + RemapValClamped(
+                networthAdvantage,
+                5000,
+                10000,
+                0,
+                RemapValClamped(
+                    0.5,
+                    0,
+                    1,
+                    0,
+                    0.7
+                )
             )
         end
     end
-    if not gameState.isLaningPhase and gameState.currentTime > 15 * 60 then
-        local pushLane = ____exports.WhichLaneToPush(bot, lane)
-        if pushLane == lane and Fu.GetHP(bot) > 0.5 and aAliveCount >= eAliveCount - 1 then
-            return 0.2
+    local readyToPush = botLevel >= 6 and (not gameState.isLaningPhase or aAliveCount >= eAliveCount + 2 or eAliveCount <= 2 and aAliveCount >= 4)
+    if _pushCacheEnemiesOnHG >= 2 and DotaTime() - _pushCacheRecentDefendTime < 10 then
+        return BotModeDesire.None
+    end
+    if hEnemyAncient and ____exports.GetLaneBuildingTier(lane) >= 2 then
+        local distToEnemyAncient = GetUnitToUnitDistance(bot, hEnemyAncient)
+        if distToEnemyAncient < 6000 and #alliesHere < eAliveCount and botHP < 0.8 then
+            return BotModeDesire.None
         end
     end
-    return BotModeDesire.None
+    local result = math.min(
+        math.max(nPushDesire, 0),
+        nMaxDesire
+    )
+    if #alliesHere <= 1 and #enemiesHere >= 2 then
+        result = math.min(result, 0.2)
+    end
+    if isDeepPush and #alliesHere >= 2 then
+        local lowHPCount = 0
+        local totalHP = 0
+        for ____, ally in ipairs(alliesHere) do
+            if Fu.IsValidHero(ally) then
+                local hp = Fu.GetHP(ally)
+                totalHP = totalHP + hp
+                if hp < 0.4 then
+                    lowHPCount = lowHPCount + 1
+                end
+            end
+        end
+        local avgHP = #alliesHere > 0 and totalHP / #alliesHere or 1
+        if lowHPCount >= 2 and avgHP < 0.6 and eAliveCount >= #alliesHere - 2 then
+            result = math.min(result, 0.15)
+        end
+    end
+    if not gameState.isLaningPhase then
+        result = math.max(result, 0.02)
+    end
+    if readyToPush and botHP > 0.4 and not gameState.isEarlyGame then
+        if eAliveCount <= 2 and aAliveCount >= 4 then
+            result = math.max(result, eAliveCount == 0 and 0.525 or 0.45)
+        end
+        if barracksDownBoost then
+            result = math.max(result, 0.5)
+        end
+    end
+    if isCurrentLanePushLane and Fu.GetPosition(bot) >= 4 then
+        local pushModeForLane = lane == Lane.Top and BotMode.PushTowerTop or (lane == Lane.Mid and BotMode.PushTowerMid or BotMode.PushTowerBot)
+        local alliesPushingThisLane = 0
+        do
+            local i = 1
+            while i <= #GetTeamPlayers(GetTeam()) do
+                local member = GetTeamMember(i)
+                if member and member ~= bot and member:IsAlive() and member:GetActiveMode() == pushModeForLane then
+                    alliesPushingThisLane = alliesPushingThisLane + 1
+                end
+                i = i + 1
+            end
+        end
+        if alliesPushingThisLane >= 3 then
+            result = math.max(result, 0.6)
+        end
+    end
+    local currentDefend = GetDefendLaneDesire(lane)
+    local prevDefend = _prevDefendDesire[lane] or 0
+    _prevDefendDesire[lane] = currentDefend
+    if prevDefend > 0.3 and currentDefend < 0.15 then
+        _postDefendBoost[lane] = DotaTime() + POST_DEFEND_PUSH_DURATION
+    end
+    if _postDefendBoost[lane] and DotaTime() < _postDefendBoost[lane] then
+        result = math.max(result, 0.45)
+    end
+    return result
 end
 function presence_adjust(score, loc)
     local allies = #Fu.GetAlliesNearLoc(loc, 1600)
@@ -409,21 +522,38 @@ function ____exports.WhichLaneToPush(_bot, _lane)
     local topTier = ____exports.GetLaneBuildingTier(Lane.Top)
     local midTier = ____exports.GetLaneBuildingTier(Lane.Mid)
     local botTier = ____exports.GetLaneBuildingTier(Lane.Bot)
-    if midTier < topTier and midTier < botTier then
-        midLaneScore = midLaneScore * 0.5
-        if not Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Mid) then
-            midLaneScore = midLaneScore * 0.5
-        end
-    elseif topTier < midTier and topTier < botTier then
-        topLaneScore = topLaneScore * 0.5
-        if not Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Top) then
-            topLaneScore = topLaneScore * 0.5
-        end
-    elseif botTier < topTier and botTier < midTier then
-        botLaneScore = botLaneScore * 0.5
-        if not Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Bot) then
-            botLaneScore = botLaneScore * 0.5
-        end
+    topLaneScore = topLaneScore * RemapValClamped(
+        topTier,
+        1,
+        3,
+        0.25,
+        1
+    )
+    midLaneScore = midLaneScore * RemapValClamped(
+        midTier,
+        1,
+        3,
+        0.25,
+        1
+    )
+    botLaneScore = botLaneScore * RemapValClamped(
+        botTier,
+        1,
+        3,
+        0.25,
+        1
+    )
+    local ourTopRaxDown = not Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Top)
+    local ourMidRaxDown = not Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Mid)
+    local ourBotRaxDown = not Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Bot)
+    if ourTopRaxDown and Fu.Utils.IsAnyBarracksOnLaneAlive(true, Lane.Top) then
+        topLaneScore = topLaneScore * 0.15
+    end
+    if ourMidRaxDown and Fu.Utils.IsAnyBarracksOnLaneAlive(true, Lane.Mid) then
+        midLaneScore = midLaneScore * 0.15
+    end
+    if ourBotRaxDown and Fu.Utils.IsAnyBarracksOnLaneAlive(true, Lane.Bot) then
+        botLaneScore = botLaneScore * 0.15
     end
     topLaneScore = presence_adjust(topLaneScore, vTop)
     midLaneScore = presence_adjust(midLaneScore, vMid)
@@ -519,18 +649,6 @@ function ____exports.GetLaneBuildingTier(nLane)
     end
     return 1
 end
-function ____exports.ShouldWaitForImportantItemsSpells(vLocation)
-    local gameState = updateGameStateCache()
-    if gameState.isMidGame or gameState.isLateGame then
-        if Fu.Utils.HasTeamMemberWithCriticalItemInCooldown(vLocation) then
-            return true
-        end
-        if Fu.Utils.HasTeamMemberWithCriticalSpellInCooldown(vLocation) then
-            return true
-        end
-    end
-    return false
-end
 function ____exports.HasBackdoorProtect(target)
     return target:HasModifier("modifier_fountain_glyph") or target:HasModifier("modifier_backdoor_protection") or target:HasModifier("modifier_backdoor_protection_in_base") or target:HasModifier("modifier_backdoor_protection_active")
 end
@@ -553,7 +671,7 @@ function ____exports.IsAnyTargetBackdooredAt(_bot, lane)
     end
     return not not (nearest and ____exports.HasBackdoorProtect(nearest))
 end
-local Customize = require("bots.Customize.general")
+local Customize = require(GetScriptDirectory().."/Customize/general")
 local ____Customize_1 = Customize
 local ____Customize_Enable_0
 if Customize.Enable then
@@ -563,9 +681,21 @@ else
 end
 ____Customize_1.ThinkLess = ____Customize_Enable_0
 pingTimeDelta = 5
-StartToPushTime = 16 * 60
-BOT_MODE_DESIRE_EXTRA_LOW = 0.02
 hEnemyAncient = nil
+_pushCacheTick = -1
+_pushCacheBestLane = nil
+_pushCacheEnemiesAtAncient = 0
+_pushCacheEnemiesOnHG = 0
+_pushCacheLaneBlocked = {}
+_pushCacheDefendPingSuppressed = false
+_pushCacheRecentDefendTime = 0
+nMaxDesire = 0.6
+_fiveManPushLane = nil
+_fiveManPushUntil = 0
+_isAllBotsGame = nil
+_postDefendBoost = {}
+_prevDefendDesire = {}
+POST_DEFEND_PUSH_DURATION = 10
 PUSH_CACHE_TTL = 0.5
 local BOT_CACHE_TTL = 0.2
 gameStateCache = nil
@@ -604,8 +734,8 @@ end
 local OBJECTIVE_STICKY_TIME = 1.2
 local SWITCH_SCORE_MARGIN = 0.25
 local OBJECTIVE_LEASH_RANGE = 2600
-local SCORE_BARRACKS_MELEE = 0
-local SCORE_BARRACKS_RANGED = 0.1
+local SCORE_BARRACKS_RANGED = 0
+local SCORE_BARRACKS_MELEE = 0.1
 local SCORE_T3 = 0.5
 local SCORE_T4 = 1.8
 BASE_ANC_RADIUS = 2200
@@ -617,10 +747,13 @@ function ____exports.GetPushDesire(bot, lane)
     ) or bot:IsIllusion() then
         return BotModeDesire.None
     end
-    if bot:GetLevel() < 3 then
+    if bot:GetLevel() < 6 then
         return BotModeDesire.None
     end
-    local res = ____exports.GetPushDesireHelper(bot, lane)
+    local res = math.min(
+        ____exports.GetPushDesireHelper(bot, lane),
+        1
+    )
     bot.pushDesire = res
     return res
 end
@@ -642,6 +775,23 @@ local function UnitIsRangedBarracks(u)
         u:GetUnitName(),
         "ranged"
     )
+end
+--- True when the ranged barracks partner on the same lane is already destroyed.
+local function IsRangedPartnerDead(u)
+    if not UnitIsMeleeBarracks(u) then
+        return false
+    end
+    local enemy = GetOpposingTeam()
+    local n = u:GetUnitName()
+    local rangedPartner = nil
+    if __TS__StringIncludes(n, "top") then
+        rangedPartner = GetBarracks(enemy, Barracks.TopRanged)
+    elseif __TS__StringIncludes(n, "mid") then
+        rangedPartner = GetBarracks(enemy, Barracks.MidRanged)
+    else
+        rangedPartner = GetBarracks(enemy, Barracks.BotRanged)
+    end
+    return rangedPartner == nil or not rangedPartner:IsAlive()
 end
 local function UnitIsT3(u)
     return u == GetTower(
@@ -669,11 +819,27 @@ local function UnitIsT4(u)
 end
 --- Compute a score for an objective; lower is better.
 -- Base priority + mild distance terms; prefer closer to the bot and to approach targetLoc.
+local function UnitIsT1orT2(u)
+    local enemy = GetOpposingTeam()
+    return u == GetTower(enemy, Tower.Top1) or u == GetTower(enemy, Tower.Mid1) or u == GetTower(enemy, Tower.Bot1) or u == GetTower(enemy, Tower.Top2) or u == GetTower(enemy, Tower.Mid2) or u == GetTower(enemy, Tower.Bot2)
+end
+local SCORE_T1T2 = 0.2
 local function ObjectiveScore(bot, u, targetLoc)
     if not UnitIsValidObjective(u) then
         return math.huge
     end
-    local base = UnitIsMeleeBarracks(u) and SCORE_BARRACKS_MELEE or UnitIsRangedBarracks(u) and SCORE_BARRACKS_RANGED or UnitIsT3(u) and SCORE_T3 or UnitIsT4(u) and SCORE_T4 or 2
+    local base = 2
+    if UnitIsRangedBarracks(u) then
+        base = SCORE_BARRACKS_RANGED
+    elseif UnitIsMeleeBarracks(u) then
+        base = IsRangedPartnerDead(u) and SCORE_BARRACKS_RANGED or SCORE_BARRACKS_MELEE
+    elseif UnitIsT1orT2(u) then
+        base = SCORE_T1T2
+    elseif UnitIsT3(u) then
+        base = SCORE_T3
+    elseif UnitIsT4(u) then
+        base = SCORE_T4
+    end
     local dBot = GetUnitToUnitDistance(bot, u)
     if dBot > OBJECTIVE_LEASH_RANGE then
         return math.huge
@@ -690,7 +856,7 @@ local function SelectOrStickHGTarget(bot, lane, targetLoc)
     local state = ObjectiveState[pid][lane]
     local now = GameTime()
     local current = state.target or nil
-    if current and now < (state.lockUntil or 0) then
+    if current and UnitIsValidObjective(current) and now < (state.lockUntil or 0) then
         return current
     end
     local currentScore = current and ObjectiveScore(bot, current, targetLoc) or math.huge
@@ -723,44 +889,134 @@ local function SelectOrStickHGTarget(bot, lane, targetLoc)
     state.lockUntil = nil
     return nil
 end
-local fNextMovementTime = 0
+--- Get the next enemy building to destroy on a lane (T1→T2→T3→rax→T4 order). Cached per tick.
+local _nextBuildingCache = {}
+local function GetNextEnemyBuildingOnLane(lane)
+    local tick = math.floor(GameTime() * 10)
+    local cached = _nextBuildingCache[lane]
+    if cached and cached.tick == tick then
+        return cached.result
+    end
+    local enemy = GetOpposingTeam()
+    local result = nil
+    local towerOrder = lane == Lane.Top and ({Tower.Top1, Tower.Top2, Tower.Top3}) or (lane == Lane.Mid and ({Tower.Mid1, Tower.Mid2, Tower.Mid3}) or ({Tower.Bot1, Tower.Bot2, Tower.Bot3}))
+    for ____, tid in ipairs(towerOrder) do
+        local t = GetTower(enemy, tid)
+        if t ~= nil and t:IsAlive() then
+            result = t
+            break
+        end
+    end
+    if not result then
+        local raxOrder = lane == Lane.Top and ({Barracks.TopRanged, Barracks.TopMelee}) or (lane == Lane.Mid and ({Barracks.MidRanged, Barracks.MidMelee}) or ({Barracks.BotRanged, Barracks.BotMelee}))
+        for ____, rid in ipairs(raxOrder) do
+            local r = GetBarracks(enemy, rid)
+            if r ~= nil and r:IsAlive() then
+                result = r
+                break
+            end
+        end
+    end
+    if not result then
+        local t4a = GetTower(enemy, Tower.Base1)
+        local t4b = GetTower(enemy, Tower.Base2)
+        if t4a ~= nil and t4a:IsAlive() then
+            result = t4a
+        elseif t4b ~= nil and t4b:IsAlive() then
+            result = t4b
+        end
+    end
+    if not result then
+        local ancient = GetAncient(enemy)
+        if ancient ~= nil and ancient:IsAlive() then
+            result = ancient
+        end
+    end
+    _nextBuildingCache[lane] = {tick = tick, result = result}
+    return result
+end
+--- Get the nearest alive friendly tower on a lane (T1→T2→T3 order)
+local function _getNearestFriendlyTowerForPush(team, lane)
+    local towerIds = lane == Lane.Top and ({0, 3, 6}) or (lane == Lane.Mid and ({1, 4, 7}) or ({2, 5, 8}))
+    for ____, tid in ipairs(towerIds) do
+        local t = GetTower(team, tid)
+        if t and t:IsAlive() then
+            return t
+        end
+    end
+    return nil
+end
 function ____exports.PushThink(bot, lane)
-    local now = DotaTime()
     if Fu.CanNotUseAction(bot) then
         return
     end
-    if Fu.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "push") then
+    if Fu.TryDropTowerAggro(bot) then
         return
+    end
+    if Fu.TryDenyTower(bot) then
+        return
+    end
+    if Fu.TryDenyAllyHero(bot) then
+        return
+    end
+    local enemyFountainLoc = GetTeam() == Team.Radiant and DireFountainTpPoint or RadiantFountainTpPoint
+    local botData = bot
+    if GetLocationToLocationDistance(
+        bot:GetLocation(),
+        enemyFountainLoc
+    ) < 1500 then
+        botData._fountainRetreatUntil = DotaTime() + 4
+        local allyCreeps = bot:GetNearbyLaneCreeps(1600, false)
+        if allyCreeps and #allyCreeps >= 1 then
+            local creepLoc = allyCreeps[#allyCreeps]:GetLocation()
+            botData._fountainRetreatLoc = Fu.AdjustLocationWithOffsetTowardsFountain(creepLoc, 200)
+        else
+            botData._fountainRetreatLoc = GetLaneFrontLocation(
+                GetTeam(),
+                lane,
+                -500
+            )
+        end
+    end
+    if botData._fountainRetreatUntil and DotaTime() <= botData._fountainRetreatUntil then
+        if bot:WasRecentlyDamagedByAnyHero(1) then
+        elseif botData._fountainRetreatLoc and GetUnitToLocationDistance(bot, botData._fountainRetreatLoc) > 300 then
+            bot:Action_MoveToLocation(botData._fountainRetreatLoc)
+            return
+        else
+            botData._fountainRetreatUntil = 0
+        end
+    end
+    do
+        local laneFront = GetLaneFrontLocation(
+            GetTeam(),
+            lane,
+            0
+        )
+        local distToLaneFront = GetUnitToLocationDistance(bot, laneFront)
+        if distToLaneFront > 2000 and not bot:WasRecentlyDamagedByAnyHero(3) then
+            bot:Action_MoveToLocation(add(
+                laneFront,
+                RandomVector(100)
+            ))
+            return
+        end
     end
     autoCleanupCache()
     local gameState = getGlobalGameState()
     local locationState = getGlobalLocationState()
     local botState = updateBotStateCache(bot)
     local botLocation = botState.location
-    local pushFront = GetLaneFrontLocation(gameState.team, lane, 0)
-    local distToPush = GetUnitToLocationDistance(bot, pushFront)
-    if distToPush > 4000 and not bot:HasModifier("modifier_teleporting") and not bot._roshDipActive then
-        local tp = Fu.Utils.GetItemFromFullInventory(bot, "item_tpscroll")
-        if tp and Fu.CanCastAbility(tp) then
-            local tpTarget = GetLaneFrontLocation(gameState.team, lane, -500)
-            bot:Action_UseAbilityOnLocation(tp, tpTarget)
-            return
-        end
-    end
     local alliesHere = getCachedAlliesNearLoc(botLocation, 1600)
     local enemiesHere = getCachedEnemiesNearLoc(botLocation, 1600)
     local botAttackRange = botState.attackRange
     local botHp = botState.hp
-    local fDeltaFromFront = math.min(botHp, 0.7) * 800 - 500 + RemapValClamped(
+    local fDeltaFromFront = math.min(botHp, 0.7) * 1000 - 700 + RemapValClamped(
         botAttackRange,
         300,
         700,
         0,
-        -300
-    )
-    fDeltaFromFront = math.max(
-        math.min(fDeltaFromFront, 250),
-        -200
+        -600
     )
     local nEnemyTowers = botState.nearbyTowers
     local nAllyCreeps = botState.nearbyLaneCreeps
@@ -774,35 +1030,157 @@ function ____exports.PushThink(bot, lane)
                 end
             end
         end
-        local gameState = getGlobalGameState()
-        local networthAdvantage = gameState.teamNetworth - gameState.enemyNetworth
-        local enemyAverageLevel = Fu.GetAverageLevel(true)
-        local levelAdvantage = gameState.averageLevel - enemyAverageLevel
-        local hasTeamAdvantage = networthAdvantage > 5000 or levelAdvantage > 1
-        if #enemiesHere >= #alliesHere + 1 or botHp < 0.3 then
-            if hasTeamAdvantage and botHp > 0.4 then
-                fDeltaFromFront = math.max(-200, -80 - 0.25 * longestRange)
-            else
-                fDeltaFromFront = math.max(-300, -120 - 0.35 * longestRange)
-            end
-        else
-            if hasTeamAdvantage and botHp > 0.5 then
-                fDeltaFromFront = math.max(-50, -20 - 0.1 * longestRange)
-            else
-                fDeltaFromFront = math.max(-100, -50 - 0.2 * longestRange)
-            end
-        end
+        fDeltaFromFront = -1000 - longestRange
     end
     local targetLoc = GetLaneFrontLocation(gameState.team, lane, fDeltaFromFront)
+    local teamFountain = gameState.team == Team.Radiant and RadiantFountainTpPoint or DireFountainTpPoint
+    if GetLocationToLocationDistance(targetLoc, teamFountain) < 3000 then
+        local pushTower = _getNearestFriendlyTowerForPush(gameState.team, lane)
+        if pushTower then
+            targetLoc = pushTower:GetLocation()
+        else
+            targetLoc = GetLaneFrontLocation(gameState.team, lane, 0)
+        end
+    end
+    local botDistToFountain = GetLocationToLocationDistance(botLocation, teamFountain)
+    local targetDistToFountain = GetLocationToLocationDistance(targetLoc, teamFountain)
+    if botDistToFountain > targetDistToFountain + 500 then
+        if #nAllyCreeps >= 2 or #alliesHere >= 3 then
+            targetLoc = botLocation
+        end
+    end
     if not botState.distanceToTargetLoc or math.abs(botState.distanceToTargetLoc - GetUnitToLocationDistance(bot, targetLoc)) > 50 then
         updateBotStateCache(bot, targetLoc)
     end
-    if Fu.IsValidBuilding(nEnemyTowers[1]) and (nEnemyTowers[1]:GetAttackTarget() == bot or nEnemyTowers[1]:GetAttackTarget() ~= bot and bot:WasRecentlyDamagedByTower(#nAllyCreeps <= 2 and 4 or 2)) then
-        local nDamage = nEnemyTowers[1]:GetAttackDamage() * nEnemyTowers[1]:GetAttackSpeed() * 5 - bot:GetHealthRegen() * 5
-        if bot:GetActualIncomingDamage(nDamage, DamageType.Physical) / bot:GetHealth() > 0.15 or #nAllyCreeps > 2 then
-            local retreat = math.min(fDeltaFromFront - 200, -300)
-            local retreatLoc = GetLaneFrontLocation(gameState.team, lane, retreat)
-            bot:Action_MoveToLocation(retreatLoc)
+    if Fu.IsValidBuilding(nEnemyTowers[1]) and (nEnemyTowers[1]:GetAttackTarget() == bot or bot:WasRecentlyDamagedByTower(#nAllyCreeps <= 2 and 4 or 2)) then
+        local towerRange = nEnemyTowers[1]:GetAttackRange() + 200
+        local shouldRetreat = false
+        if botHp < 0.6 then
+            shouldRetreat = true
+        else
+            local nDamage = nEnemyTowers[1]:GetAttackDamage() * nEnemyTowers[1]:GetAttackSpeed() * 5 - bot:GetHealthRegen() * 5
+            if bot:GetActualIncomingDamage(nDamage, DamageType.Physical) / bot:GetHealth() > 0.4 then
+                shouldRetreat = true
+            end
+        end
+        if shouldRetreat then
+            local retreatLoc = Fu.AdjustLocationWithOffsetTowardsFountain(
+                nEnemyTowers[1]:GetLocation(),
+                towerRange
+            )
+            bot:Action_MoveToLocation(add(
+                retreatLoc,
+                RandomVector(80)
+            ))
+            return
+        end
+    end
+    if Fu.IsValidBuilding(nEnemyTowers[1]) and #nAllyCreeps == 0 then
+        local towerDist = GetUnitToUnitDistance(bot, nEnemyTowers[1])
+        if towerDist < 900 then
+            local bEnemiesLowHP = true
+            if #enemiesHere > 0 then
+                for ____, enemy in ipairs(enemiesHere) do
+                    if Fu.IsValidHero(enemy) and Fu.GetHP(enemy) > 0.3 then
+                        bEnemiesLowHP = false
+                        break
+                    end
+                end
+            else
+                bEnemiesLowHP = false
+            end
+            if not bEnemiesLowHP then
+                local retreatLoc = GetLaneFrontLocation(
+                    GetTeam(),
+                    lane,
+                    -500
+                )
+                bot:Action_MoveToLocation(add(
+                    retreatLoc,
+                    RandomVector(150)
+                ))
+                return
+            end
+        end
+    end
+    do
+        local glyphBuilding = nEnemyTowers[1] or GetNextEnemyBuildingOnLane(lane)
+        if glyphBuilding ~= nil and Fu.Utils.IsValidTower(glyphBuilding) and glyphBuilding:HasModifier("modifier_fountain_glyph") then
+            local nEnemyHeroLongestAttackRange = 0
+            local nearbyEnemies = Fu.GetEnemiesNearLoc(
+                bot:GetLocation(),
+                1600
+            )
+            for ____, enemyHero in ipairs(nearbyEnemies) do
+                if Fu.IsValidHero(enemyHero) and not Fu.IsSuspiciousIllusion(enemyHero) then
+                    local range = enemyHero:GetAttackRange()
+                    if range > nEnemyHeroLongestAttackRange then
+                        nEnemyHeroLongestAttackRange = range
+                    end
+                end
+            end
+            local retreatDelta = -1000 - nEnemyHeroLongestAttackRange
+            local retreatLoc = GetLaneFrontLocation(
+                GetTeam(),
+                lane,
+                retreatDelta
+            )
+            local enemyCreeps = bot:GetNearbyCreeps(botAttackRange + 200, true) or ({})
+            if #enemyCreeps > 0 and Fu.CanBeAttacked(enemyCreeps[1]) and not enemyCreeps[1]:HasModifier("modifier_fountain_glyph") then
+                bot:Action_AttackUnit(enemyCreeps[1], true)
+            else
+                bot:Action_MoveToLocation(add(
+                    retreatLoc,
+                    RandomVector(200)
+                ))
+            end
+            return
+        end
+    end
+    do
+        local nearbyEnemyCreeps = bot:GetNearbyLaneCreeps(1200, true)
+        if nearbyEnemyCreeps then
+            for ____, creep in ipairs(nearbyEnemyCreeps) do
+                if Fu.IsValid(creep) and creep:GetAttackTarget() == bot then
+                    bot:Action_MoveToLocation(targetLoc)
+                    return
+                end
+            end
+        end
+    end
+    local shouldPlayInWave = #nAllyCreeps >= 1 or #alliesHere > #enemiesHere
+    local enemyFountainLoc2 = gameState.team == Team.Radiant and DireFountainTpPoint or RadiantFountainTpPoint
+    local distToEnemyFountain = GetLocationToLocationDistance(botLocation, enemyFountainLoc2)
+    if distToEnemyFountain < 3000 or botState.distanceToAncient < 1500 then
+        local isBeingTowerShot = bot:WasRecentlyDamagedByTower(3)
+        local hasNoCover = #nAllyCreeps < 2 and #alliesHere < 3
+        if isBeingTowerShot and hasNoCover then
+            local retreatLoc = GetLaneFrontLocation(
+                GetTeam(),
+                lane,
+                -500
+            )
+            bot:Action_MoveToLocation(add(
+                retreatLoc,
+                RandomVector(100)
+            ))
+            return
+        end
+        if distToEnemyFountain < 2000 and not bot:WasRecentlyDamagedByAnyHero(1) then
+            hEnemyAncient = gameState.enemyAncient
+            if hEnemyAncient and Fu.CanBeAttacked(hEnemyAncient) and not ____exports.HasBackdoorProtect(hEnemyAncient) and botState.distanceToAncient < 1000 then
+                bot:Action_AttackUnit(hEnemyAncient, true)
+                return
+            end
+            local retreatLoc = GetLaneFrontLocation(
+                GetTeam(),
+                lane,
+                -500
+            )
+            bot:Action_MoveToLocation(add(
+                retreatLoc,
+                RandomVector(100)
+            ))
             return
         end
     end
@@ -815,62 +1193,140 @@ function ____exports.PushThink(bot, lane)
         bot:Action_AttackUnit(hEnemyAncient, true)
         return
     end
+    if not shouldPlayInWave then
+        local distToTarget = GetUnitToLocationDistance(bot, targetLoc)
+        if distToTarget > 300 then
+            bot:Action_MoveToLocation(targetLoc)
+            return
+        end
+        local laneFront = GetLaneFrontLocation(
+            GetTeam(),
+            lane,
+            -300
+        )
+        bot:Action_AttackMove(laneFront)
+        return
+    end
     local nRange = math.min(700 + botAttackRange, 1600)
     if hEnemyAncient and botState.distanceToAncient < 2600 then
         nRange = 1600
     end
     local nCreeps = botState.nearbyCreeps
-    local creepCacheKey = (("specialCreeps_" .. tostring(bot:GetPlayerID())) .. "_") .. tostring(math.floor(now * 5))
-    nCreeps = getCachedData(
-        creepCacheKey,
-        0.2,
-        function() return ____exports.GetSpecialUnitsNearby(bot, nCreeps, nRange) end
-    )
+    local creepCacheKey = CK.PUSH_SPECIAL_CREEPS + bot:GetPlayerID()
+    local cachedCreeps = Fu.Utils.GetCachedVars(creepCacheKey, 0.2)
+    if cachedCreeps then
+        nCreeps = cachedCreeps
+    else
+        nCreeps = ____exports.GetSpecialUnitsNearby(bot, nCreeps, nRange)
+        Fu.Utils.SetCachedVars(creepCacheKey, nCreeps)
+    end
     local vTeamFountain = locationState.teamFountain
     local bTowerNearby = Fu.IsValidBuilding(nEnemyTowers[1])
     local towerDistanceToFountain = bTowerNearby and GetUnitToLocationDistance(nEnemyTowers[1], vTeamFountain) or 0
+    do
+        local nearbyEnemies = bot:GetNearbyHeroes(1200, true, BotMode.None) or ({})
+        if #nearbyEnemies > 0 and #alliesHere >= #nearbyEnemies then
+            local weakestEnemy = nil
+            local weakestHP = 999999
+            for ____, enemy in ipairs(nearbyEnemies) do
+                if Fu.IsValidHero(enemy) and Fu.CanBeAttacked(enemy) and not Fu.IsSuspiciousIllusion(enemy) then
+                    local hp = enemy:GetHealth()
+                    if hp < weakestHP then
+                        weakestHP = hp
+                        weakestEnemy = enemy
+                    end
+                end
+            end
+            if weakestEnemy then
+                bot:Action_AttackUnit(weakestEnemy, true)
+                return
+            end
+        end
+    end
     for ____, creep in ipairs(nCreeps) do
         do
-            local __continue126
+            local __continue228
             repeat
                 if not Fu.IsValid(creep) or not Fu.CanBeAttacked(creep) then
-                    __continue126 = true
+                    __continue228 = true
                     break
                 end
                 if Fu.IsTormentor(creep) or Fu.IsRoshan(creep) then
-                    __continue126 = true
+                    __continue228 = true
                     break
                 end
-                if bTowerNearby and GetUnitToLocationDistance(creep, vTeamFountain) >= towerDistanceToFountain then
-                    __continue126 = true
+                if bTowerNearby and GetUnitToLocationDistance(creep, vTeamFountain) >= towerDistanceToFountain + 500 then
+                    __continue228 = true
                     break
                 end
                 bot:Action_AttackUnit(creep, true)
                 return
             until true
-            if not __continue126 then
+            if not __continue228 then
                 break
             end
         end
     end
+    local hasCreepTank = #nAllyCreeps >= 3
     local hgTarget = SelectOrStickHGTarget(bot, lane, targetLoc)
-    if hgTarget then
+    if hgTarget and Fu.IsValidBuilding(hgTarget) and Fu.CanBeAttacked(hgTarget) and not ____exports.HasBackdoorProtect(hgTarget) then
+        local isTargetTower = Fu.Utils.IsValidTower(hgTarget)
         if Fu.IsInRange(bot, hgTarget, botAttackRange + 150) then
             bot:Action_AttackUnit(hgTarget, true)
-        else
-            bot:Action_MoveToLocation(hgTarget:GetLocation())
+        elseif not isTargetTower or hasCreepTank then
+            local approachLoc = Fu.AdjustLocationWithOffsetTowardsFountain(
+                hgTarget:GetLocation(),
+                botAttackRange
+            )
+            bot:Action_MoveToLocation(add(
+                approachLoc,
+                RandomVector(50)
+            ))
         end
         return
     end
-    if botState.distanceToTargetLoc > 500 then
-        bot:Action_MoveToLocation(targetLoc)
-        return
-    else
-        if DotaTime() >= fNextMovementTime then
-            local attackMoveLoc = Fu.GetRandomLocationWithinDist(targetLoc, 0, 400)
-            bot:Action_AttackMove(attackMoveLoc)
-            fNextMovementTime = DotaTime() + RandomFloat(0.05, 0.3)
+    local nextBuilding = GetNextEnemyBuildingOnLane(lane)
+    if nextBuilding ~= nil and Fu.IsValidBuilding(nextBuilding) and Fu.CanBeAttacked(nextBuilding) and not ____exports.HasBackdoorProtect(nextBuilding) then
+        local distToBuilding = GetUnitToUnitDistance(bot, nextBuilding)
+        local isNextTower = Fu.Utils.IsValidTower(nextBuilding)
+        if distToBuilding <= botAttackRange + 150 then
+            bot:Action_AttackUnit(nextBuilding, true)
             return
+        elseif not isNextTower or hasCreepTank then
+            local approachLoc = Fu.AdjustLocationWithOffsetTowardsFountain(
+                nextBuilding:GetLocation(),
+                botAttackRange
+            )
+            bot:Action_MoveToLocation(approachLoc)
+            return
+        end
+    end
+    if distToEnemyFountain > 2500 then
+        local nearbyEnemyHeroes = bot:GetNearbyHeroes(botAttackRange + 300, true, BotMode.None) or ({})
+        for ____, enemy in ipairs(nearbyEnemyHeroes) do
+            if Fu.IsValidHero(enemy) and Fu.CanBeAttacked(enemy) and not Fu.IsSuspiciousIllusion(enemy) then
+                bot:Action_AttackUnit(enemy, true)
+                return
+            end
+        end
+    end
+    if distToEnemyFountain < 2500 and #nAllyCreeps < 2 then
+        local retreatLoc = GetLaneFrontLocation(
+            GetTeam(),
+            lane,
+            -500
+        )
+        bot:Action_MoveToLocation(add(
+            retreatLoc,
+            RandomVector(100)
+        ))
+    else
+        local distToTarget = GetUnitToLocationDistance(bot, targetLoc)
+        if distToTarget > 300 then
+            bot:Action_MoveToLocation(targetLoc)
+        else
+            local laneFront = GetLaneFrontLocation(gameState.team, lane, 200)
+            bot:Action_AttackMove(laneFront)
         end
     end
 end
@@ -930,6 +1386,9 @@ function ____exports.IsInDangerWithinTower(hUnit, fThreshold, fDuration)
 end
 function ____exports.IsHealthyInsideFountain(hUnit)
     return hUnit:HasModifier("modifier_fountain_aura_buff") and Fu.GetHP(hUnit) > 0.9 and Fu.GetMP(hUnit) > 0.85
+end
+function ____exports.ShouldWaitForImportantItemsSpells(_vLocation)
+    return false
 end
 --- Picks best high-ground objective with strict priority:
 --   1) Barracks: melee > ranged (closest of each class)

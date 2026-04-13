@@ -630,8 +630,8 @@ local HeroPositions = {
         0,
         20,
         20,
-        45,
-        55
+        100,
+        100
     },
     [HeroName.Timbersaw] = {
         5,
@@ -868,8 +868,8 @@ local HeroPositions = {
         0,
         5,
         10,
-        35,
-        55
+        100,
+        100
     },
     [HeroName.Zeus] = {
         25,

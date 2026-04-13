@@ -134,16 +134,16 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local Laser                 = bot:GetAbilityByName('tinker_laser')
+local Laser                 = SafeAbility(bot:GetAbilityByName('tinker_laser'), 'tinker_laser', 'tinker')
 -- local HeatSeekingMissile    = bot:GetAbilityByName('tinker_heat_seeking_missile')
-local MarchOfTheMachines    = bot:GetAbilityByName('tinker_march_of_the_machines')
+local MarchOfTheMachines    = SafeAbility(bot:GetAbilityByName('tinker_march_of_the_machines'), 'tinker_march_of_the_machines', 'tinker')
 -- 7.41: Defense Matrix may have been replaced by Deploy Turrets. Try both names.
-local DeployTurrets         = bot:GetAbilityByName('tinker_deploy_turrets')
-                              or bot:GetAbilityByName('tinker_defense_matrix')
-                              or (sAbilityList[3] and bot:GetAbilityByName(sAbilityList[3]))
-local WarpFlare             = bot:GetAbilityByName('tinker_warp_grenade')
-local KeenConveyance        = bot:GetAbilityByName('tinker_keen_teleport')
-local Rearm                 = bot:GetAbilityByName('tinker_rearm')
+local DeployTurrets         = SafeAbility(bot:GetAbilityByName('tinker_deploy_turrets'), 'tinker_deploy_turrets', 'tinker')
+                              or SafeAbility(bot:GetAbilityByName('tinker_defense_matrix'), 'tinker_defense_matrix', 'tinker')
+                              or (sAbilityList[3] and SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'tinker'))
+local WarpFlare             = SafeAbility(bot:GetAbilityByName('tinker_warp_grenade'), 'tinker_warp_grenade', 'tinker')
+local KeenConveyance        = SafeAbility(bot:GetAbilityByName('tinker_keen_teleport'), 'tinker_keen_teleport', 'tinker')
+local Rearm                 = SafeAbility(bot:GetAbilityByName('tinker_rearm'), 'tinker_rearm', 'tinker')
 
 local lastMarchCastTime     = -999
 
@@ -193,14 +193,14 @@ function X.SkillsComplement()
     end
 
     -- Re-fetch ability handles each tick for safety against Aghs upgrades
-    Laser = bot:GetAbilityByName('tinker_laser')
-    MarchOfTheMachines = bot:GetAbilityByName('tinker_march_of_the_machines')
-    DeployTurrets = bot:GetAbilityByName('tinker_deploy_turrets')
-                    or bot:GetAbilityByName('tinker_defense_matrix')
-                    or (sAbilityList[3] and bot:GetAbilityByName(sAbilityList[3]))
-    WarpFlare = bot:GetAbilityByName('tinker_warp_grenade')
-    KeenConveyance = bot:GetAbilityByName('tinker_keen_teleport')
-    Rearm = bot:GetAbilityByName('tinker_rearm')
+    Laser = SafeAbility(bot:GetAbilityByName('tinker_laser'), 'tinker_laser', 'tinker')
+    MarchOfTheMachines = SafeAbility(bot:GetAbilityByName('tinker_march_of_the_machines'), 'tinker_march_of_the_machines', 'tinker')
+    DeployTurrets = SafeAbility(bot:GetAbilityByName('tinker_deploy_turrets'), 'tinker_deploy_turrets', 'tinker')
+                    or SafeAbility(bot:GetAbilityByName('tinker_defense_matrix'), 'tinker_defense_matrix', 'tinker')
+                    or (sAbilityList[3] and SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'tinker'))
+    WarpFlare = SafeAbility(bot:GetAbilityByName('tinker_warp_grenade'), 'tinker_warp_grenade', 'tinker')
+    KeenConveyance = SafeAbility(bot:GetAbilityByName('tinker_keen_teleport'), 'tinker_keen_teleport', 'tinker')
+    Rearm = SafeAbility(bot:GetAbilityByName('tinker_rearm'), 'tinker_rearm', 'tinker')
 
     if Fu.CanNotUseAbility(bot)
     or Rearm ~= nil and Rearm:IsInAbilityPhase()

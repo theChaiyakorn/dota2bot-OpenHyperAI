@@ -115,12 +115,12 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local Disruption            = bot:GetAbilityByName('shadow_demon_disruption')
-local Disseminate           = bot:GetAbilityByName('shadow_demon_disseminate')
-local ShadowPoison          = bot:GetAbilityByName('shadow_demon_shadow_poison')
-local ShadowPoisonRelease   = bot:GetAbilityByName('shadow_demon_shadow_poison_release')
-local DemonicCleanse        = bot:GetAbilityByName('shadow_demon_demonic_cleanse')
-local DemonicPurge          = bot:GetAbilityByName('shadow_demon_demonic_purge')
+local Disruption            = SafeAbility(bot:GetAbilityByName('shadow_demon_disruption'), 'shadow_demon_disruption', 'shadow_demon')
+local Disseminate           = SafeAbility(bot:GetAbilityByName('shadow_demon_disseminate'), 'shadow_demon_disseminate', 'shadow_demon')
+local ShadowPoison          = SafeAbility(bot:GetAbilityByName('shadow_demon_shadow_poison'), 'shadow_demon_shadow_poison', 'shadow_demon')
+local ShadowPoisonRelease   = SafeAbility(bot:GetAbilityByName('shadow_demon_shadow_poison_release'), 'shadow_demon_shadow_poison_release', 'shadow_demon')
+local DemonicCleanse        = SafeAbility(bot:GetAbilityByName('shadow_demon_demonic_cleanse'), 'shadow_demon_demonic_cleanse', 'shadow_demon')
+local DemonicPurge          = SafeAbility(bot:GetAbilityByName('shadow_demon_demonic_purge'), 'shadow_demon_demonic_purge', 'shadow_demon')
 
 local DisruptionDesire, DisruptionTarget
 local DisseminateDesire, DisseminateTarget

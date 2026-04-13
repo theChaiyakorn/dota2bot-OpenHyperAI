@@ -21,7 +21,7 @@ function GetDesire()
 	-- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
 	local res = GetDesireHelper()
 	-- Fu.Utils.SetCachedVars(cacheKey, res)
-	return GetAdjustedDesireValue(res)
+	return res
 end
 function GetDesireHelper()
 
@@ -95,7 +95,7 @@ function Think()
 	then 
 		return
 	end
-	if Fu.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "secret_shop") then return end
+	-- if Fu.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "secret_shop") then return end
 
 	if preferedShop == nil then
 		preferedShop = X.GetPreferedSecretShop();
@@ -175,4 +175,12 @@ function X.IsStronger(bot, enemy)
 	local BPower = bot:GetEstimatedDamageToTarget(true, enemy, 4.0, DAMAGE_TYPE_ALL);
 	local EPower = enemy:GetEstimatedDamageToTarget(true, bot, 4.0, DAMAGE_TYPE_ALL);
 	return EPower > BPower;
+end
+
+-- SafeCall wrapping for error protection
+if SafeCall then
+  local _origGetDesire = GetDesire
+  local _origThink = Think
+  if _origGetDesire then GetDesire = SafeCall(_origGetDesire, 0, 'SECRET_SHOP_GetDesire') end
+  if _origThink then Think = SafeCall(_origThink, nil, 'SECRET_SHOP_Think') end
 end

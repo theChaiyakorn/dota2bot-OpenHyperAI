@@ -115,12 +115,12 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local BatteryAssault    = bot:GetAbilityByName('rattletrap_battery_assault')
-local PowerCogs         = bot:GetAbilityByName('rattletrap_power_cogs')
-local RocketFlare       = bot:GetAbilityByName('rattletrap_rocket_flare')
-local Jetpack           = bot:GetAbilityByName('rattletrap_jetpack')
-local Overclocking      = bot:GetAbilityByName('rattletrap_overclocking')
-local Hookshot          = bot:GetAbilityByName('rattletrap_hookshot')
+local BatteryAssault    = SafeAbility(bot:GetAbilityByName('rattletrap_battery_assault'), 'rattletrap_battery_assault', 'rattletrap')
+local PowerCogs         = SafeAbility(bot:GetAbilityByName('rattletrap_power_cogs'), 'rattletrap_power_cogs', 'rattletrap')
+local RocketFlare       = SafeAbility(bot:GetAbilityByName('rattletrap_rocket_flare'), 'rattletrap_rocket_flare', 'rattletrap')
+local Jetpack           = SafeAbility(bot:GetAbilityByName('rattletrap_jetpack'), 'rattletrap_jetpack', 'rattletrap')
+local Overclocking      = SafeAbility(bot:GetAbilityByName('rattletrap_overclocking'), 'rattletrap_overclocking', 'rattletrap')
+local Hookshot          = SafeAbility(bot:GetAbilityByName('rattletrap_hookshot'), 'rattletrap_hookshot', 'rattletrap')
 
 local BatteryAssaultDesire
 local PowerCogsDesire

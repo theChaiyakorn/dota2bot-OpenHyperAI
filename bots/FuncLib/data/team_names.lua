@@ -1,5 +1,6 @@
 if GetScriptDirectory == nil then GetScriptDirectory = function () return "bots" end end
 local Utils = require( GetScriptDirectory()..'/FuncLib/systems/utils' )
+local Customize = require( GetScriptDirectory()..'/FuncLib/systems/custom_loader' )
 
 local Dota2Teams = { }
 
@@ -96,7 +97,7 @@ local ancientChineseStoryTeams = {
 -- 随机使用古代神话故事主题 Teams
 defaultTeams = RandomInt(1, 2) >= 2 and ancientChineseStoryTeams or defaultTeams
 
-local function generateTeam(overrides)
+local function generateTeam(overrides, customTeamName)
     local playerList = { }
     local overriddenNames = { }
     local randomNum = 0
@@ -104,7 +105,7 @@ local function generateTeam(overrides)
         randomNum = RandomInt(1, #defaultTeams)
     -- ensure a team can only pick from certain team names.
     until randomNum % 2 == GetTeam() - 2 and (defaultTeams[randomNum].name ~= 'ADD' or defaultTeams[randomNum].name ~= '上古')
-    -- print('randomNum='..tostring(randomNum)..', team name='..tostring(defaultTeams[randomNum].name)..', for team='..tostring(GetTeam()))
+    -- log('randomNum='..tostring(randomNum)..', team name='..tostring(defaultTeams[randomNum].name)..', for team='..tostring(GetTeam()))
     playerList = Utils.MergeLists(defaultTeams[randomNum].players, defaultTeams[#defaultTeams].players)
     if overrides and #overrides > 0 then
         for i = 1, #overrides do
@@ -115,13 +116,18 @@ local function generateTeam(overrides)
         end
     end
 
+    local showTeamNames = Customize.Enable and Customize.Show_Team_Names
+    local teamTag = customTeamName and customTeamName ~= '' and customTeamName or defaultTeams[randomNum].name
+
     local team = { }
     for i = 1, Dota2Teams.maxTeamSize do
         local pName = table.remove(playerList, 1)
         if Utils.HasValue(overriddenNames, pName) then
             table.insert(team, pName)
+        elseif showTeamNames then
+            table.insert(team, teamTag .. "." .. pName ..'.'..Dota2Teams.defaultPostfix)
         else
-            table.insert(team, defaultTeams[randomNum].name .. "." .. pName ..'.'..Dota2Teams.defaultPostfix)
+            table.insert(team, pName ..'.'..Dota2Teams.defaultPostfix)
         end
     end
     return team
@@ -137,8 +143,11 @@ function Dota2Teams.generateTeams(overrides)
     local radiantOverrides = overrides and overrides.Radiant or {}
     local direOverrides = overrides and overrides.Dire or {}
 
-    local radiantTeam = generateTeam(radiantOverrides)
-    local direTeam = generateTeam(direOverrides)
+    local radiantCustomName = Customize.Enable and Customize.Radiant_Team_Name or nil
+    local direCustomName = Customize.Enable and Customize.Dire_Team_Name or nil
+
+    local radiantTeam = generateTeam(radiantOverrides, radiantCustomName)
+    local direTeam = generateTeam(direOverrides, direCustomName)
 
     return {
         Radiant = radiantTeam,

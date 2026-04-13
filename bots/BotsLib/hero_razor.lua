@@ -143,70 +143,57 @@ modifier_razor_eye_of_the_storm_armor
 --]]
 
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-
+local abilityQ, abilityW, abilityR
 
 local castQDesire
 local castWDesire, castWTarget
 local castRDesire
 
-
 local aetherRange = 0
+local bAttacking
+local botHP, botTarget
+local nAllyHeroes, nEnemyHeroes
 
 function X.SkillsComplement()
-
+	bot = GetBot()
 
 	Fu.ConsiderForMkbDisassembleMask( bot )
 
+	if Fu.CanNotUseAbility( bot ) then return end
 
-	if Fu.CanNotUseAbility( bot ) or bot:IsInvisible() then return end
+	-- Refresh ability handles every frame, with nil safety
+	abilityQ = SafeAbility(bot:GetAbilityByName('razor_plasma_field'), 'plasma_field', 'razor')
+	abilityW = SafeAbility(bot:GetAbilityByName('razor_static_link'), 'static_link', 'razor')
+	abilityR = SafeAbility(bot:GetAbilityByName('razor_eye_of_the_storm'), 'eye_of_the_storm', 'razor')
 
+	bAttacking = Fu.IsAttacking(bot)
+	botHP = Fu.GetHP(bot)
+	botTarget = Fu.GetProperTarget(bot)
+	nAllyHeroes = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE)
+	nEnemyHeroes = bot:GetNearbyHeroes(1600, true, BOT_MODE_NONE)
 
-	local ctx = AbilityCtx.Build(bot)
-	nKeepMana = 280
-	aetherRange = ctx.aetherRange
-	nLV = ctx.level
-	nMP = ctx.mp
-	nHP = ctx.hp
-	botTarget = ctx.target
-	hEnemyList = ctx.enemies
-	hAllyList = ctx.allies
-	if #hEnemyList <= 1 then aetherRange = aetherRange + 200 end
-
-
-	castRDesire = X.ConsiderR()
-	if ( castRDesire > 0 )
+	-- Q first: Plasma Field is Razor's bread-and-butter
+	castQDesire = X.ConsiderQ()
+	if ( castQDesire > 0 )
 	then
-
-		Fu.SetQueuePtToINT( bot, true )
-
-		bot:ActionQueue_UseAbility( abilityR )
+		Fu.SetQueuePtToINT( bot, false )
+		bot:ActionQueue_UseAbility( abilityQ )
 		return
-
 	end
-
 
 	castWDesire, castWTarget = X.ConsiderW()
 	if ( castWDesire > 0 )
 	then
-
 		Fu.SetQueuePtToINT( bot, false )
-
 		bot:ActionQueue_UseAbilityOnEntity( abilityW, castWTarget )
 		return
 	end
 
-
-	castQDesire = X.ConsiderQ()
-	if ( castQDesire > 0 )
+	castRDesire = X.ConsiderR()
+	if ( castRDesire > 0 )
 	then
-
-		Fu.SetQueuePtToINT( bot, true )
-
-		bot:ActionQueue_UseAbility( abilityQ )
+		Fu.SetQueuePtToINT( bot, false )
+		bot:ActionQueue_UseAbility( abilityR )
 		return
 	end
 

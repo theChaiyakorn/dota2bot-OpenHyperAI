@@ -136,14 +136,14 @@ function X.MinionThink(hMinionUnit)
 end
 
 -- Ability handles (re-fetched each tick in SkillsComplement for safety)
-local Illuminate    = bot:GetAbilityByName('keeper_of_the_light_illuminate')
-local IlluminateEnd = bot:GetAbilityByName('keeper_of_the_light_illuminate_end')
-local BlindingLight = bot:GetAbilityByName('keeper_of_the_light_blinding_light')
-local ChakraMagic   = bot:GetAbilityByName('keeper_of_the_light_chakra_magic')
-local SolarBind     = bot:GetAbilityByName('keeper_of_the_light_radiant_bind')
-local Recall        = bot:GetAbilityByName('keeper_of_the_light_recall')
-local WillOWisp     = bot:GetAbilityByName('keeper_of_the_light_will_o_wisp')
-local SpiritForm    = bot:GetAbilityByName('keeper_of_the_light_spirit_form')
+local Illuminate    = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_illuminate'), 'keeper_of_the_light_illuminate', 'keeper_of_the_light')
+local IlluminateEnd = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_illuminate_end'), 'keeper_of_the_light_illuminate_end', 'keeper_of_the_light')
+local BlindingLight = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_blinding_light'), 'keeper_of_the_light_blinding_light', 'keeper_of_the_light')
+local ChakraMagic   = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_chakra_magic'), 'keeper_of_the_light_chakra_magic', 'keeper_of_the_light')
+local SolarBind     = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_radiant_bind'), 'keeper_of_the_light_radiant_bind', 'keeper_of_the_light')
+local Recall        = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_recall'), 'keeper_of_the_light_recall', 'keeper_of_the_light')
+local WillOWisp     = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_will_o_wisp'), 'keeper_of_the_light_will_o_wisp', 'keeper_of_the_light')
+local SpiritForm    = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_spirit_form'), 'keeper_of_the_light_spirit_form', 'keeper_of_the_light')
 
 local IlluminateDesire, IlluminateLocation
 local IlluminateEndDesire
@@ -169,14 +169,14 @@ function X.SkillsComplement()
 	bAttacking = Fu.IsAttacking(bot)
 
     -- Re-fetch ability handles each tick for safety
-    Illuminate    = bot:GetAbilityByName('keeper_of_the_light_illuminate')
-    IlluminateEnd = bot:GetAbilityByName('keeper_of_the_light_illuminate_end')
-    BlindingLight = bot:GetAbilityByName('keeper_of_the_light_blinding_light')
-    ChakraMagic   = bot:GetAbilityByName('keeper_of_the_light_chakra_magic')
-    SolarBind     = bot:GetAbilityByName('keeper_of_the_light_radiant_bind')
-    Recall        = bot:GetAbilityByName('keeper_of_the_light_recall')
-    WillOWisp     = bot:GetAbilityByName('keeper_of_the_light_will_o_wisp')
-    SpiritForm    = bot:GetAbilityByName('keeper_of_the_light_spirit_form')
+    Illuminate    = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_illuminate'), 'keeper_of_the_light_illuminate', 'keeper_of_the_light')
+    IlluminateEnd = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_illuminate_end'), 'keeper_of_the_light_illuminate_end', 'keeper_of_the_light')
+    BlindingLight = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_blinding_light'), 'keeper_of_the_light_blinding_light', 'keeper_of_the_light')
+    ChakraMagic   = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_chakra_magic'), 'keeper_of_the_light_chakra_magic', 'keeper_of_the_light')
+    SolarBind     = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_radiant_bind'), 'keeper_of_the_light_radiant_bind', 'keeper_of_the_light')
+    Recall        = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_recall'), 'keeper_of_the_light_recall', 'keeper_of_the_light')
+    WillOWisp     = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_will_o_wisp'), 'keeper_of_the_light_will_o_wisp', 'keeper_of_the_light')
+    SpiritForm    = SafeAbility(bot:GetAbilityByName('keeper_of_the_light_spirit_form'), 'keeper_of_the_light_spirit_form', 'keeper_of_the_light')
 
     -- Cache per-tick variables
     nAllyHeroes = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE)

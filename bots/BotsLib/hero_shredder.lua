@@ -110,15 +110,15 @@ function X.MinionThink(hMinionUnit)
 	end
 end
 
-local WhirlingDeath 	= bot:GetAbilityByName( 'shredder_whirling_death' )
-local TimberChain 		= bot:GetAbilityByName( 'shredder_timber_chain' )
-local ReactiveArmor     = bot:GetAbilityByName( 'shredder_reactive_armor' )
-local Chakram 			= bot:GetAbilityByName( 'shredder_chakram' )
-local ChakramReturn 	= bot:GetAbilityByName( 'shredder_return_chakram' )
+local WhirlingDeath 	= SafeAbility(bot:GetAbilityByName('shredder_whirling_death'), 'shredder_whirling_death', 'shredder')
+local TimberChain 		= SafeAbility(bot:GetAbilityByName('shredder_timber_chain'), 'shredder_timber_chain', 'shredder')
+local ReactiveArmor     = SafeAbility(bot:GetAbilityByName('shredder_reactive_armor'), 'shredder_reactive_armor', 'shredder')
+local Chakram 			= SafeAbility(bot:GetAbilityByName('shredder_chakram'), 'shredder_chakram', 'shredder')
+local ChakramReturn 	= SafeAbility(bot:GetAbilityByName('shredder_return_chakram'), 'shredder_return_chakram', 'shredder')
 -- local Chakram2 			= bot:GetAbilityByName( 'shredder_chakram_2' )
 -- local ChakramReturn2 	= bot:GetAbilityByName( 'shredder_return_chakram_2' )
-local Flamethrower 		= bot:GetAbilityByName( 'shredder_flamethrower' )
-local TwistedChakram    = bot:GetAbilityByName( 'shredder_twisted_chakram' )
+local Flamethrower 		= SafeAbility(bot:GetAbilityByName('shredder_flamethrower'), 'shredder_flamethrower', 'shredder')
+local TwistedChakram    = SafeAbility(bot:GetAbilityByName('shredder_twisted_chakram'), 'shredder_twisted_chakram', 'shredder')
 
 local WhirlingDeathDesire
 local TimberChainDesire, TreeLocation

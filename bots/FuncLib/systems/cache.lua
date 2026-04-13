@@ -194,6 +194,14 @@ local GLOBAL_CACHE_TTL = 0.5
 local globalGameStateCache = nil
 local globalUnitStateCache = nil
 local globalLocationStateCache = nil
+do
+    local ____utils = require(GetScriptDirectory().."/FuncLib/systems/utils")
+    local SetCachedVars = ____utils.SetCachedVars
+    local GetCachedVars = ____utils.GetCachedVars
+    ____exports.SetCachedVars = SetCachedVars
+    ____exports.GetCachedVars = GetCachedVars
+end
+____exports.CK = require(GetScriptDirectory().."/FuncLib/systems/cache_keys")
 --- Get or update global game state cache
 function ____exports.getGlobalGameState()
     local now = DotaTime()

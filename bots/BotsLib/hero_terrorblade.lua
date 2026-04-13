@@ -86,12 +86,12 @@ function X.MinionThink(hMinionUnit)
 
 end
 
-local Reflection    = bot:GetAbilityByName( "terrorblade_reflection" )
-local ConjureImage  = bot:GetAbilityByName( "terrorblade_conjure_image" )
-local Metamorphosis = bot:GetAbilityByName( "terrorblade_metamorphosis" )
-local DemonZeal     = bot:GetAbilityByName( "terrorblade_demon_zeal" )
-local TerrorWave    = bot:GetAbilityByName( "terrorblade_terror_wave" )
-local Sunder        = bot:GetAbilityByName( "terrorblade_sunder" )
+local Reflection    = SafeAbility(bot:GetAbilityByName("terrorblade_reflection"), 'terrorblade_reflection', 'terrorblade')
+local ConjureImage  = SafeAbility(bot:GetAbilityByName("terrorblade_conjure_image"), 'terrorblade_conjure_image', 'terrorblade')
+local Metamorphosis = SafeAbility(bot:GetAbilityByName("terrorblade_metamorphosis"), 'terrorblade_metamorphosis', 'terrorblade')
+local DemonZeal     = SafeAbility(bot:GetAbilityByName("terrorblade_demon_zeal"), 'terrorblade_demon_zeal', 'terrorblade')
+local TerrorWave    = SafeAbility(bot:GetAbilityByName("terrorblade_terror_wave"), 'terrorblade_terror_wave', 'terrorblade')
+local Sunder        = SafeAbility(bot:GetAbilityByName("terrorblade_sunder"), 'terrorblade_sunder', 'terrorblade')
 
 local ReflectionDesire, ReflectionLocation
 local ConjureImageDesire

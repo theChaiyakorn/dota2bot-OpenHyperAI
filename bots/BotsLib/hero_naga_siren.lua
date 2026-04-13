@@ -118,12 +118,12 @@ modifier_naga_siren_song_of_the_siren_ignore_me
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local abilitySR = bot:GetAbilityByName( 'naga_siren_song_of_the_siren_cancel' )
-local ReelIn = bot:GetAbilityByName( 'naga_siren_reel_in' )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'naga_siren')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'naga_siren')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'naga_siren')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'naga_siren')
+local abilitySR = SafeAbility(bot:GetAbilityByName('naga_siren_song_of_the_siren_cancel'), 'naga_siren_song_of_the_siren_cancel', 'naga_siren')
+local ReelIn = SafeAbility(bot:GetAbilityByName('naga_siren_reel_in'), 'naga_siren_reel_in', 'naga_siren')
 
 local castQDesire, castQTarget
 local castWDesire, castWTarget

@@ -117,11 +117,11 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local ThunderStrike = bot:GetAbilityByName('disruptor_thunder_strike')
-local Glimpse       = bot:GetAbilityByName('disruptor_glimpse')
-local KineticField  = bot:GetAbilityByName('disruptor_kinetic_field')
-local KineticFence  = bot:GetAbilityByName('disruptor_kinetic_fence')
-local StaticStorm   = bot:GetAbilityByName('disruptor_static_storm')
+local ThunderStrike = SafeAbility(bot:GetAbilityByName('disruptor_thunder_strike'), 'disruptor_thunder_strike', 'disruptor')
+local Glimpse       = SafeAbility(bot:GetAbilityByName('disruptor_glimpse'), 'disruptor_glimpse', 'disruptor')
+local KineticField  = SafeAbility(bot:GetAbilityByName('disruptor_kinetic_field'), 'disruptor_kinetic_field', 'disruptor')
+local KineticFence  = SafeAbility(bot:GetAbilityByName('disruptor_kinetic_fence'), 'disruptor_kinetic_fence', 'disruptor')
+local StaticStorm   = SafeAbility(bot:GetAbilityByName('disruptor_static_storm'), 'disruptor_static_storm', 'disruptor')
 
 local ThunderStrikeDesire, ThunderStrikeTarget
 local GlimpseDesire, GlimpseTarget

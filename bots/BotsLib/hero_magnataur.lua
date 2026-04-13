@@ -137,11 +137,11 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local Shockwave         = bot:GetAbilityByName('magnataur_shockwave')
-local Empower           = bot:GetAbilityByName('magnataur_empower')
-local Skewer            = bot:GetAbilityByName('magnataur_skewer')
-local HornToss          = bot:GetAbilityByName('magnataur_horn_toss')
-local ReversePolarity   = bot:GetAbilityByName('magnataur_reverse_polarity')
+local Shockwave         = SafeAbility(bot:GetAbilityByName('magnataur_shockwave'), 'magnataur_shockwave', 'magnataur')
+local Empower           = SafeAbility(bot:GetAbilityByName('magnataur_empower'), 'magnataur_empower', 'magnataur')
+local Skewer            = SafeAbility(bot:GetAbilityByName('magnataur_skewer'), 'magnataur_skewer', 'magnataur')
+local HornToss          = SafeAbility(bot:GetAbilityByName('magnataur_horn_toss'), 'magnataur_horn_toss', 'magnataur')
+local ReversePolarity   = SafeAbility(bot:GetAbilityByName('magnataur_reverse_polarity'), 'magnataur_reverse_polarity', 'magnataur')
 
 local ShockwaveDesire, ShockwaveLocation
 local EmpowerDesire, EmpowerTarget

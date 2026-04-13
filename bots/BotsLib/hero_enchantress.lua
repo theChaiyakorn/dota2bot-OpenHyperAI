@@ -148,11 +148,11 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local Impetus           = bot:GetAbilityByName('enchantress_impetus')
-local Enchant           = bot:GetAbilityByName('enchantress_enchant')
-local NaturesAttendant  = bot:GetAbilityByName('enchantress_natures_attendants')
-local Sproink           = bot:GetAbilityByName('enchantress_bunny_hop')
-local LittleFriends     = bot:GetAbilityByName('enchantress_little_friends')
+local Impetus           = SafeAbility(bot:GetAbilityByName('enchantress_impetus'), 'enchantress_impetus', 'enchantress')
+local Enchant           = SafeAbility(bot:GetAbilityByName('enchantress_enchant'), 'enchantress_enchant', 'enchantress')
+local NaturesAttendant  = SafeAbility(bot:GetAbilityByName('enchantress_natures_attendants'), 'enchantress_natures_attendants', 'enchantress')
+local Sproink           = SafeAbility(bot:GetAbilityByName('enchantress_bunny_hop'), 'enchantress_bunny_hop', 'enchantress')
+local LittleFriends     = SafeAbility(bot:GetAbilityByName('enchantress_little_friends'), 'enchantress_little_friends', 'enchantress')
 -- local Untouchable       = bot:GetAbilityByName('enchantress_untouchable')
 
 local ImpetusDesire

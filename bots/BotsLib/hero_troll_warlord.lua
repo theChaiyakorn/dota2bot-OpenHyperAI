@@ -77,11 +77,11 @@ function X.MinionThink(hMinionUnit)
 end
 
 local BattleStance          = bot:GetAbilityInSlot(0)
-local BerserkersRage        = bot:GetAbilityByName('troll_warlord_berserkers_rage')
-local WhirlingAxesRanged    = bot:GetAbilityByName('troll_warlord_whirling_axes_ranged')
-local WhirlingAxesMelee     = bot:GetAbilityByName('troll_warlord_whirling_axes_melee')
+local BerserkersRage        = SafeAbility(bot:GetAbilityByName('troll_warlord_berserkers_rage'), 'troll_warlord_berserkers_rage', 'troll_warlord')
+local WhirlingAxesRanged    = SafeAbility(bot:GetAbilityByName('troll_warlord_whirling_axes_ranged'), 'troll_warlord_whirling_axes_ranged', 'troll_warlord')
+local WhirlingAxesMelee     = SafeAbility(bot:GetAbilityByName('troll_warlord_whirling_axes_melee'), 'troll_warlord_whirling_axes_melee', 'troll_warlord')
 -- local Fervor                = bot:GetAbilityByName('troll_warlord_fervor')
-local BattleTrance          = bot:GetAbilityByName('troll_warlord_battle_trance')
+local BattleTrance          = SafeAbility(bot:GetAbilityByName('troll_warlord_battle_trance'), 'troll_warlord_battle_trance', 'troll_warlord')
 
 local BerserkersRageDesire
 local WhirlingAxesRangedDesire, WhirlingAxesRangedLocation

@@ -136,13 +136,13 @@ modifier_shadow_shaman_serpent_ward
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local Urnaconda = bot:GetAbilityByName('shadow_shaman_urnaconda')
-local talent3 = bot:GetAbilityByName( sTalentList[3] )
-local talent7 = bot:GetAbilityByName( sTalentList[7] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'shadow_shaman')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'shadow_shaman')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'shadow_shaman')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'shadow_shaman')
+local Urnaconda = SafeAbility(bot:GetAbilityByName('shadow_shaman_urnaconda'), 'shadow_shaman_urnaconda', 'shadow_shaman')
+local talent3 = SafeAbility(bot:GetAbilityByName(sTalentList[3]), 'sTalentList[3]', 'shadow_shaman')
+local talent7 = SafeAbility(bot:GetAbilityByName(sTalentList[7]), 'sTalentList[7]', 'shadow_shaman')
 
 local castQDesire, castQTarget
 local castWDesire, castWTarget

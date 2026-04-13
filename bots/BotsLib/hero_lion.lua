@@ -161,13 +161,13 @@ modifier_lion_arcana_kill_effect
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local talent4 = bot:GetAbilityByName( sTalentList[4] )
-local talent5 = bot:GetAbilityByName( sTalentList[5] )
-local talent8 = bot:GetAbilityByName( sTalentList[8] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'lion')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'lion')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'lion')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'lion')
+local talent4 = SafeAbility(bot:GetAbilityByName(sTalentList[4]), 'sTalentList[4]', 'lion')
+local talent5 = SafeAbility(bot:GetAbilityByName(sTalentList[5]), 'sTalentList[5]', 'lion')
+local talent8 = SafeAbility(bot:GetAbilityByName(sTalentList[8]), 'sTalentList[8]', 'lion')
 
 local castQDesire, castQLocation
 local castWDesire, castWTarget

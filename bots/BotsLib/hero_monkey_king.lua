@@ -120,15 +120,15 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local BoundlessStrike   = bot:GetAbilityByName('monkey_king_boundless_strike')
-local TreeDance         = bot:GetAbilityByName('monkey_king_tree_dance')
-local PrimalSpring      = bot:GetAbilityByName('monkey_king_primal_spring')
-local SpringEarly       = bot:GetAbilityByName('monkey_king_primal_spring_early')
+local BoundlessStrike   = SafeAbility(bot:GetAbilityByName('monkey_king_boundless_strike'), 'monkey_king_boundless_strike', 'monkey_king')
+local TreeDance         = SafeAbility(bot:GetAbilityByName('monkey_king_tree_dance'), 'monkey_king_tree_dance', 'monkey_king')
+local PrimalSpring      = SafeAbility(bot:GetAbilityByName('monkey_king_primal_spring'), 'monkey_king_primal_spring', 'monkey_king')
+local SpringEarly       = SafeAbility(bot:GetAbilityByName('monkey_king_primal_spring_early'), 'monkey_king_primal_spring_early', 'monkey_king')
 -- local JinguMastery      = bot:GetAbilityByName('monkey_king_jingu_mastery')
-local Mischief          = bot:GetAbilityByName('monkey_king_mischief')
-local RevertForm        = bot:GetAbilityByName('monkey_king_untransform')
-local WukongsCommand    = bot:GetAbilityByName('monkey_king_wukongs_command')
-local ChangingOfTheGuard = bot:GetAbilityByName('monkey_king_transfiguration')
+local Mischief          = SafeAbility(bot:GetAbilityByName('monkey_king_mischief'), 'monkey_king_mischief', 'monkey_king')
+local RevertForm        = SafeAbility(bot:GetAbilityByName('monkey_king_untransform'), 'monkey_king_untransform', 'monkey_king')
+local WukongsCommand    = SafeAbility(bot:GetAbilityByName('monkey_king_wukongs_command'), 'monkey_king_wukongs_command', 'monkey_king')
+local ChangingOfTheGuard = SafeAbility(bot:GetAbilityByName('monkey_king_transfiguration'), 'monkey_king_transfiguration', 'monkey_king')
 
 local BoundlessStrikeDesire, BoundlessStrikeLocation
 local TreeDanceDesire, TreeDanceTarget

@@ -30,6 +30,10 @@ local ShouldHelpAlly, ShouldHelpWhenCoreIsTargeted = false, false
 local ShouldFollowAlly = false
 local followAllyTarget = nil
 local nearbyAllies, nearbyEnemies
+local ShouldPullBackFromTower = false
+local pullBackLocation = nil
+local pullBackUntil = 0
+local PULL_BACK_HOLD = 3 -- seconds to keep pulling back after trigger
 
 -- Pickup / swap timers
 local PickedItem = nil
@@ -45,6 +49,10 @@ local SwappedMoonshardTime = -90
 local lastCheckBotToDropTime = 0
 
 local IsAvoidingAbilityZone = false
+local bTowerDanger = false -- set in GetDesire, used in Think
+local fTowerDangerUntil = 0 -- sticky timer to prevent oscillation
+local TOWER_DANGER_HOLD = 2 -- seconds to keep pulling back after trigger
+local vTowerDangerAwayLoc = nil
 
 local hTargetCreep = nil
 
@@ -64,9 +72,13 @@ local function SetStickyTarget(t)
 end
 
 local function CapForLanePush(desire)
-    -- keep "team roam" from overpowering laning/pushing micro
-    if Fu.IsInLaningPhase() or Fu.IsPushing(bot) then
-        if desire > 0.9 then return 0.72 end  -- soft ceiling
+    -- Keep team roam from overpowering pushing — pushing with team is often more important
+    -- than roaming to help one ally
+    if Fu.IsPushing(bot) then
+        if desire > 0.6 then return 0.5 end
+    end
+    if Fu.IsInLaningPhase() then
+        if desire > 0.9 then return 0.72 end
     end
     return desire
 end
@@ -78,11 +90,10 @@ function GetDesire()
     local activeMode = bot:GetActiveMode()
     if activeMode == BOT_MODE_ITEM
     or (BOT_MODE_WISDOM_SHRINE and activeMode == BOT_MODE_WISDOM_SHRINE)
-    or (BOT_MODE_WATCHER and activeMode == BOT_MODE_WATCHER)
     or (BOT_MODE_LOTUS_POOL and activeMode == BOT_MODE_LOTUS_POOL)
     then
         if bot._stuckModeTime == nil then bot._stuckModeTime = DotaTime() end
-        if DotaTime() - bot._stuckModeTime > 8 then
+        if DotaTime() - bot._stuckModeTime > 5 then
             bot._stuckUnsticking = true
             local enemies = bot:GetNearbyHeroes(1200, true, BOT_MODE_NONE) or {}
             if #enemies > 0 then
@@ -97,19 +108,55 @@ function GetDesire()
 
 	if ShouldSkipBotThink(GetBot()) then return 0 end
 
+    -- Suppress team_roam when our ancient is under threat — defend takes priority
+    if Fu.GetEnemiesAroundAncient(bot, 3200) > 0 then return BOT_MODE_DESIRE_NONE end
+
+    -- Yield to retreat when on enemy HG taking tower damage
+    -- Prevents 0.7 team_roam vs 0.7 retreat oscillation that kills bots
+    if bot:WasRecentlyDamagedByTower(3.0) then
+        local hEnemyAnc = GetAncient(GetOpposingTeam())
+        if hEnemyAnc ~= nil and GetUnitToUnitDistance(bot, hEnemyAnc) < 3000 then
+            return BOT_MODE_DESIRE_NONE
+        end
+    end
+
     local res = GetDesireHelper()
     res = CapForLanePush(res)
 
     -- Fu.Utils.SetCachedVars(cacheKey, res)
-    return GetAdjustedDesireValue(res)
+    return res
 end
 function GetDesireHelper()
 	local nBotHP = Fu.GetHP(bot)
     ShouldFollowAlly = false
     followAllyTarget = nil
+    ShouldPullBackFromTower = false
 
     if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then
         return BOT_MODE_DESIRE_NONE
+    end
+
+    -- Pull back from enemy tower during laning: don't let bot walk past T1 into watcher mode
+    -- Uses a sticky timer so bot stays back for PULL_BACK_HOLD seconds
+    if Fu.IsInLaningPhase() then
+        -- Check if still within hold period
+        if DotaTime() < pullBackUntil and pullBackLocation ~= nil then
+            ShouldPullBackFromTower = true
+            return bot:GetActiveModeDesire() + 0.05
+        end
+
+        if bot:GetActiveMode() == BOT_MODE_WATCHER then
+            local enemyTowers = bot:GetNearbyTowers(1000, true)
+            if Fu.IsValidBuilding(enemyTowers[1]) then
+                local distToTower = GetUnitToUnitDistance(bot, enemyTowers[1])
+                if distToTower < 1200 then
+                    ShouldPullBackFromTower = true
+                    pullBackLocation = Fu.AdjustLocationWithOffsetTowardsFountain(enemyTowers[1]:GetLocation(), 1200)
+                    pullBackUntil = DotaTime() + PULL_BACK_HOLD
+                    return bot:GetActiveModeDesire() + 0.05
+                end
+            end
+        end
     end
 
     Utils.SetFrameProcessTime(bot)
@@ -134,31 +181,160 @@ function GetDesireHelper()
 
     ItemOpsDesire()
 
+    -- Help ally: disabled during laning phase (causes bots to
+    -- chase enemies and miss last hits). Only active post-laning.
     local target
-    target, ShouldHelpWhenCoreIsTargeted = X.ConsiderHelpWhenCoreIsTargeted()
-    if ShouldHelpWhenCoreIsTargeted then
-        SetStickyTarget(target)
-        targetUnit = target
-        return RemapValClamped(nBotHP, 0, 0.5, BOT_MODE_DESIRE_NONE, 0.98)
+    if not Fu.IsInLaningPhase() then
+        target, ShouldHelpWhenCoreIsTargeted = X.ConsiderHelpWhenCoreIsTargeted()
+        if ShouldHelpWhenCoreIsTargeted and Fu.IsValidHero(target) then
+            local distToTarget = GetUnitToUnitDistance(bot, target)
+            if distToTarget < 3000 or Fu.GetHP(target) < 0.3 then
+                SetStickyTarget(target)
+                targetUnit = target
+                local helpDesire = RemapValClamped(distToTarget, 1000, 4000, 0.85, 0.4)
+                -- Scale by bot HP: heavily suppress below 50%, zero below 25%
+                return RemapValClamped(nBotHP, 0.25, 0.7, BOT_MODE_DESIRE_NONE, helpDesire)
+            end
+        end
     end
 
     nearbyAllies = Fu.GetAlliesNearLoc(bot:GetLocation(), 2200)
     nearbyEnemies = Fu.GetEnemiesNearLoc(bot:GetLocation(), 2000)
 
-    target, ShouldHelpAlly = ConsiderHelpAlly()
-    if ShouldHelpAlly then
-        SetStickyTarget(target)
-        targetUnit = target
-        return RemapValClamped(nBotHP, 0, 0.6, BOT_MODE_DESIRE_NONE, 0.98)
+    if not Fu.IsInLaningPhase() then
+        target, ShouldHelpAlly = ConsiderHelpAlly()
+        if ShouldHelpAlly then
+            SetStickyTarget(target)
+            targetUnit = target
+            -- Scale by bot HP: suppress below 50%, zero below 30%
+            return RemapValClamped(nBotHP, 0.3, 0.7, BOT_MODE_DESIRE_NONE, 0.98)
+        end
     end
+
+	-- Tower danger: boost desire above Valve's attack (0.65) so our Think can pull bot back
+	-- Uses a sticky timer so bot stays back for TOWER_DANGER_HOLD seconds (prevents oscillation)
+	bTowerDanger = false
+	if DotaTime() < fTowerDangerUntil and vTowerDangerAwayLoc ~= nil then
+		bTowerDanger = true
+		return 0.75
+	end
+	local eTowersDesire = bot:GetNearbyTowers(900, true)
+	if Fu.IsValidBuilding(eTowersDesire[1]) then
+		local towerTarget = eTowersDesire[1]:GetAttackTarget()
+		local allyCreeps = bot:GetNearbyLaneCreeps(900, false)
+		local btTarget = Fu.GetProperTarget(bot)
+		if towerTarget == bot
+		or (#allyCreeps == 0 and (bot:WasRecentlyDamagedByTower(2.0) or (Fu.IsValidHero(btTarget) and Fu.IsRecklesslyDivingTower(bot, btTarget))))
+		then
+			bTowerDanger = true
+			vTowerDangerAwayLoc = Fu.AdjustLocationWithOffsetTowardsFountain(eTowersDesire[1]:GetLocation(), 1200)
+			fTowerDangerUntil = DotaTime() + TOWER_DANGER_HOLD
+			return 0.75 -- beats Valve attack (0.65), Think will move bot away
+		end
+	end
 
 	hTargetCreep = X.GetLastHitCreep()
 	if Fu.IsValid(hTargetCreep) and Fu.CanBeAttacked(hTargetCreep) then
-		return 1.5
+		return BOT_DESIRE_OVERRIDE * 1.5
 	end
 
     if not bot:IsAlive() or bot:GetCurrentActionType() == BOT_ACTION_TYPE_DELAY then
         return BOT_MODE_DESIRE_NONE
+    end
+
+    -- Lone Druid item transfer desire (hero or bear)
+    -- Peaceful time: no enemies nearby, not in fountain, not fighting
+    if (botName == 'npc_dota_hero_lone_druid' or (bot.isBear and botName == 'npc_dota_hero_lone_druid_bear')) then
+        local ld = Utils.GetLoneDruid(bot)
+        local bearItemsMap = ld and ld.bearItemsMap
+        if bearItemsMap and ld.hero and ld.bear
+        and Fu.IsValidHero(ld.hero) and ld.hero:IsAlive()
+        and Fu.IsValidHero(ld.bear) and ld.bear:IsAlive()
+        and bot:DistanceFromFountain() > 3000
+        then
+            local enemies = Fu.GetNearbyHeroes(bot, 1200, true, BOT_MODE_NONE) or {}
+            if #enemies == 0 and not Fu.IsInTeamFight(bot, 1200) then
+                -- Check if hero has items for bear
+                local needsTransfer = false
+                for i = 0, 8 do
+                    local item = ld.hero:GetItemInSlot(i)
+                    if item ~= nil and bearItemsMap[item:GetName()]
+                    and ld.bear:FindItemSlot(item:GetName()) < 0 then
+                        needsTransfer = true
+                        break
+                    end
+                end
+                -- Also check for dropped items from hero
+                if not needsTransfer then
+                    for _, d in pairs(GetDroppedItemList()) do
+                        if d and d.item and d.owner == ld.hero
+                        and not string.find(d.item:GetName(), 'token') then
+                            needsTransfer = true
+                            break
+                        end
+                    end
+                end
+                if needsTransfer then
+                    bot._ldItemTransfer = true
+                    return 0.6  -- moderate desire, beats laning/farm but not fight/defend
+                end
+            end
+        end
+        bot._ldItemTransfer = false
+    end
+
+    -- Lone Druid BEAR: leash enforcement and hero following.
+    if bot.isBear or botName == 'npc_dota_hero_lone_druid_bear' then
+        bot._bearFollowHero = false -- reset every tick
+        local ld = Utils.GetLoneDruid(bot)
+        local hasScepter = bot:HasModifier('modifier_item_ultimate_scepter_consumed')
+            or bot:FindItemSlot('item_ultimate_scepter') >= 0
+
+        -- Hero dead: bear is free (especially with scepter)
+        if not ld or not ld.hero or not Fu.IsValidHero(ld.hero) or not ld.hero:IsAlive() then
+            -- No hero to follow. Bear acts independently.
+        -- Has scepter: check if hero has items to transfer, otherwise fully free
+        elseif hasScepter then
+            local bearItemsMap = ld.bearItemsMap
+            local hasItemForBear = false
+            if bearItemsMap then
+                for i = 0, 8 do
+                    local item = ld.hero:GetItemInSlot(i)
+                    if item ~= nil and bearItemsMap[item:GetName()]
+                    and bot:FindItemSlot(item:GetName()) < 0 then
+                        hasItemForBear = true
+                        break
+                    end
+                end
+            end
+            -- Only follow for item transfer, otherwise independent
+            if hasItemForBear then
+                local heroDist = GetUnitToUnitDistance(bot, ld.hero)
+                if heroDist > 700 then
+                    bot._bearFollowHero = true
+                    return 0.5
+                end
+            end
+        -- No scepter: enforce leash (but not when bear needs to retreat to heal)
+        else
+            local heroDist = GetUnitToUnitDistance(bot, ld.hero)
+            local bearHP = Fu.GetHP(bot)
+            -- Don't enforce leash when bear is low HP — let retreat win
+            if bearHP < 0.3 then
+                bot._bearFollowHero = false
+            -- Emergency: at leash limit
+            elseif heroDist > 990 then
+                bot._bearFollowHero = true
+                return 0.9
+            end
+            -- Hero farming/rosh: bear can't go there alone
+            local heroMode = ld.hero:GetActiveMode()
+            if (heroMode == BOT_MODE_FARM or heroMode == BOT_MODE_ROSHAN or heroMode == BOT_MODE_SIDE_SHOP or heroMode == BOT_MODE_WATCHER)
+            and heroDist > 700 then
+                bot._bearFollowHero = true
+                return 0.5
+            end
+        end
     end
 
     local nDesire = AttackSpecialUnit.GetDesire(bot)
@@ -179,6 +355,7 @@ function GetDesireHelper()
 
     if not Fu.IsFarming(bot) and not Fu.IsPushing(bot) and not Fu.IsDefending(bot)
     and not Fu.IsDoingRoshan(bot) and not Fu.IsDoingTormentor(bot)
+    and bot:GetActiveMode() ~= BOT_MODE_LANING
     and bot:GetActiveMode() ~= BOT_MODE_RUNE
     and bot:GetActiveMode() ~= BOT_MODE_SECRET_SHOP
     and bot:GetActiveMode() ~= BOT_MODE_OUTPOST
@@ -224,47 +401,48 @@ function GetDesireHelper()
         end
     end
 
-    -- Fallback: if support has nothing to do, follow the nearest ally that IS busy.
-    -- This prevents supports sitting idle at 0.07 defend doing nothing useful.
-    if bot:IsAlive() and DotaTime() > 0 then
-        local bestAlly = nil
-        local bestDist = 99999
-        for i = 1, 5 do
-            local ally = GetTeamMember(i)
-            if ally ~= nil and ally ~= bot
-            and Fu.IsValidHero(ally) and ally:IsAlive()
-            and not ally:IsIllusion()
-            then
-                local allyDesire = ally:GetActiveModeDesire()
-                local allyMode = ally:GetActiveMode()
-                -- Only follow allies doing something real (desire > 0.15)
-                -- and not stuck in same low-desire state or shopping
-                if allyDesire > 0.15
-                and allyMode ~= BOT_MODE_RETREAT
-                and allyMode ~= BOT_MODE_SECRET_SHOP
-                and allyMode ~= BOT_MODE_SIDE_SHOP
-                then
-                    local dist = GetUnitToUnitDistance(bot, ally)
-                    if dist < bestDist then
-                        bestDist = dist
-                        bestAlly = ally
-                    end
-                end
-            end
-        end
-        if bestAlly ~= nil then
-            ShouldFollowAlly = true
-            followAllyTarget = bestAlly
-            -- Supports: 0.25 pre-adjust -> ~0.175, beats 0.07 defend
-            -- Cores: 0.2 pre-adjust -> ~0.14, mild fallback
-            return IsSupport and 0.25 or 0.2
-        end
+    -- Fallback: if bot has nothing to do, find the nearest ally that IS busy
+    -- and follow them. This is the universal catch-all for low-desire states.
+    -- if bot:IsAlive() and DotaTime() > 0 then
+    --     local bestAlly = nil
+    --     local bestDist = 99999
+    --     for i = 1, 5 do
+    --         local ally = GetTeamMember(i)
+    --         if ally ~= nil and ally ~= bot
+    --         and Fu.IsValidHero(ally) and ally:IsAlive()
+    --         and not ally:IsIllusion()
+    --         then
+    --             local allyDesire = ally:GetActiveModeDesire()
+    --             local allyMode = ally:GetActiveMode()
+    --             -- Follow any ally with meaningful desire (> 0.1)
+    --             -- Skip allies that are retreating/shopping/idle
+    --             if allyDesire > 0.1
+    --             and allyMode ~= BOT_MODE_RETREAT
+    --             and allyMode ~= BOT_MODE_SECRET_SHOP
+    --             and allyMode ~= BOT_MODE_SIDE_SHOP
+    --             and allyMode ~= BOT_MODE_WATCHER
+    --             then
+    --                 local dist = GetUnitToUnitDistance(bot, ally)
+    --                 if dist < bestDist then
+    --                     bestDist = dist
+    --                     bestAlly = ally
+    --                 end
+    --             end
+    --         end
+    --     end
+    --     if bestAlly ~= nil then
+    --         ShouldFollowAlly = true
+    --         followAllyTarget = bestAlly
+    --         -- Higher desire than any garbage mode (0.3 pre-adjust = 0.21 post)
+    --         -- This must beat push minimum floor (0.15 * 0.7 = 0.105)
+    --         return IsSupport and 0.35 or 0.3
+    --     end
 
-        -- No ally doing anything useful — just go to lane front
-        ShouldFollowAlly = true
-        followAllyTarget = nil
-        return IsSupport and 0.2 or 0.15
-    end
+    --     -- No ally doing anything useful — go to the best push lane front
+    --     ShouldFollowAlly = true
+    --     followAllyTarget = nil
+    --     return IsSupport and 0.3 or 0.25
+    -- end
 
     return 0.0
 end
@@ -318,7 +496,9 @@ end
 -- Desire Helpers
 -- ==============================
 function ConsiderHelpAlly()
-    if Fu.GetHP(bot) < 0.3 then return nil, false end
+    -- Don't help if we're too low — we'll just feed
+    if Fu.GetHP(bot) < 0.5 then return nil, false end
+    if bot:WasRecentlyDamagedByAnyHero(2.0) and Fu.GetHP(bot) < 0.6 then return nil, false end
 
     local nRadius = 3500
     local nModeDesire = bot:GetActiveModeDesire()
@@ -331,6 +511,9 @@ function ConsiderHelpAlly()
     and not (Fu.IsRetreating(bot) and nModeDesire > 0.8) then
         local nInRangeAlly = Fu.GetAlliesNearLoc(nClosestAlly:GetLocation(), 1200)
         local nInRangeEnemy = Fu.GetEnemiesNearLoc(nClosestAlly:GetLocation(), 1600)
+
+        -- Risk check: don't walk into a fight we'd lose
+        if #nInRangeEnemy > #nInRangeAlly + 1 then return nil, false end
 
         for _, enemyHero in pairs(nInRangeEnemy) do
             if Fu.IsValidHero(enemyHero)
@@ -384,6 +567,33 @@ function Think()
 
     if Fu.CanNotUseAction(bot) then return end
 
+    -- Pull back from enemy tower during laning (flag set by GetDesire)
+    if ShouldPullBackFromTower and pullBackLocation ~= nil then
+        bot:Action_MoveToLocation(pullBackLocation + RandomVector(50))
+        return
+    end
+
+    -- Bear: follow hero, mirror hero's target
+    if bot._bearFollowHero then
+        local ld = Utils.GetLoneDruid(bot)
+        if ld and ld.hero and Fu.IsValidHero(ld.hero) and ld.hero:IsAlive() then
+            -- Mirror hero's target if available and within leash
+            local heroTarget = Fu.GetProperTarget(ld.hero)
+            if Fu.IsValid(heroTarget) and Fu.CanBeAttacked(heroTarget) then
+                local distToTarget = GetUnitToUnitDistance(bot, heroTarget)
+                local distToHero = GetUnitToUnitDistance(bot, ld.hero)
+                -- Only attack if staying within leash range of hero
+                if distToTarget < 1000 and distToHero < 900 then
+                    bot:Action_AttackUnit(heroTarget, true)
+                    return
+                end
+            end
+            -- No target or too far: walk to hero
+            bot:Action_MoveToLocation(ld.hero:GetLocation())
+            return
+        end
+    end
+
     ItemOpsThink()
 
 	if Fu.IsValid(hTargetCreep) then
@@ -407,6 +617,68 @@ function Think()
         return
     end
 
+    -- Tower pull-back: flag set by GetDesire, just act on it here
+    if bTowerDanger then
+        if vTowerDangerAwayLoc ~= nil then
+            bot:Action_MoveToLocation(vTowerDangerAwayLoc)
+            return
+        end
+        local eTowersNearby = bot:GetNearbyTowers(900, true)
+        if Fu.IsValidBuilding(eTowersNearby[1]) then
+            bot:Action_MoveToLocation(Fu.AdjustLocationWithOffsetTowardsFountain(eTowersNearby[1]:GetLocation(), 900))
+            return
+        end
+    end
+
+    -- Lone Druid item transfer (desire was set in GetDesireHelper)
+    if bot._ldItemTransfer then
+        local ld = Utils.GetLoneDruid(bot)
+        local bearItemsMap = ld and ld.bearItemsMap
+
+        if bearItemsMap and ld.hero and ld.bear
+        and Fu.IsValidHero(ld.hero) and Fu.IsValidHero(ld.bear) then
+            -- BEAR side: pick up dropped items, walk toward hero
+            if bot.isBear then
+                -- Check for dropped items first
+                for _, d in pairs(GetDroppedItemList()) do
+                    if d and d.item and d.owner == ld.hero
+                    and not string.find(d.item:GetName(), 'token') then
+                        local dist = GetUnitToLocationDistance(bot, d.location)
+                        if dist <= 100 then
+                            bot:Action_PickUpItem(d.item)
+                            return
+                        elseif dist < 800 then
+                            bot:Action_MoveToLocation(d.location)
+                            return
+                        end
+                    end
+                end
+                -- No dropped items — walk toward hero
+                local heroDist = GetUnitToUnitDistance(bot, ld.hero)
+                if heroDist > 250 then
+                    bot:Action_MoveToLocation(ld.hero:GetLocation())
+                    return
+                end
+            -- HERO side: walk to bear and drop items
+            else
+                local bearDist = GetUnitToUnitDistance(bot, ld.bear)
+                if bearDist > 400 then
+                    bot:Action_MoveToLocation(ld.bear:GetLocation())
+                    return
+                end
+                -- Adjacent — drop one item
+                for i = 0, 8 do
+                    local item = bot:GetItemInSlot(i)
+                    if item ~= nil and bearItemsMap[item:GetName()]
+                    and ld.bear:FindItemSlot(item:GetName()) < 0 then
+                        bot:Action_DropItem(item, ld.bear:GetLocation())
+                        return
+                    end
+                end
+            end
+        end
+    end
+
     if ShouldAttackSpecialUnit then
         AttackSpecialUnit.Think()
     end
@@ -420,31 +692,35 @@ function Think()
         isInIdleState = Fu.CheckBotIdleState()
     end
 
-    if ShouldHelpAlly and Fu.Utils.IsValidUnit(targetUnit) then
-        bot:Action_AttackUnit(targetUnit, false)
-        return
-    end
+    -- Attack target (HP/risk gating handled by GetDesire — ConsiderHelp* functions
+    -- reject low-HP and outnumbered scenarios, so Think trusts the desire)
+    if Fu.Utils.IsValidUnit(targetUnit) and (ShouldHelpAlly or IsHeroCore or IsSupport) then
+        local dist = GetUnitToUnitDistance(bot, targetUnit)
+        local attackRange = bot:GetAttackRange()
 
-    if (IsHeroCore or IsSupport) and Fu.Utils.IsValidUnit(targetUnit) then
-        bot:Action_AttackUnit(targetUnit, false)
-        return
-    end
-
-    -- Follow-ally fallback: move toward a nearby ally doing something useful
-    if ShouldFollowAlly then
-        if followAllyTarget ~= nil and Fu.IsValidHero(followAllyTarget) and followAllyTarget:IsAlive() then
-            local dist = GetUnitToUnitDistance(bot, followAllyTarget)
-            if dist > 400 then
-                bot:Action_MoveToLocation(followAllyTarget:GetLocation())
-            end
-            -- If close enough, just stand near them (they'll pick up a real mode soon)
+        -- Ranged hero: maintain attack range distance instead of walking into melee
+        if attackRange >= 400 and dist > attackRange + 100 then
+            local approachLoc = Fu.VectorTowards(targetUnit:GetLocation(), bot:GetLocation(), attackRange - 50)
+            bot:Action_MoveToLocation(approachLoc)
         else
-            -- No specific ally — move to lane front
-            local lane = bot:GetAssignedLane() or LANE_MID
-            bot:Action_MoveToLocation(GetLaneFrontLocation(GetTeam(), lane, 0))
+            bot:Action_AttackUnit(targetUnit, false)
         end
         return
     end
+
+    -- Follow-ally fallback: move toward mission rally point or nearest ally
+    -- if ShouldFollowAlly then
+    --     if followAllyTarget ~= nil and Fu.IsValidHero(followAllyTarget) and followAllyTarget:IsAlive() then
+    --         local dist = GetUnitToUnitDistance(bot, followAllyTarget)
+    --         if dist > 400 then
+    --             bot:Action_MoveToLocation(followAllyTarget:GetLocation())
+    --         end
+    --     else
+    --         local lane = bot:GetAssignedLane() or LANE_MID
+    --         bot:Action_MoveToLocation(GetLaneFrontLocation(GetTeam(), lane, 0))
+    --     end
+    --     return
+    -- end
 end
 
 -- ==============================
@@ -454,6 +730,15 @@ end
 function X.SupportFindTarget()
 	local nBotHP = Fu.GetHP(bot)
     if X.CanNotUseAttack(bot) or DotaTime() < 0 then return nil, 0 end
+
+    -- Tower dive prevention: don't chase heroes under tower if team can't guarantee kill
+    local nEnemyTowersNearby = bot:GetNearbyTowers(800, true)
+    if Fu.IsValidBuilding(nEnemyTowersNearby[1]) then
+        local currentTarget = Fu.GetProperTarget(bot)
+        if Fu.IsValidHero(currentTarget) and Fu.IsRecklesslyDivingTower(bot, currentTarget) then
+            return nil, 0
+        end
+    end
 
     local IsModeSuitHit = X.IsModeSuitToHitCreep(bot)
     local nAttackRange = math.min(bot:GetAttackRange() + 50, 1200)
@@ -474,19 +759,19 @@ function X.SupportFindTarget()
         if nTarget:IsCourier()
         and GetUnitToUnitDistance(bot, nTarget) <= nAttackRange + 300
         and nBotHP > 0.3 and not Fu.IsRetreating(bot) then
-            return nTarget, BOT_MODE_DESIRE_ABSOLUTE * 1.5
+            return nTarget, BOT_DESIRE_OVERRIDE * 1.5
         end
-        if nTarget:IsHero() and (bot:GetCurrentMovementSpeed() < 300 or botLV >= 25) then
-            return nTarget, BOT_MODE_DESIRE_ABSOLUTE * 1.2
+        if nTarget:IsHero() and not Fu.IsInLaningPhase() and (bot:GetCurrentMovementSpeed() < 300 or botLV >= 25) then
+            return nTarget, BOT_DESIRE_OVERRIDE * 1.2
         end
         if Fu.IsPushing(bot) and not nTarget:IsHero() then return nil, 0 end
         if not nTarget:IsHero() and GetUnitToUnitDistance(bot, nTarget) < nAttackRange + 50 then
-            return nTarget, BOT_MODE_DESIRE_ABSOLUTE * 0.98
+            return nTarget, BOT_DESIRE_OVERRIDE * 0.98
         end
         if not nTarget:IsHero() and GetUnitToUnitDistance(bot, nTarget) > nAttackRange + 300 then
-            return nTarget, BOT_MODE_DESIRE_ABSOLUTE * 0.7
+            return nTarget, BOT_DESIRE_OVERRIDE * 0.7
         end
-        return nTarget, BOT_MODE_DESIRE_ABSOLUTE * 0.96
+        return nTarget, BOT_DESIRE_OVERRIDE * 0.96
     end
 
 	-- Avoid derailing laning/pushing for courier hunts
@@ -494,13 +779,13 @@ function X.SupportFindTarget()
 		local enemyCourier = X.GetEnemyCourier(bot, nAttackRange + botLV * 2 + 20)  -- or +30 in carry version
 		if enemyCourier ~= nil and not enemyCourier:IsAttackImmune() and not enemyCourier:IsInvulnerable()
 		and nBotHP > 0.3 and not Fu.IsRetreating(bot) then
-			return enemyCourier, BOT_MODE_DESIRE_ABSOLUTE * 1.2
+			return enemyCourier, BOT_DESIRE_OVERRIDE * 1.2
 		end
 	end
 
     if botMode == BOT_MODE_RETREAT and botLV > 9 and not X.CanBeInVisible(bot) and X.ShouldNotRetreat(bot) then
         nTarget = Fu.GetAttackableWeakestUnit(bot, nAttackRange + 50, true, true)
-        if nTarget ~= nil then return nTarget, BOT_MODE_DESIRE_ABSOLUTE * 1.09 end
+        if nTarget ~= nil then return nTarget, BOT_DESIRE_OVERRIDE * 1.09 end
     end
 
     local attackDamage = botBAD - 1
@@ -539,7 +824,7 @@ function X.SupportFindTarget()
         local nWillAttackCreeps = X.GetExceptRangeLastHitCreep(true, attackDamage * 1.1, 0, nAttackRange + 60, bot)
         if nWillAttackCreeps == nil or denyDamage > 130 or not X.IsOthersTarget(nWillAttackCreeps) or not X.IsMostAttackDamage(bot) then
             nTarget = X.GetNearbyLastHitCreep(false, false, denyDamage, nAttackRange + 300, bot)
-            if nTarget ~= nil then return nTarget, BOT_MODE_DESIRE_ABSOLUTE * 0.97 end
+            if nTarget ~= nil then return nTarget, BOT_DESIRE_OVERRIDE * 0.97 end
         end
 
         local nAllyTowers = bot:GetNearbyTowers(nAttackRange + 300, false)
@@ -556,6 +841,15 @@ end
 function X.CarryFindTarget()
 	local nBotHP = Fu.GetHP(bot)
     if X.CanNotUseAttack(bot) or DotaTime() < 0 then return nil, 0 end
+
+    -- Tower dive prevention: don't chase heroes under tower if team can't guarantee kill
+    local nEnemyTowersNearby = bot:GetNearbyTowers(800, true)
+    if Fu.IsValidBuilding(nEnemyTowersNearby[1]) then
+        local currentTarget = Fu.GetProperTarget(bot)
+        if Fu.IsValidHero(currentTarget) and Fu.IsRecklesslyDivingTower(bot, currentTarget) then
+            return nil, 0
+        end
+    end
 
     local IsModeSuitHit = X.IsModeSuitToHitCreep(bot)
     local nAttackRange = math.min(bot:GetAttackRange() + 50, 1170)
@@ -578,23 +872,23 @@ function X.CarryFindTarget()
         if nTarget:IsCourier()
         and GetUnitToUnitDistance(bot, nTarget) <= nAttackRange + 300
         and nBotHP > 0.3 and not Fu.IsRetreating(bot) then
-            return nTarget, BOT_MODE_DESIRE_ABSOLUTE * 1.5
+            return nTarget, BOT_DESIRE_OVERRIDE * 1.5
         end
-        if nTarget:IsHero() and (bot:GetCurrentMovementSpeed() < 300 or botLV >= 25) then
+        if nTarget:IsHero() and not Fu.IsInLaningPhase() and (bot:GetCurrentMovementSpeed() < 300 or botLV >= 25) then
             if botName == "npc_dota_hero_antimage" then
                 local bAbility = bot:GetAbilityByName("antimage_blink")
                 if bAbility ~= nil and bAbility:IsFullyCastable() then return nil, BOT_MODE_DESIRE_NONE end
             end
-            return nTarget, BOT_MODE_DESIRE_ABSOLUTE * 1.2
+            return nTarget, BOT_DESIRE_OVERRIDE * 1.2
         end
         if Fu.IsPushing(bot) and not nTarget:IsHero() then return nil, 0 end
         if not nTarget:IsHero() and GetUnitToUnitDistance(bot, nTarget) < nAttackRange + 50 then
-            return nTarget, BOT_MODE_DESIRE_ABSOLUTE * 0.98
+            return nTarget, BOT_DESIRE_OVERRIDE * 0.98
         end
         if not nTarget:IsHero() and GetUnitToUnitDistance(bot, nTarget) > nAttackRange + 300 then
-            return nTarget, BOT_MODE_DESIRE_ABSOLUTE * 0.7
+            return nTarget, BOT_DESIRE_OVERRIDE * 0.7
         end
-        return nTarget, BOT_MODE_DESIRE_ABSOLUTE * 0.96
+        return nTarget, BOT_DESIRE_OVERRIDE * 0.96
     end
 
     if bot:HasModifier('modifier_phantom_lancer_phantom_edge_boost') then
@@ -606,7 +900,7 @@ function X.CarryFindTarget()
 		local enemyCourier = X.GetEnemyCourier(bot, nAttackRange + botLV * 2 + 20)  -- or +30 in carry version
 		if enemyCourier ~= nil and not enemyCourier:IsAttackImmune() and not enemyCourier:IsInvulnerable()
 		and nBotHP > 0.3 and not Fu.IsRetreating(bot) then
-			return enemyCourier, BOT_MODE_DESIRE_ABSOLUTE * 1.2
+			return enemyCourier, BOT_DESIRE_OVERRIDE * 1.2
 		end
 	end
 
@@ -616,7 +910,7 @@ function X.CarryFindTarget()
     and not X.CanBeInVisible(bot)
     and X.ShouldNotRetreat(bot) then
         nTarget = Fu.GetAttackableWeakestUnit(bot, nAttackRange + 50, true, true)
-        if nTarget ~= nil then return nTarget, BOT_MODE_DESIRE_ABSOLUTE * 1.09 end
+        if nTarget ~= nil then return nTarget, BOT_DESIRE_OVERRIDE * 1.09 end
     end
 
     local cItem = Fu.IsItemAvailable("item_echo_sabre")
@@ -851,6 +1145,7 @@ function X.CarryFindTarget()
 		and botMode ~= BOT_MODE_ASSEMBLE
 		and botMode ~= BOT_MODE_SECRET_SHOP
 		and botMode ~= BOT_MODE_SIDE_SHOP
+		and botMode ~= BOT_MODE_WATCHER
 		and botMode ~= BOT_MODE_WARD
 		and GetRoshanDesire() < BOT_MODE_DESIRE_HIGH	
 		and not bot:WasRecentlyDamagedByAnyHero(2.0)
@@ -1350,6 +1645,10 @@ end
 -- Help when core targeted (unchanged)
 -- ==============================
 function X.ConsiderHelpWhenCoreIsTargeted()
+    -- Don't help cores if we're low HP ourselves
+    if Fu.GetHP(bot) < 0.4 then return nil, false end
+    if bot:WasRecentlyDamagedByAnyHero(2.0) and Fu.GetHP(bot) < 0.55 then return nil, false end
+
     local nRadius = 3500
     local nModeDesire = bot:GetActiveModeDesire()
     local nClosestCore = Fu.GetClosestCore(bot, nRadius)
@@ -1361,6 +1660,9 @@ function X.ConsiderHelpWhenCoreIsTargeted()
     and not (Fu.IsRetreating(bot) and nModeDesire > 0.8) then
         local nInRangeAlly = Fu.GetAlliesNearLoc(nClosestCore:GetLocation(), 1200)
         local nInRangeEnemy = Fu.GetEnemiesNearLoc(nClosestCore:GetLocation(), 1600)
+
+        -- Risk check: don't walk into outnumbered fights
+        if #nInRangeEnemy > #nInRangeAlly + 1 then return nil, false end
 
         for _, enemyHero in pairs(nInRangeEnemy) do
             if  Fu.IsValidHero(enemyHero)
@@ -1812,6 +2114,13 @@ function Fu.FindLeastExpensiveItemSlot()
 	end
 
 	return idx
+end
+
+if SafeCall then
+  local _origGetDesire = GetDesire
+  local _origThink = Think
+  if _origGetDesire then GetDesire = SafeCall(_origGetDesire, 0, 'TEAM_ROAM_GetDesire') end
+  if _origThink then Think = SafeCall(_origThink, nil, 'TEAM_ROAM_Think') end
 end
 
 X.GetDesire = GetDesire

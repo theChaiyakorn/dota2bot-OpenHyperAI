@@ -180,11 +180,11 @@ modifier_bristleback_warpath
 modifier_bristleback_warpath_stack
 
 --]]
-local ViscousNasalGoo = bot:GetAbilityByName('bristleback_viscous_nasal_goo')
-local QuillSpray = bot:GetAbilityByName('bristleback_quill_spray')
-local Bristleback = bot:GetAbilityByName('bristleback_bristleback')
-local Hairball = bot:GetAbilityByName('bristleback_hairball')
-local Warpath = bot:GetAbilityByName('bristleback_warpath')
+local ViscousNasalGoo = SafeAbility(bot:GetAbilityByName('bristleback_viscous_nasal_goo'), 'bristleback_viscous_nasal_goo', 'bristleback')
+local QuillSpray = SafeAbility(bot:GetAbilityByName('bristleback_quill_spray'), 'bristleback_quill_spray', 'bristleback')
+local Bristleback = SafeAbility(bot:GetAbilityByName('bristleback_bristleback'), 'bristleback_bristleback', 'bristleback')
+local Hairball = SafeAbility(bot:GetAbilityByName('bristleback_hairball'), 'bristleback_hairball', 'bristleback')
+local Warpath = SafeAbility(bot:GetAbilityByName('bristleback_warpath'), 'bristleback_warpath', 'bristleback')
 
 local ViscousNasalGooDesire, ViscousNasalGooTarget
 local QuillSprayDesire
@@ -462,9 +462,8 @@ function X.ConsiderQuillSpray()
 end
 
 function X.ConsiderBristleback()
-	if not Fu.CanCastAbility(Bristleback)
-	or not bot:HasScepter()
-	then
+	-- No HasScepter check — CanCastAbility handles it (ability not castable without Aghs)
+	if not Fu.CanCastAbility(Bristleback) then
 		return BOT_ACTION_DESIRE_NONE, 0
 	end
 
@@ -477,8 +476,8 @@ function X.ConsiderBristleback()
 		if Fu.IsValidHero(botTarget)
         and Fu.CanBeAttacked(botTarget)
 		and Fu.IsInRange(bot, botTarget, nRadius)
-		and not Fu.IsChasingTarget(bot, botTarget)
         and not botTarget:HasModifier('modifier_necrolyte_reapers_scythe')
+		and (Fu.IsDisabled(botTarget) or botTarget:GetCurrentMovementSpeed() <= 250 or not Fu.IsMoving(botTarget))
 		then
 			return BOT_ACTION_DESIRE_HIGH, botTarget:GetLocation()
 		end
@@ -505,11 +504,11 @@ function X.ConsiderBristleback()
 
 	local nEnemyCreeps = bot:GetNearbyCreeps(800, true)
 
-	if Fu.IsPushing(bot) and fManaAfter > fManaThreshold1 + 0.1 and bAttacking and #nAllyHeroes <= 1 and #nEnemyHeroes == 0 then
+	if (Fu.IsPushing(bot) or Fu.IsDefending(bot)) and fManaAfter > fManaThreshold1 + 0.1 and bAttacking and #nEnemyHeroes == 0 then
 		for _, creep in pairs(nEnemyCreeps) do
             if Fu.IsValid(creep) and Fu.CanBeAttacked(creep) and not Fu.IsRunning(creep) then
                 local nLocationAoE = bot:FindAoELocation(true, false, creep:GetLocation(), 0, nRadius, 0, 0)
-                if (nLocationAoE.count >= 5) then
+                if nLocationAoE.count >= 4 or (nLocationAoE.count >= 1 and creep:GetHealth() >= 1000) then
                     return BOT_ACTION_DESIRE_HIGH, nLocationAoE.targetloc
                 end
             end

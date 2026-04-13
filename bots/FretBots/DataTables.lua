@@ -189,7 +189,7 @@ function DataTables:MoveAbilityByName(unit, abilityName, toIndex)
     for i = 0, abilityCount - 1 do
         local ability = unit:GetAbilityByIndex(i)
 		if ability and not ability:IsNull() then
-			-- print('Ability at index '..tostring(i)..': '..ability:GetName())
+			-- log('Ability at index '..tostring(i)..': '..ability:GetName())
 			if ability:GetAbilityName() == abilityName then
 				fromIndex = i
 				break

@@ -1,4 +1,16 @@
-import { writeFileSync } from "fs";
+import { writeFileSync, readFileSync, existsSync } from "fs";
+import path from "path";
+
+// Load .env file if present (no dotenv dependency needed)
+const envPath = path.resolve(__dirname, "../../.env");
+if (existsSync(envPath)) {
+    for (const line of readFileSync(envPath, "utf-8").split("\n")) {
+        const match = line.match(/^([^#=]+)=(.*)$/);
+        if (match && !process.env[match[1].trim()]) {
+            process.env[match[1].trim()] = match[2].trim();
+        }
+    }
+}
 
 // Simple sleep helper (in milliseconds)
 function sleep(ms: number): Promise<void> {
@@ -11,7 +23,7 @@ const ONE_WEEK_AGO_TIMESTAMP = Math.floor((Date.now() - 1 * 24 * 60 * 60 * 1000)
 
 const STRATZ_API_KEY = process.env.STRATZ_API_KEY;
 if (!STRATZ_API_KEY) {
-    throw new Error("No STRATZ_API_KEY environment variable found. Please set it first.");
+    throw new Error("No STRATZ_API_KEY environment variable found. Set it in .env or export it.");
 }
 
 const GRAPHQL_HEADERS = {

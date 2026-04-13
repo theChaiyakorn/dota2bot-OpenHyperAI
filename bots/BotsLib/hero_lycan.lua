@@ -129,11 +129,11 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local SummonWolves  = bot:GetAbilityByName('lycan_summon_wolves')
-local Howl          = bot:GetAbilityByName('lycan_howl')
-local FeralImpulse  = bot:GetAbilityByName('lycan_feral_impulse')
-local WoflBite      = bot:GetAbilityByName('lycan_wolf_bite')
-local ShapeShift    = bot:GetAbilityByName('lycan_shapeshift')
+local SummonWolves  = SafeAbility(bot:GetAbilityByName('lycan_summon_wolves'), 'lycan_summon_wolves', 'lycan')
+local Howl          = SafeAbility(bot:GetAbilityByName('lycan_howl'), 'lycan_howl', 'lycan')
+local FeralImpulse  = SafeAbility(bot:GetAbilityByName('lycan_feral_impulse'), 'lycan_feral_impulse', 'lycan')
+local WoflBite      = SafeAbility(bot:GetAbilityByName('lycan_wolf_bite'), 'lycan_wolf_bite', 'lycan')
+local ShapeShift    = SafeAbility(bot:GetAbilityByName('lycan_shapeshift'), 'lycan_shapeshift', 'lycan')
 
 local SummonWolvesDesire
 local HowlDesire

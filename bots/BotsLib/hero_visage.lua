@@ -134,11 +134,11 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local GraveChill        = bot:GetAbilityByName('visage_grave_chill')
-local SoulAssumption    = bot:GetAbilityByName('visage_soul_assumption')
-local GravekeepersCloak = bot:GetAbilityByName('visage_gravekeepers_cloak')
-local SilentAsTheGrave  = bot:GetAbilityByName('visage_silent_as_the_grave')
-local SummonFamiliars   = bot:GetAbilityByName('visage_summon_familiars')
+local GraveChill        = SafeAbility(bot:GetAbilityByName('visage_grave_chill'), 'visage_grave_chill', 'visage')
+local SoulAssumption    = SafeAbility(bot:GetAbilityByName('visage_soul_assumption'), 'visage_soul_assumption', 'visage')
+local GravekeepersCloak = SafeAbility(bot:GetAbilityByName('visage_gravekeepers_cloak'), 'visage_gravekeepers_cloak', 'visage')
+local SilentAsTheGrave  = SafeAbility(bot:GetAbilityByName('visage_silent_as_the_grave'), 'visage_silent_as_the_grave', 'visage')
+local SummonFamiliars   = SafeAbility(bot:GetAbilityByName('visage_summon_familiars'), 'visage_summon_familiars', 'visage')
 
 local GraveChillDesire, GraveChillTarget
 local SoulAssumptionDesire, SoulAssumptionTarget

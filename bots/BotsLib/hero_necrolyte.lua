@@ -175,10 +175,10 @@ modifier_necrolyte_reapers_scythe_respawn_time
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityAS = bot:GetAbilityByName( sAbilityList[4] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'necrolyte')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'necrolyte')
+local abilityAS = SafeAbility(bot:GetAbilityByName(sAbilityList[4]), 'sAbilityList[4]', 'necrolyte')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'necrolyte')
 
 
 local castQDesire

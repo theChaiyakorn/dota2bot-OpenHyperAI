@@ -18,7 +18,10 @@ if not okDispel then Dispel = nil end
 if GAMEMODE_TURBO == nil then GAMEMODE_TURBO = 23 end
 if GAMEMODE_ARDM == nil then GAMEMODE_ARDM = 20 end
 
-if BotBuild == nil then return end
+if BotBuild == nil then
+	log('[ERROR] BotBuild is nil for '..tostring(botName)..' - hero file failed to load. No items/abilities.')
+	return
+end
 
 local bDeafaultAbilityHero = BotBuild['bDeafaultAbility']
 local bDeafaultItemHero = BotBuild['bDeafaultItem']
@@ -30,10 +33,25 @@ local DireFountain = Vector(6928, 6372, 392)
 local bNeedARDMReload = false
 local nLastKnownPosition = nil  -- tracks bot's position for !pos swap detection
 
+-- Generic bidirectional swap map for heroes with form-switching hidden abilities.
+-- When a skill list entry refers to a hidden ability, we level its visible partner instead.
+-- Both directions are listed so lookup is O(1) regardless of which form is active.
+local tHiddenAbilitySwapMap = {
+	-- Kez: Katana (Discipline 1) <-> Sai (Discipline 2)
+	['kez_echo_slash']     = 'kez_falcon_rush',
+	['kez_falcon_rush']    = 'kez_echo_slash',
+	['kez_grappling_claw'] = 'kez_talon_toss',
+	['kez_talon_toss']     = 'kez_grappling_claw',
+	['kez_kazurai_katana'] = 'kez_shodo_sai',
+	['kez_shodo_sai']      = 'kez_kazurai_katana',
+	['kez_raptor_dance']   = 'kez_ravens_veil',
+	['kez_ravens_veil']    = 'kez_raptor_dance',
+}
+
 -- Reload BotBuild for the current hero+role (shared by ARDM swap and !pos swap)
 local function ReloadBotBuild(reason)
 	local heroFile = string.gsub(botName, "npc_dota_", "")
-	print("[Reload] "..reason.." for "..botName..", loading BotsLib/"..heroFile)
+	log("[Reload] "..reason.." for "..botName..", loading BotsLib/"..heroFile)
 	local ok, newBuild = pcall(dofile, GetScriptDirectory().."/BotsLib/"..heroFile)
 	if ok and newBuild ~= nil then
 		BotBuild = newBuild
@@ -62,10 +80,10 @@ local function ReloadBotBuild(reason)
 				sAbilityLevelUpList = Fu.Utils.CombineTablesUnique(
 					Fu.Skill.GetTalentList(bot), Fu.Skill.GetAbilityList(bot))
 			end
-			print("[Reload] Skill list: "..#sAbilityLevelUpList.." entries remaining (spent "..nPointsSpent.." points)")
+			log("[Reload] Skill list: "..#sAbilityLevelUpList.." entries remaining (spent "..nPointsSpent.." points)")
 		end
 	else
-		print("[Reload] dofile FAILED for "..heroFile..": "..tostring(newBuild))
+		log("[Reload] dofile FAILED for "..heroFile..": "..tostring(newBuild))
 	end
 end
 
@@ -74,13 +92,13 @@ end
 local function RefreshBotHandle()
 	local isStale, freshBot, freshName = Fu.IsStaleARDMHero(bot, botName)
 	if isStale then
-		print("[ARDM] Stale ability script: this="..botName..", current="..freshName)
+		log("[ARDM] Stale ability script: this="..botName..", current="..freshName)
 		return true
 	end
 
 	-- Update handle/name if changed (hero swapped in place)
 	if freshName ~= botName then
-		print("[ARDM] Hero swap detected: "..botName.." -> "..freshName)
+		log("[ARDM] Hero swap detected: "..botName.." -> "..freshName)
 		bot = freshBot
 		botName = freshName
 		bNeedARDMReload = true
@@ -92,34 +110,34 @@ local function RefreshBotHandle()
 	if bNeedARDMReload and bot:IsAlive() then
 		bNeedARDMReload = false
 		local heroFile = string.gsub(botName, "npc_dota_", "")
-		print("[ARDM] Loading BotsLib/"..heroFile..".lua for "..botName)
+		log("[ARDM] Loading BotsLib/"..heroFile..".lua for "..botName)
 		local ok, newBuild = pcall(dofile, GetScriptDirectory().."/BotsLib/"..heroFile)
 		if not ok then
-			print("[ARDM] dofile FAILED for "..heroFile..": "..tostring(newBuild))
+			log("[ARDM] dofile FAILED for "..heroFile..": "..tostring(newBuild))
 		end
 		if ok and newBuild ~= nil and newBuild['sSkillList'] ~= nil and #newBuild['sSkillList'] > 0 then
 			BotBuild = newBuild
 			bDeafaultAbilityHero = BotBuild['bDeafaultAbility']
 			bDeafaultItemHero = BotBuild['bDeafaultItem']
 			sAbilityLevelUpList = BotBuild['sSkillList']
-			print("[ARDM] Loaded BotsLib for "..botName.." with "..#sAbilityLevelUpList.." skill entries, first: "..tostring(sAbilityLevelUpList[1]))
+			log("[ARDM] Loaded BotsLib for "..botName.." with "..#sAbilityLevelUpList.." skill entries, first: "..tostring(sAbilityLevelUpList[1]))
 		else
 			local abilityList = Fu.Skill.GetAbilityList(bot)
 			local talentList = Fu.Skill.GetTalentList(bot)
-			print("[ARDM] BotsLib load failed or empty for "..botName..", abilities: "..#abilityList..", talents: "..#talentList)
+			log("[ARDM] BotsLib load failed or empty for "..botName..", abilities: "..#abilityList..", talents: "..#talentList)
 			if #abilityList > 0 then
 				BotBuild = nil
 				bDeafaultAbilityHero = false
 				bDeafaultItemHero = false
 				sAbilityLevelUpList = Fu.Utils.CombineTablesUnique(talentList, abilityList)
-				print("[ARDM] Using generic build for "..botName.." with "..#sAbilityLevelUpList.." entries")
+				log("[ARDM] Using generic build for "..botName.." with "..#sAbilityLevelUpList.." entries")
 			else
-				print("[ARDM] Abilities not ready for "..botName..", retrying next frame")
+				log("[ARDM] Abilities not ready for "..botName..", retrying next frame")
 				bNeedARDMReload = true
 			end
 		end
 	elseif bNeedARDMReload and not bot:IsAlive() then
-		print("[ARDM] Waiting for "..botName.." to respawn")
+		log("[ARDM] Waiting for "..botName.." to respawn")
 	end
 
 	return false
@@ -141,7 +159,7 @@ local function AbilityLevelUpComplement()
 	if nLastKnownPosition == nil then
 		nLastKnownPosition = nCurrentPos
 	elseif nCurrentPos ~= nLastKnownPosition then
-		print("[PosSwap] "..botName.." position changed: pos"..nLastKnownPosition.." -> pos"..nCurrentPos)
+		log("[PosSwap] "..botName.." position changed: pos"..nLastKnownPosition.." -> pos"..nCurrentPos)
 		nLastKnownPosition = nCurrentPos
 		ReloadBotBuild("Position swap to pos"..nCurrentPos)
 		-- Signal item purchase to also rebuild
@@ -187,7 +205,7 @@ local function AbilityLevelUpComplement()
 	local botLevel = bot:GetLevel()
 
 	if GetGameMode() == GAMEMODE_ARDM and bot:GetAbilityPoints() > 0 then
-		print("[ARDM] "..botName.." Lv"..botLevel.." has "..bot:GetAbilityPoints().." ability points, skill list has "..#sAbilityLevelUpList.." entries"
+		log("[ARDM] "..botName.." Lv"..botLevel.." has "..bot:GetAbilityPoints().." ability points, skill list has "..#sAbilityLevelUpList.." entries"
 			..(#sAbilityLevelUpList > 0 and (", next: "..tostring(sAbilityLevelUpList[1])) or ""))
 	end
 
@@ -199,7 +217,7 @@ local function AbilityLevelUpComplement()
 
 		-- Skip nil entries in skill list (can happen with broken talent mappings)
 		if abilityName == nil then
-			print("[WARN] Nil entry in sAbilityLevelUpList for "..botName..", removing")
+			log("[WARN] Nil entry in sAbilityLevelUpList for "..botName..", removing")
 			table.remove(sAbilityLevelUpList, 1)
 			return
 		end
@@ -212,69 +230,25 @@ local function AbilityLevelUpComplement()
 			local abilityList = Fu.Skill.GetAbilityList(bot)
 			local talentList = Fu.Skill.GetTalentList(bot)
 			if #abilityList >= 3 then
-				print("[ARDM] Ability '"..abilityName.."' not found on "..botName..", rebuilding skill list (abilities: "..#abilityList..", talents: "..#talentList..")")
+				log("[ARDM] Ability '"..abilityName.."' not found on "..botName..", rebuilding skill list (abilities: "..#abilityList..", talents: "..#talentList..")")
 				sAbilityLevelUpList = Fu.Utils.CombineTablesUnique(talentList, abilityList)
 				return -- retry with fresh list next frame
 			else
-				print("[ARDM] Abilities not ready for "..botName.." ("..#abilityList.."), waiting")
+				log("[ARDM] Abilities not ready for "..botName.." ("..#abilityList.."), waiting")
 				return
 			end
 		end
 
-		if abilityName == 'npc_dota_hero_kez'
-		and (abilityToLevelup == nil or abilityToLevelup:IsHidden()) then
-			return
-		end
-
-		-- Kez abilities
-		if botName == 'npc_dota_hero_kez' then
-			if bot.kez_mode == 'sai' then
-				for i = 0, 6 do
-					local hAbility = bot:GetAbilityInSlot(i)
-					local sAbilityName = hAbility:GetName()
-					if hAbility ~= nil then
-						if sAbilityLevelUpList[1] == 'kez_echo_slash' and sAbilityName == 'kez_falcon_rush'
-						then
-							abilityToLevelup = hAbility
-							sAbilityLevelUpList[1] = 'kez_falcon_rush'
-						elseif sAbilityLevelUpList[1] == 'kez_grappling_claw' and sAbilityName == 'kez_talon_toss'
-						then
-							abilityToLevelup = hAbility
-							sAbilityLevelUpList[1] = 'kez_talon_toss'
-						elseif sAbilityLevelUpList[1] == 'kez_kazurai_katana' and sAbilityName == 'kez_shodo_sai'
-						then
-							abilityToLevelup = hAbility
-							sAbilityLevelUpList[1] = 'kez_shodo_sai'
-						elseif sAbilityLevelUpList[1] == 'kez_raptor_dance' and sAbilityName == 'kez_ravens_veil'
-						then
-							abilityToLevelup = hAbility
-							sAbilityLevelUpList[1] = 'kez_ravens_veil'
-						end
-					end
-				end
-			else
-				for i = 0, 6 do
-					local hAbility = bot:GetAbilityInSlot(i)
-					local sAbilityName = hAbility:GetName()
-					if hAbility ~= nil then
-						if sAbilityLevelUpList[1] == 'kez_falcon_rush' and sAbilityName == 'kez_echo_slash'
-						then
-							abilityToLevelup = hAbility
-							sAbilityLevelUpList[1] = 'kez_echo_slash'
-						elseif sAbilityLevelUpList[1] == 'kez_talon_toss' and sAbilityName == 'kez_grappling_claw'
-						then
-							abilityToLevelup = hAbility
-							sAbilityLevelUpList[1] = 'kez_grappling_claw'
-						elseif sAbilityLevelUpList[1] == 'kez_shodo_sai' and sAbilityName == 'kez_kazurai_katana'
-						then
-							abilityToLevelup = hAbility
-							sAbilityLevelUpList[1] = 'kez_kazurai_katana'
-						elseif sAbilityLevelUpList[1] == 'kez_ravens_veil' and sAbilityName == 'kez_raptor_dance'
-						then
-							abilityToLevelup = hAbility
-							sAbilityLevelUpList[1] = 'kez_raptor_dance'
-						end
-					end
+		-- Generic hidden ability swap: if the ability we want to level is hidden,
+		-- check the swap map for a visible partner and level that instead.
+		-- Works for Kez form-switching and any future heroes with similar mechanics.
+		if abilityToLevelup ~= nil and abilityToLevelup:IsHidden() then
+			local swapName = tHiddenAbilitySwapMap[abilityName]
+			if swapName then
+				local swapAbility = bot:GetAbilityByName(swapName)
+				if swapAbility ~= nil and not swapAbility:IsHidden() then
+					abilityToLevelup = swapAbility
+					abilityName = swapName
 				end
 			end
 		end
@@ -297,7 +271,7 @@ local function AbilityLevelUpComplement()
 
 		-- ARDM: ability doesn't exist on this hero — skip it
 		if abilityToLevelup == nil then
-			print("[ARDM] Ability "..abilityName.." not found on "..botName..", skipping")
+			log("[ARDM] Ability "..abilityName.." not found on "..botName..", skipping")
 			table.remove( sAbilityLevelUpList, 1 )
 			return
 		end
@@ -311,20 +285,20 @@ local function AbilityLevelUpComplement()
 			table.remove( sAbilityLevelUpList, 1 )
 		elseif abilityName == 'generic_hidden' then
 			local nextAbility = sAbilityLevelUpList[2]
-			print("[WARN] Level up ability "..abilityName.." for "..botName.." does not make sense. try to upgrade the next ability: "..tostring(nextAbility))
+			log("[WARN] Level up ability "..abilityName.." for "..botName.." does not make sense. try to upgrade the next ability: "..tostring(nextAbility))
 			table.remove( sAbilityLevelUpList, 1 )
 			if nextAbility then
 				bot:ActionImmediate_LevelAbility(nextAbility)
 			end
 		elseif not abilityToLevelup:IsHidden() and botLevel >= abilityToLevelup:GetHeroLevelRequiredToUpgrade() then
 			-- still try it
-			print("[WARN] Level up ability "..abilityName.." for "..botName.." may fail because it was called on ability that's not available or can't get upgraded anymore.")
+			log("[WARN] Level up ability "..abilityName.." for "..botName.." may fail because it was called on ability that's not available or can't get upgraded anymore.")
 			bot:ActionImmediate_LevelAbility(abilityName)
 			table.remove( sAbilityLevelUpList, 1 )
 		else
-			print("[WARN] Skipped to level up ability "..abilityName.." for "..botName.." for this time because it may fail.")
+			log("[WARN] Skipped to level up ability "..abilityName.." for "..botName.." for this time because it may fail.")
 			if botLevel > 25 then
-				print("[WARN] Ignore ability "..abilityName.." for "..botName.." because it may always fail.")
+				log("[WARN] Ignore ability "..abilityName.." for "..botName.." because it may always fail.")
 				table.remove( sAbilityLevelUpList, 1 )
 			end
 		end
@@ -336,9 +310,29 @@ local function AbilityLevelUpComplement()
 
 	-- ARDM fallback: if skill list is empty but we still have points, rebuild from current abilities
 	if GetGameMode() == GAMEMODE_ARDM and #sAbilityLevelUpList == 0 and bot:GetAbilityPoints() > 0 then
-		print("[ARDM] Skill list exhausted for "..botName.." at Lv"..botLevel.." with "..bot:GetAbilityPoints().." points, rebuilding")
+		log("[ARDM] Skill list exhausted for "..botName.." at Lv"..botLevel.." with "..bot:GetAbilityPoints().." points, rebuilding")
 		sAbilityLevelUpList = Fu.Utils.CombineTablesUnique(Fu.Skill.GetTalentList(bot), Fu.Skill.GetAbilityList(bot))
 	end
+end
+
+-- Map bot position/role to lane (same logic as GetLaningTPLocation)
+-- More reliable than bot:GetAssignedLane() which Valve can reassign
+function X.GetLaneByPosition(bot)
+	local position = Fu.GetPosition(bot)
+	if GetTeam() == TEAM_RADIANT then
+		if position == 1 then return LANE_BOT
+		elseif position == 2 then return LANE_MID
+		elseif position == 3 or position == 4 then return LANE_TOP
+		elseif position == 5 then return LANE_BOT
+		end
+	else
+		if position == 1 then return LANE_TOP
+		elseif position == 2 then return LANE_MID
+		elseif position == 3 or position == 4 then return LANE_BOT
+		elseif position == 5 then return LANE_TOP
+		end
+	end
+	return bot:GetAssignedLane() or LANE_MID
 end
 
 function X.GetNumEnemyNearby( building )
@@ -513,7 +507,7 @@ function X.SetReplyHumanTime( tChat )
 
 	if string.find(sChatString, "!sp") or string.find(sChatString, "!speak") then
 		local action, target = Fu.Utils.TrimString(sChatString):match("^(%S+)%s+(.*)$")
-		print("Set to speak: ".. target)
+		log("Set to speak: ".. target)
 		Fu.Customize.Localization = target
 		return
 	end
@@ -577,7 +571,7 @@ local function BuybackUsageComplement()
 		end
 	end
 
-	if nFullRespawnTime < 60 then
+	if nFullRespawnTime < 45 then
 		return
 	end
 
@@ -977,26 +971,114 @@ local function ItemUsageComplement()
 		or bot:IsStunned()
 		or bot:IsChanneling()
 		or bot:IsInvulnerable()
-		or bot:IsCastingAbility()
 		or bot:HasModifier( 'modifier_teleporting' )
 		or bot:HasModifier( 'modifier_doom_bringer_doom' )
 		or bot:HasModifier( 'modifier_phantom_lancer_phantom_edge_boost' )
 		or X.WillBreakInvisible( bot )
 	then return	BOT_ACTION_DESIRE_NONE end
-	-- NOTE: removed IsUsingAbility() and NumQueuedActions() checks.
-	-- IsUsingAbility() returns true during attack animations and queued spell casts,
-	-- which blocked ALL item usage (wand, flask, BKB, etc.) nearly 100% of the time.
-	-- IsCastingAbility() + IsChanneling() are sufficient to prevent item interrupts.
 
-	hNearbyEnemyHeroList = Fu.GetNearbyHeroes(bot, 1000, true, BOT_MODE_NONE )
+	-- -- IsCastingAbility blocks most items (would cancel the cast).
+	-- -- But no-target self-cast items (phase, arcane, armlet, etc.) are safe to use.
+	-- -- Check those before blocking on IsCastingAbility.
+	-- if bot:IsCastingAbility() then
+	-- 	local safeItems = {
+	-- 		'item_phase_boots', 'item_spider_legs', 'item_arcane_boots',
+	-- 		'item_guardian_greaves', 'item_magic_wand', 'item_faerie_fire',
+	-- 		'item_armlet', 'item_blade_mail', 'item_pipe', 'item_crimson_guard',
+	-- 		'item_black_king_bar', 'item_mekansm', 'item_holy_locket',
+	-- 		'item_mask_of_madness', 'item_cheese',
+	-- 	}
+	-- 	for _, itemName in pairs(safeItems) do
+	-- 		local slot = bot:FindItemSlot(itemName)
+	-- 		if slot >= 0 and slot <= 5 then
+	-- 			local hItem = bot:GetItemInSlot(slot)
+	-- 			if hItem and Fu.CanCastAbility(hItem) and X.ConsiderItemDesire[itemName] then
+	-- 				local desire = X.ConsiderItemDesire[itemName](hItem)
+	-- 				if desire and desire > 0 then
+	-- 					X.SetUseItem(hItem, bot, 'none')
+	-- 					return
+	-- 				end
+	-- 			end
+	-- 		end
+	-- 	end
+	-- 	return BOT_ACTION_DESIRE_NONE
+	-- end
+
+	hNearbyEnemyHeroList = Fu.GetNearbyHeroes(bot, 1600, true, BOT_MODE_NONE )
 	hNearbyEnemyTowerList = bot:GetNearbyTowers( 888, true )
 	botTarget = Fu.GetProperTarget( bot )
 	nMode = bot:GetActiveMode()
 
+	-- If bot is in a fight (regardless of mode), treat it as "going on someone"
+	-- for item activation. Fixes items not used during laning/push/defend fights.
+	if nMode ~= BOT_MODE_ATTACK and nMode ~= BOT_MODE_RETREAT then
+		local inFight = false
+		local attackTarget = bot:GetAttackTarget()
+		-- Actively attacking a hero
+		if attackTarget ~= nil and attackTarget:IsHero() then
+			inFight = true
+		-- Enemy heroes nearby and we're taking/dealing damage
+		elseif #hNearbyEnemyHeroList > 0 and (bot:WasRecentlyDamagedByAnyHero(2.0) or Fu.IsAttacking(bot)) then
+			inFight = true
+		end
+		if inFight then
+			nMode = BOT_MODE_ATTACK
+		end
+	end
+
+	-- -- Emergency: if taking heavy hero damage and HP dropping, force defensive items
+	-- -- regardless of mode. This catches the "walking bot melted by 5 enemies" case.
+	-- local botHP = Fu.GetHP(bot)
+	-- if bot:WasRecentlyDamagedByAnyHero(1.5) and botHP < 0.6 and #hNearbyEnemyHeroList >= 1 then
+	-- 	local emergencyItems = {
+	-- 		'item_black_king_bar', 'item_glimmer_cape', 'item_ghost',
+	-- 		'item_cyclone', 'item_wind_waker', 'item_pipe',
+	-- 		'item_crimson_guard', 'item_blade_mail', 'item_mekansm',
+	-- 		'item_guardian_greaves', 'item_holy_locket', 'item_magic_wand',
+	-- 		'item_faerie_fire', 'item_cheese', 'item_flask',
+	-- 		'item_famango', 'item_great_famango', 'item_greater_famango',
+	-- 	}
+	-- 	for _, itemName in pairs(emergencyItems) do
+	-- 		local slot = bot:FindItemSlot(itemName)
+	-- 		if slot >= 0 and slot <= 5 then
+	-- 			local hItem = bot:GetItemInSlot(slot)
+	-- 			if hItem and Fu.CanCastAbility(hItem) then
+	-- 				-- Self-target items
+	-- 				if itemName == 'item_black_king_bar' or itemName == 'item_blade_mail'
+	-- 				or itemName == 'item_pipe' or itemName == 'item_crimson_guard'
+	-- 				or itemName == 'item_mekansm' or itemName == 'item_guardian_greaves'
+	-- 				or itemName == 'item_magic_wand' or itemName == 'item_faerie_fire'
+	-- 				or itemName == 'item_cheese' or itemName == 'item_holy_locket'
+	-- 				then
+	-- 					bot:Action_UseAbility(hItem)
+	-- 					return
+	-- 				-- Self-cast unit-target items
+	-- 				elseif itemName == 'item_glimmer_cape' then
+	-- 					bot:Action_UseAbilityOnEntity(hItem, bot)
+	-- 					return
+	-- 				-- Location/no-target consumables
+	-- 				elseif itemName == 'item_flask' or itemName == 'item_famango'
+	-- 				or itemName == 'item_great_famango' or itemName == 'item_greater_famango' then
+	-- 					bot:Action_UseAbilityOnEntity(hItem, bot)
+	-- 					return
+	-- 				-- Eul's on nearest enemy (escape)
+	-- 				elseif (itemName == 'item_cyclone' or itemName == 'item_wind_waker') and botHP < 0.3 then
+	-- 					bot:Action_UseAbility(hItem)
+	-- 					return
+	-- 				-- Ghost scepter
+	-- 				elseif itemName == 'item_ghost' then
+	-- 					bot:Action_UseAbility(hItem)
+	-- 					return
+	-- 				end
+	-- 			end
+	-- 		end
+	-- 	end
+	-- end
+
 	local aether = Fu.IsItemAvailable( "item_aether_lens" )
 	if aether ~= nil then aetherRange = 250 else aetherRange = 0 end
 
-	local nItemSlot = { 5, 4, 3, 2, 1, 0, 15, 16 }
+	local nItemSlot = { 0, 1, 2, 3, 4, 5, 15, 16 }
 
 	for _, nSlot in pairs( nItemSlot )
 	do
@@ -1004,25 +1086,10 @@ local function ItemUsageComplement()
 		if Fu.CanCastAbility(hItem)
 		then
 			local sItemName = hItem:GetName()
-			if	X.ConsiderItemDesire[sItemName] ~= nil
-				and not X.IsItemInStash( sItemName )
-			then
-				local nItemDesire, hItemTarget, sCastType, sMotive = X.ConsiderItemDesire[sItemName]( hItem )
-
-				if nItemDesire > 0
-				then
-					if bDebugMode
-						and sMotive ~= nil
-					--	and Fu.Item.IsDebugItem( sItemName )
-						and Fu.Item.IsSpecifiedItem( sItemName )
-					then
-						-- local sReportItemName = Fu.Chat.GetItemCnName( sItemName )
-						Fu.SetReportMotive( bDebugMode, sItemName..'→'..sMotive )
-					end
-
+			if X.ConsiderItemDesire[sItemName] ~= nil and not X.IsItemInStash( sItemName ) then
+				local nItemDesire, hItemTarget, sCastType = X.ConsiderItemDesire[sItemName]( hItem )
+				if nItemDesire > 0 then
 					X.SetUseItem( hItem, hItemTarget, sCastType )
-
-					return nSlot + 1
 				end
 			end
 		end
@@ -1041,6 +1108,7 @@ function X.SetUseItem( hItem, hItemTarget, sCastType )
 	elseif sCastType == 'unit' and type(hItemTarget) == 'table'
 	then
 		bot:Action_UseAbilityOnEntity( hItem, hItemTarget )
+		if string.find(hItem:GetName(), 'tango') then bot._lastTangoUseTime = DotaTime() end
 		return
 	elseif sCastType == 'ground' or (hItemTarget and type(hItemTarget) ~= 'number' and type(hItemTarget) ~= 'table' and hItemTarget.x ~= nil) -- in case target is a location
 	then
@@ -1049,6 +1117,7 @@ function X.SetUseItem( hItem, hItemTarget, sCastType )
 	elseif sCastType == 'tree'
 	then
 		bot:Action_UseAbilityOnTree( hItem, hItemTarget )
+		bot._lastTangoUseTime = DotaTime()
 		return
 	elseif sCastType == 'twice'
 	then
@@ -1113,18 +1182,38 @@ end
 
 
 function X.WillBreakInvisible( bot )
+	if not bot:IsInvisible() then return false end
 
+	-- Heroes with permanent/semi-permanent invisibility should still use items
 	local botName = botName
-
-	if bot:IsInvisible()
+	if botName == "npc_dota_hero_riki"
+	or botName == "npc_dota_hero_bounty_hunter"
+	or botName == "npc_dota_hero_slark"
 	then
-		if not bot:HasModifier( "modifier_phantom_assassin_blur_active" )
-			and botName ~= "npc_dota_hero_riki"
-		then
-			return true
-		end
+		return false
 	end
 
+	-- PA blur doesn't break on item use
+	if bot:HasModifier("modifier_phantom_assassin_blur_active") then return false end
+
+	-- Glimmer Cape self-cast: don't block items — the invis is short and
+	-- bots need to use items (wand, flask, BKB) during it
+	if bot:HasModifier("modifier_item_glimmer_cape_fade") then return false end
+
+	-- Shadow Amulet: intentional hiding, don't break
+	if bot:HasModifier("modifier_item_shadow_amulet_fade") then return true end
+
+	-- Shadow Blade / Silver Edge: intentional invis for initiation, don't use items
+	if bot:HasModifier("modifier_item_invisibility_edge_windwalk")
+	or bot:HasModifier("modifier_item_silver_edge_windwalk")
+	then
+		return true
+	end
+
+	-- Smoke: don't break
+	if bot:HasModifier("modifier_smoke_of_deceit") then return true end
+
+	-- Other invisibility (Mirana ult, ally abilities, etc.): allow item usage
 	return false
 
 end
@@ -1262,7 +1351,7 @@ X.ConsiderItemDesire["item_arcane_boots"] = function( hItem )
 		end
 	end
 
-	if bot:GetMana() / bot:GetMaxMana() < 0.58
+	if bot:GetMana() / bot:GetMaxMana() < 0.65
 	then
 		sCastMotive = '自己补蓝'
 		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, sCastMotive
@@ -1288,8 +1377,18 @@ X.ConsiderItemDesire["item_armlet"] = function( hItem )
 
 	local bActive = hItem:GetToggleState()
 	local nRealHP = bot:OriginalGetHealth()
-	local bInFight = bot:WasRecentlyDamagedByAnyHero(3.0) or (#nInRangeEnmyList > 0 and Fu.IsAttacking(bot))
+	-- Check if actually fighting: armlet HP drain may pollute WasRecentlyDamagedByAnyHero,
+	-- so also verify there's a real enemy nearby doing damage or we're actively attacking
+	local bEnemyDamaged = false
+	for _, enemy in pairs(nInRangeEnmyList) do
+		if Fu.IsValidHero(enemy) and bot:WasRecentlyDamagedByHero(enemy, 3.0) then
+			bEnemyDamaged = true
+			break
+		end
+	end
+	local bInFight = bEnemyDamaged or (#nInRangeEnmyList > 0 and Fu.IsAttacking(bot))
 	local bAttackingHero = Fu.IsValidHero(botTarget) and Fu.IsInRange(bot, botTarget, bot:GetAttackRange() + 180)
+	local bAttackingAnything = Fu.IsAttacking(bot) and botTarget ~= nil
 
 	-- ACTIVATE: when fighting enemy heroes or buildings (not just creeps)
 	if not bActive then
@@ -1303,6 +1402,15 @@ X.ConsiderItemDesire["item_armlet"] = function( hItem )
 		then
 			nLastActiveArmletTime = DotaTime()
 			return BOT_ACTION_DESIRE_HIGH, botTarget, sCastType, 'Armlet on: hero fight'
+		end
+
+		-- Activate for Roshan/Tormentor
+		if (Fu.IsDoingRoshan(bot) or Fu.IsDoingTormentor(bot))
+			and Fu.IsAttacking(bot)
+			and nRealHP > 500
+		then
+			nLastActiveArmletTime = DotaTime()
+			return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Armlet on: Roshan/Tormentor'
 		end
 
 		-- Activate for building attack (pushing)
@@ -1327,28 +1435,19 @@ X.ConsiderItemDesire["item_armlet"] = function( hItem )
 		end
 	end
 
-	-- DEACTIVATE: when no longer in a fight or HP getting dangerously low
+	-- DEACTIVATE: when no longer fighting enemy heroes
 	if bActive then
-		-- Emergency deactivate: HP draining to dangerous level with no fight
-		if nRealHP < 350 and not bInFight then
+		-- No enemy heroes within 1000 range → turn off (farming creeps doesn't need armlet)
+		if #nInRangeEnmyList == 0
+		and not bEnemyDamaged
+		and not (Fu.IsDoingRoshan(bot) or Fu.IsDoingTormentor(bot))
+		then
+			return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Armlet off: no enemies'
+		end
+
+		-- Emergency: HP getting dangerously low without an active hero fight
+		if nRealHP < 400 and not bAttackingHero then
 			return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Armlet off: HP drain'
-		end
-
-		-- Deactivate when safe: no enemies, not attacking heroes, not recently in fight
-		if DotaTime() > nLastActiveArmletTime + 2.0
-			and #nInRangeEnmyList == 0
-			and not bInFight
-			and not bAttackingHero
-		then
-			return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Armlet off: safe'
-		end
-
-		-- Deactivate when not pushing (no building target) and no enemies
-		if DotaTime() > nLastActiveArmletTime + 3.0
-			and #nInRangeEnmyList == 0
-			and not Fu.IsValidBuilding(botTarget)
-		then
-			return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Armlet off: idle'
 		end
 	end
 
@@ -1783,6 +1882,10 @@ X.ConsiderItemDesire["item_bottle"] = function( hItem )
 		or bot:HasModifier( "modifier_bottle_regeneration" )
 	then return BOT_ACTION_DESIRE_NONE end
 
+	if Fu.HasDamageOverTimeDebuff(bot) then
+		return BOT_ACTION_DESIRE_NONE
+	end
+
 	local nCastRange = 400 + aetherRange
 	local sCastType = 'none'
 	local hEffectTarget = nil
@@ -2155,12 +2258,24 @@ X.ConsiderItemDesire["item_diffusal_blade"] = function( hItem )
 			and Fu.IsInRange( botTarget, bot, nCastRange )
 			and Fu.CanCastOnNonMagicImmune( botTarget )
 			and X.IsWithoutSpellShield( botTarget )
-			and not Fu.IsDisabled( botTarget ) 
+			and not Fu.IsDisabled( botTarget )
 		then
 			hEffectTarget = botTarget
 			sCastMotive = "进攻:"..Fu.Chat.GetNormName( hEffectTarget )
 			return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
 		end
+	end
+
+	-- Also use when attacking any hero in range (covers bear, laning, etc.)
+	if Fu.IsValidHero( botTarget )
+		and Fu.IsInRange( botTarget, bot, nCastRange )
+		and Fu.CanCastOnNonMagicImmune( botTarget )
+		and X.IsWithoutSpellShield( botTarget )
+		and not Fu.IsDisabled( botTarget )
+		and bot:GetAttackTarget() == botTarget
+	then
+		hEffectTarget = botTarget
+		return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, 'diffusal: in combat'
 	end
 
 	local npcEnemy = hNearbyEnemyHeroList[1]
@@ -2282,6 +2397,10 @@ end
 X.ConsiderItemDesire["item_flask"] = function( hItem )
 
 	if bot:DistanceFromFountain() < 3000 then return BOT_ACTION_DESIRE_NONE end
+
+	if Fu.HasDamageOverTimeDebuff(bot) then
+		return BOT_ACTION_DESIRE_NONE
+	end
 
 	local nCastRange = 900
 	local sCastType = 'unit'
@@ -2648,11 +2767,11 @@ X.ConsiderItemDesire["item_glimmer_cape"] = function( hItem )
 			return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
 		end
 
-		if ( Fu.IsRetreating( bot ) 
-				and bot:GetActiveModeDesire() >= BOT_MODE_DESIRE_VERYHIGH 
+		if ( Fu.IsRetreating( bot )
+				and bot:GetActiveModeDesire() >= BOT_MODE_DESIRE_HIGH
 				and not bot:HasModifier("modifier_fountain_aura") )
-			 or ( botTarget == nil 
-					and #hNearbyEnemyHeroList > 0 
+			 or ( botTarget == nil
+					and #hNearbyEnemyHeroList > 0
 					and Fu.GetHP( bot ) < 0.36 + ( 0.09 * #hNearbyEnemyHeroList ) )
 		then
 			hEffectTarget = bot
@@ -3854,18 +3973,32 @@ end
 --相位
 X.ConsiderItemDesire["item_phase_boots"] = function( hItem )
 
-	local nCastRange = 800
 	local sCastType = 'none'
-	local hEffectTarget = nil
-	local sCastMotive = nil
-	local nInRangeEnmyList = Fu.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
+	local nInRangeEnmyList = Fu.GetNearbyHeroes(bot, 800, true, BOT_MODE_NONE )
 
-
-	if Fu.IsRunning( bot )
+	-- Activate whenever moving — phase boots should be used on cooldown while walking
+	local actionType = bot:GetCurrentActionType()
+	if actionType == BOT_ACTION_TYPE_MOVE_TO
+	or actionType == BOT_ACTION_TYPE_MOVE_TO_DIRECTLY
+	or actionType == BOT_ACTION_TYPE_ATTACK_MOVE
+	or Fu.IsRunning(bot)
 	then
-		hEffectTarget = bot
-		sCastMotive = '跑起来'
-		return BOT_ACTION_DESIRE_HIGH, hEffectTarget, sCastType, sCastMotive
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'phase: moving'
+	end
+
+	-- Activate when chasing someone
+	if Fu.IsGoingOnSomeone(bot) then
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'phase: chasing'
+	end
+
+	-- Activate when retreating from enemies
+	if Fu.IsRetreating(bot) then
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'phase: retreat'
+	end
+
+	-- Activate when near an enemy hero (fight/trade)
+	if #nInRangeEnmyList > 0 then
+		return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'phase: near enemy'
 	end
 
 	return BOT_ACTION_DESIRE_NONE
@@ -4636,6 +4769,8 @@ end
 
 --吃树
 X.ConsiderItemDesire["item_tango"] = function( hItem )
+	if bot:DistanceFromFountain() < 3300 or bot:HasModifier( "modifier_tango_heal" ) then return BOT_ACTION_DESIRE_NONE end
+	if bot._lastTangoUseTime and DotaTime() - bot._lastTangoUseTime < 16 then return BOT_ACTION_DESIRE_NONE end
 
 	local nCastRange = 300 + aetherRange
 	local sCastType = 'unit'
@@ -4686,6 +4821,7 @@ end
 X.ConsiderItemDesire["item_tango_single"] = function( hItem )
 
 	if bot:DistanceFromFountain() < 3300 or bot:HasModifier( "modifier_tango_heal" ) then return 0 end
+	if bot._lastTangoUseTime and DotaTime() - bot._lastTangoUseTime < 16 then return 0 end
 
 	local nCastRange = 300 + aetherRange
 	local sCastType = 'tree'
@@ -4719,10 +4855,10 @@ X.ConsiderItemDesire["item_tango_single"] = function( hItem )
 		local nearestTower = nearTowerList[1]
 		-- Use HP ratio for early game (200 missing HP = nearly dead at lv1)
 		local nHPrate = Fu.GetHP(bot)
-		local bSafeToEat = #nearEnemyList == 0 or (nearestEnemy ~= nil and not Fu.IsInRange( bot, nearestEnemy, 600 ))
+		local bSafeToEat = #nearEnemyList == 0 or (nearestEnemy ~= nil and not Fu.IsInRange( bot, nearestEnemy, 400 ))
 
-		-- Proactive heal: hurt but safe, eat a tree
-		if targetTree ~= nil and nHPrate < 0.75 and bSafeToEat then
+		-- Proactive heal: eat a tree when missing 350+ HP
+		if targetTree ~= nil and nLostHealth >= 350 and bSafeToEat then
 			local targetTreeLoc = GetTreeLocation( targetTree )
 			if IsLocationVisible( targetTreeLoc )
 				and IsLocationPassable( targetTreeLoc )
@@ -5075,7 +5211,8 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 		or ( bot:HasModifier( "modifier_jakiro_macropyre_burn" ) and Fu.GetModifierTime( bot, "modifier_jakiro_macropyre_burn" ) >= 1.4 )
 		or ( bot:HasModifier( "modifier_arc_warden_tempest_double" ) and bot:GetRemainingLifespan() < 3.3 )
 		or (Fu.IsDoingRoshan(bot) and GetUnitToLocationDistance(bot, Fu.GetCurrentRoshanLocation()) <= 2800)
-		or bot._roshDipActive
+		or (bot._roshDipActive and bot:IsAlive() and GetUnitToLocationDistance(bot, Fu.GetCurrentRoshanLocation()) <= 3000)
+		or (Fu.IsDoingTormentor(bot) and GetUnitToLocationDistance(bot, Fu.GetTormentorLocation(GetTeam())) <= 2800)
 	then return BOT_ACTION_DESIRE_NONE end
 
 	if bot:GetHealth() < 240
@@ -5110,6 +5247,61 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 	local itemFlask = Fu.IsItemAvailable( "item_flask" )
 
 	if bot:GetLevel() > 12 and bot:DistanceFromFountain() < 600 then nMinTPDistance = nMinTPDistance + 600 end
+
+	-- Universal fountain TP: after respawn or healing, TP to assigned lane/push lane.
+	-- This catches cases where no specific mode triggers TP (low desire, idle, etc.)
+	-- Safety: check enemies at TP destination to avoid TPing into a death trap.
+	if bot:DistanceFromFountain() < 1500
+	and botHP > 0.75
+	and nEnemyCount == 0
+	and not bot:HasModifier("modifier_teleporting")
+	and DotaTime() > 15
+	then
+		-- Early game (<10min): always TP to role-based lane — don't cross-lane
+		-- bot:GetAssignedLane() is unreliable (Valve reassigns), so use position/role
+		-- After 10min: pick TP lane based on active mode
+		local tpLane = X.GetLaneByPosition(bot)
+
+		if not Fu.IsInLaningPhase() and DotaTime() > 10 * 60 then
+			if nMode == BOT_MODE_DEFEND_TOWER_TOP then tpLane = LANE_TOP
+			elseif nMode == BOT_MODE_DEFEND_TOWER_MID then tpLane = LANE_MID
+			elseif nMode == BOT_MODE_DEFEND_TOWER_BOT then tpLane = LANE_BOT
+			elseif nMode == BOT_MODE_PUSH_TOWER_TOP then tpLane = LANE_TOP
+			elseif nMode == BOT_MODE_PUSH_TOWER_MID then tpLane = LANE_MID
+			elseif nMode == BOT_MODE_PUSH_TOWER_BOT then tpLane = LANE_BOT
+			elseif bot.laneToDefend ~= nil then tpLane = bot.laneToDefend
+			else
+				-- No mode set — find lane with most enemy presence
+				local bestEnemies = 0
+				for _, checkLane in pairs({LANE_TOP, LANE_MID, LANE_BOT}) do
+					local laneFront = GetLaneFrontLocation(GetOpposingTeam(), checkLane, 0)
+					local enemiesAtLane = Fu.GetLastSeenEnemiesNearLoc(laneFront, 800)
+					if #enemiesAtLane > bestEnemies then
+						bestEnemies = #enemiesAtLane
+						tpLane = checkLane
+					end
+				end
+			end
+		end
+
+		local tpTarget = GetLaneFrontLocation(GetTeam(), tpLane, -500)
+		if tpTarget ~= nil and GetUnitToLocationDistance(bot, tpTarget) > 3500 then
+
+			local laneNames = {[LANE_TOP] = 'top', [LANE_MID] = 'mid', [LANE_BOT] = 'bot'}
+			-- log('[TP] ' .. botName .. ' fountain TP to ' .. (laneNames[tpLane] or '?') .. ' (pos: ' .. tostring(Fu.GetPosition(bot)) .. ', assigned: ' .. (laneNames[bot:GetAssignedLane()] or '?') .. ', mode: ' .. tostring(nMode) .. ', laning: ' .. tostring(Fu.IsInLaningPhase()) .. ')')
+
+			local enemiesAtDest = Fu.GetLastSeenEnemiesNearLoc(tpTarget, 1600)
+			local alliesAtDest = Fu.GetAlliesNearLoc(tpTarget, 1600)
+			if #enemiesAtDest <= 1 or #alliesAtDest >= #enemiesAtDest then
+				return BOT_ACTION_DESIRE_HIGH, tpTarget, sCastType, 'fountain TP out'
+			end
+			-- Destination dangerous — TP further back
+			local safeLoc = GetLaneFrontLocation(GetTeam(), tpLane, -1500)
+			if GetUnitToLocationDistance(bot, safeLoc) > 3500 then
+				return BOT_ACTION_DESIRE_HIGH, safeLoc, sCastType, 'fountain TP safe'
+			end
+		end
+	end
 
 	if nMode == BOT_MODE_LANING
 	then
@@ -5190,7 +5382,7 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 	end
 
 	--Tormentor
-	if bot:GetActiveMode() == BOT_MODE_SIDE_SHOP
+	if (bot:GetActiveMode() == BOT_MODE_SIDE_SHOP or bot:GetActiveMode() == BOT_MODE_WATCHER)
 	and nEnemyCount == 0
 	and (not Fu.IsInTeamFight(bot, 1200)
 		or not Fu.IsGoingOnSomeone(bot)
@@ -5220,7 +5412,7 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 
 	--守塔
 	if Fu.IsDefending( bot )
-		and nModeDesire > BOT_MODE_DESIRE_MODERATE
+		and nModeDesire > BOT_MODE_DESIRE_LOW
 		and nEnemyCount == 0
 	then
 		local nDefendLane, sLane = LANE_MID, 'tower_mid'
@@ -5260,7 +5452,7 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 
 	--推塔
 	if Fu.IsPushing( bot )
-		and nModeDesire >= BOT_MODE_DESIRE_MODERATE
+		and nModeDesire >= BOT_MODE_DESIRE_LOW
 		and nEnemyCount == 0
 	then
 		local nPushLane, sLane = LANE_MID, 'tower_mid'
@@ -5300,7 +5492,7 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 
 	--保人
 	if nMode == BOT_MODE_DEFEND_ALLY
-		and nModeDesire >= BOT_MODE_DESIRE_MODERATE
+		and nModeDesire >= BOT_MODE_DESIRE_LOW
 		and Fu.Role.CanBeSupport( botName )
 		and nEnemyCount == 0
 	then
@@ -5345,7 +5537,7 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 
 	--撤退
 	if nMode == BOT_MODE_RETREAT
-		and nModeDesire >= BOT_MODE_DESIRE_MODERATE
+		and nModeDesire >= BOT_MODE_DESIRE_LOW
 		and bot:GetLevel() >= 3
 		and not bot:HasModifier( "modifier_arc_warden_tempest_double" )
 	then
@@ -7630,6 +7822,12 @@ X.ConsiderItemDesire["item_ninja_gear"] = function(hItem)
         end
     end
 
+	if Fu.IsDoingTormentor(bot)
+	and GetUnitToLocationDistance(bot, Fu.GetTormentorLocation(GetTeam())) > 3200
+	then
+		return BOT_ACTION_DESIRE_HIGH, bot, 'none', nil
+	end
+
 	return BOT_ACTION_DESIRE_NONE
 end
 
@@ -8414,19 +8612,19 @@ local function UseGlyph()
 end
 
 function ItemUsageThink()
-	if RefreshBotHandle() then return end
-
-	-- Idle/stuck check — does NOT block item usage (removed 'return' on idle action)
-	HandleIdleBotState(bot)
-
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
 
-	if bot.lastItemFrameProcessTime == nil then bot.lastItemFrameProcessTime = DotaTime() end
-	if DotaTime() > 30 and (DotaTime() - bot.lastItemFrameProcessTime < (bot.frameProcessTime * (1 + Customize.ThinkLess))) then return end
-	bot.lastItemFrameProcessTime = DotaTime()
+	if not Fu.IsNoItemIllution(bot) then ItemUsageComplement() end
+
+	-- Run ability usage in same frame as items to prevent
+	-- item actions from clearing queued ability casts between frames
+	if BotBuild ~= nil and not Fu.IsNoAbilityIllution(bot) then
+		local ok, err = pcall(BotBuild.SkillsComplement)
+		if not ok then log('[ERROR] %s SkillsComplement: %s', botName, tostring(err)) end
+	end
 
 	-- Dispel check: use dispel items when under dangerous debuffs
-	if Dispel and not bot:IsChanneling() and not bot:IsUsingAbility() then
+	if Dispel and not bot:IsChanneling() then
 		-- Manta projectile dodge (highest priority — time-critical)
 		local mantaDodgeSlot = Dispel.ShouldMantaDodge(bot)
 		if mantaDodgeSlot >= 0 then
@@ -8458,16 +8656,58 @@ function ItemUsageThink()
 		end
 	end
 
-	if not Fu.IsNoItemIllution(bot) then ItemUsageComplement() end
+	-- Move famango from backpack to main inventory if empty slot available.
+	-- Backpack items have cooldown and can't be used — famango needs to be ready.
+	for backpackSlot = 6, 8 do
+		local bpItem = bot:GetItemInSlot(backpackSlot)
+		if bpItem ~= nil then
+			local name = bpItem:GetName()
+			if name == 'item_famango' or name == 'item_great_famango' or name == 'item_greater_famango' then
+				for mainSlot = 0, 5 do
+					if bot:GetItemInSlot(mainSlot) == nil then
+						bot:ActionImmediate_SwapItems(backpackSlot, mainSlot)
+						break
+					end
+				end
+				break
+			end
+		end
+	end
 end
 
 function AbilityUsageThink()
-	if RefreshBotHandle() then return end
-	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
-	if bot.lastAbilityFrameProcessTime == nil then bot.lastAbilityFrameProcessTime = DotaTime() end
-	if DotaTime() > 30 and (DotaTime() - bot.lastAbilityFrameProcessTime < (bot.frameProcessTime * (1 + Customize.ThinkLess))) and bot.isBear == nil then return end
-	bot.lastAbilityFrameProcessTime = DotaTime()
-	if BotBuild ~= nil and not Fu.IsNoAbilityIllution(bot) then BotBuild.SkillsComplement() end
+	-- Abilities now run inside ItemUsageThink (same frame, after items) to prevent
+	-- item actions from clearing queued ability casts.
+	HandleIdleBotState(bot)
+end
+
+-- End-game chat: only say once per game, randomly 2-3 out of 5 bots
+local ggSaid = false
+local ggEligible = nil
+local ggTriggerTime = 0
+local winSaid = false
+local winEligible = nil
+local winTriggerTime = 0
+local EndGameLocalization = nil
+local function GetEndGameMsg(key)
+	if EndGameLocalization == nil then
+		local ok, loc = pcall(require, GetScriptDirectory()..'/FuncLib/systems/localization')
+		EndGameLocalization = ok and loc or false
+	end
+	if EndGameLocalization and EndGameLocalization.Get then
+		local msgs = EndGameLocalization.Get(key)
+		if msgs and type(msgs) == 'table' and #msgs > 0 then
+			return msgs[RandomInt(1, #msgs)]
+		end
+		if msgs and type(msgs) == 'string' then return msgs end
+	end
+	-- fallback
+	if key == 'say_gg_lose' then
+		local fb = { 'gg', 'ggwp', 'GG' }
+		return fb[RandomInt(1, #fb)]
+	end
+	local fb = { 'ez', 'gg ez', 'EZ' }
+	return fb[RandomInt(1, #fb)]
 end
 
 function BuybackUsageThink()
@@ -8477,6 +8717,42 @@ function BuybackUsageThink()
 	bot.lastBuybackFrameProcessTime = DotaTime()
 	if not bot:IsIllusion() then BuybackUsageComplement() end
 	if not bot:IsIllusion() then UseGlyph() end
+
+	-- Say gg when about to lose
+	if not ggSaid and not bot:IsIllusion() and DotaTime() > 10 * 60 then
+		local ancient = GetAncient(GetTeam())
+		if ancient ~= nil and Fu.GetHP(ancient) < 0.2 and Fu.CanBeAttacked(ancient) then
+			local aliveCount = Fu.GetNumOfAliveHeroes(false)
+			if aliveCount <= 2 then
+				if ggEligible == nil then
+					ggEligible = RandomInt(1, 5) <= 3
+					ggTriggerTime = DotaTime() + RandomFloat(1, 5)
+				end
+				if ggEligible and DotaTime() >= ggTriggerTime then
+					bot:ActionImmediate_Chat(GetEndGameMsg('say_gg_lose'), true)
+					ggSaid = true
+				end
+			end
+		end
+	end
+
+	-- Say ez/gl when about to win
+	if not winSaid and not bot:IsIllusion() and DotaTime() > 10 * 60 then
+		local enemyAncient = GetAncient(GetOpposingTeam())
+		if enemyAncient ~= nil and Fu.GetHP(enemyAncient) < 0.2 and Fu.CanBeAttacked(enemyAncient) then
+			local aliveCount = Fu.GetNumOfAliveHeroes(false)
+			if aliveCount >= 3 then
+				if winEligible == nil then
+					winEligible = RandomInt(1, 5) <= 3
+					winTriggerTime = DotaTime() + RandomFloat(1, 5)
+				end
+				if winEligible and DotaTime() >= winTriggerTime then
+					bot:ActionImmediate_Chat(GetEndGameMsg('say_gg_win'), true)
+					winSaid = true
+				end
+			end
+		end
+	end
 end
 
 function CourierUsageThink()

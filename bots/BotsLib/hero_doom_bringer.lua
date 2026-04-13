@@ -120,15 +120,15 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local Devour        = bot:GetAbilityByName('doom_bringer_devour')
-local ScorchedEarth = bot:GetAbilityByName('doom_bringer_scorched_earth')
-local InfernalBlade = bot:GetAbilityByName('doom_bringer_infernal_blade')
-local Doom          = bot:GetAbilityByName('doom_bringer_doom')
+local Devour        = SafeAbility(bot:GetAbilityByName('doom_bringer_devour'), 'doom_bringer_devour', 'doom_bringer')
+local ScorchedEarth = SafeAbility(bot:GetAbilityByName('doom_bringer_scorched_earth'), 'doom_bringer_scorched_earth', 'doom_bringer')
+local InfernalBlade = SafeAbility(bot:GetAbilityByName('doom_bringer_infernal_blade'), 'doom_bringer_infernal_blade', 'doom_bringer')
+local Doom          = SafeAbility(bot:GetAbilityByName('doom_bringer_doom'), 'doom_bringer_doom', 'doom_bringer')
 
-local DevourAbility1 = bot:GetAbilityByName('doom_bringer_empty1')
-local DevourAbility2 = bot:GetAbilityByName('doom_bringer_empty2')
+local DevourAbility1 = SafeAbility(bot:GetAbilityByName('doom_bringer_empty1'), 'doom_bringer_empty1', 'doom_bringer')
+local DevourAbility2 = SafeAbility(bot:GetAbilityByName('doom_bringer_empty2'), 'doom_bringer_empty2', 'doom_bringer')
 
-local DevourAncientTalent = bot:GetAbilityByName('special_bonus_unique_doom_2')
+local DevourAncientTalent = SafeAbility(bot:GetAbilityByName('special_bonus_unique_doom_2'), 'special_bonus_unique_doom_2', 'doom_bringer')
 
 local DevourDesire, DevourTarget
 local ScorchedEarthDesire

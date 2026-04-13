@@ -150,16 +150,16 @@ function X.MinionThink(hMinionUnit)
 
 end
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityD = bot:GetAbilityByName( sAbilityList[4] )
-local abilityAS = bot:GetAbilityByName( sAbilityList[5] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'zuus')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'zuus')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'zuus')
+local abilityD = SafeAbility(bot:GetAbilityByName(sAbilityList[4]), 'sAbilityList[4]', 'zuus')
+local abilityAS = SafeAbility(bot:GetAbilityByName(sAbilityList[5]), 'sAbilityList[5]', 'zuus')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'zuus')
 
-local talent5 = bot:GetAbilityByName( sTalentList[5] )
-local talent7 = bot:GetAbilityByName( sTalentList[7] )
-local talent8 = bot:GetAbilityByName( sTalentList[8] )
+local talent5 = SafeAbility(bot:GetAbilityByName(sTalentList[5]), 'sTalentList[5]', 'zuus')
+local talent7 = SafeAbility(bot:GetAbilityByName(sTalentList[7]), 'sTalentList[7]', 'zuus')
+local talent8 = SafeAbility(bot:GetAbilityByName(sTalentList[8]), 'sTalentList[8]', 'zuus')
 
 local castQDesire, castQTarget
 local castWDesire, castWTarget
@@ -294,6 +294,7 @@ function X.ConsiderQ()
 	--对线期的使用
 	if bot:GetActiveMode() == BOT_MODE_LANING
 	then
+		-- Last-hit creeps with Arc Lightning
 		local hLaneCreepList = bot:GetNearbyLaneCreeps( nCastRange + 50, true )
 		for _, creep in pairs( hLaneCreepList )
 		do
@@ -302,10 +303,29 @@ function X.ConsiderQ()
 				and Fu.IsEnemyTargetUnit( creep, 1400 )
 				and Fu.WillKillTarget( creep, nDamage, DAMAGE_TYPE_MAGICAL, nCastPoint )
 			then
+				-- Prefer creep near enemy hero (bounces hit them too)
+				for _, npcEnemy in pairs( Fu.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE) or {} ) do
+					if Fu.IsValidHero( npcEnemy ) and GetUnitToUnitDistance( creep, npcEnemy ) < 500 then
+						return BOT_ACTION_DESIRE_HIGH, creep, 'Q补刀+弹射'
+					end
+				end
 				return BOT_ACTION_DESIRE_HIGH, creep
 			end
 		end
 
+		-- Harass: target enemy hero directly when mana is decent
+		if nMP > 0.4 then
+			local nInRangeEnemyList = Fu.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
+			for _, npcEnemy in pairs( nInRangeEnemyList or {} ) do
+				if Fu.IsValidHero( npcEnemy )
+				and Fu.CanCastOnNonMagicImmune( npcEnemy )
+				and Fu.GetHP( npcEnemy ) < 0.75
+				and not Fu.IsRetreating( bot )
+				then
+					return BOT_ACTION_DESIRE_HIGH, npcEnemy, 'Q对线消耗'
+				end
+			end
+		end
 	end
 
 

@@ -102,11 +102,11 @@ modifier_phantom_assassin_coupdegrace
 --]]
 
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityAS = bot:GetAbilityByName( sAbilityList[4] )
-local Immaterial = bot:GetAbilityByName('phantom_assassin_immaterial')
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'phantom_assassin')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'phantom_assassin')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'phantom_assassin')
+local abilityAS = SafeAbility(bot:GetAbilityByName(sAbilityList[4]), 'sAbilityList[4]', 'phantom_assassin')
+local Immaterial = SafeAbility(bot:GetAbilityByName('phantom_assassin_immaterial'), 'phantom_assassin_immaterial', 'phantom_assassin')
 
 
 local castQDesire, castQTarget
@@ -363,17 +363,17 @@ function X.ConsiderQ()
 
 	--发育时对野怪输出
 	if Fu.IsFarming( bot )
-		and ( nSkillLV >= 3 or nMP > 0.88 )
-		and Fu.IsAllowedToSpam( bot, nManaCost * 2 )
+		and ( nSkillLV >= 2 or nMP > 0.5 )
+		and Fu.IsAllowedToSpam( bot, nManaCost )
 	then
 		local nCreeps = bot:GetNearbyNeutralCreeps( nCastRange )
 
 		local targetCreep = Fu.GetMostHpUnit( nCreeps )
 
 		if Fu.IsValid( targetCreep )
-			and GetUnitToUnitDistance( targetCreep, bot ) >= 600
+			and GetUnitToUnitDistance( targetCreep, bot ) >= 300
 			and not Fu.IsRoshan( targetCreep )
-			and bot:IsFacingLocation( targetCreep:GetLocation(), 60 )
+			and not Fu.IsTormentor( targetCreep )
 			and ( not Fu.CanKillTarget( targetCreep, nDamage + nBonusDamage, nDamageType ) or #nCreeps == 1 )
 		then
 			return BOT_ACTION_DESIRE_HIGH, targetCreep
@@ -439,7 +439,7 @@ function X.ConsiderQ()
 
 	--打肉的时候输出
 	if bot:GetActiveMode() == BOT_MODE_ROSHAN
-		and bot:GetMana() >= 200
+		and bot:GetMana() >= nManaCost + 50
 	then
 		local npcTarget = bot:GetAttackTarget()
 		if Fu.IsRoshan( npcTarget )
@@ -450,12 +450,14 @@ function X.ConsiderQ()
 	end
 
 	if Fu.IsDoingTormentor(bot)
+		and bot:GetMana() >= nManaCost + 50
 	then
-		if Fu.IsTormentor(botTarget)
-        and Fu.IsInRange( botTarget, bot, nCastRange )
-        and Fu.IsAttacking(bot)
+		local npcTarget = bot:GetAttackTarget()
+		if Fu.IsValid( npcTarget )
+			and Fu.IsTormentor( npcTarget )
+			and Fu.IsInRange( npcTarget, bot, nCastRange )
 		then
-			return BOT_ACTION_DESIRE_HIGH
+			return BOT_ACTION_DESIRE_HIGH, npcTarget
 		end
 	end
 
@@ -609,9 +611,8 @@ function X.ConsiderW()
 
 	--发育时对野怪输出
 	if Fu.IsFarming( bot )
-		--and not bot:HasModifier( "modifier_filler_heal" )
 		and ( bot:GetAttackTarget() == nil or not bot:GetAttackTarget():IsBuilding() )
-		and nLV >= 6
+		and nLV >= 4
 	then
 		local nCreeps = bot:GetNearbyNeutralCreeps( nCastRange )
 
@@ -678,11 +679,12 @@ function X.ConsiderW()
 
 	if Fu.IsDoingTormentor(bot)
 	then
-		if Fu.IsTormentor(botTarget)
-        and Fu.IsInRange( botTarget, bot, nCastRange )
-        and Fu.IsAttacking(bot)
+		local npcTarget = bot:GetAttackTarget()
+		if Fu.IsValid( npcTarget )
+			and Fu.IsTormentor( npcTarget )
+			and Fu.IsInRange( npcTarget, bot, nCastRange )
 		then
-			return BOT_ACTION_DESIRE_HIGH
+			return BOT_ACTION_DESIRE_HIGH, npcTarget
 		end
 	end
 

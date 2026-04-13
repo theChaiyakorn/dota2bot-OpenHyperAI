@@ -1,7 +1,6 @@
 local X = {}
 
 local Fu = require(GetScriptDirectory()..'/FuncLib/func_utils')
-local Customize = require(GetScriptDirectory()..'/Customize/general')
 
 local bot = GetBot()
 
@@ -17,17 +16,18 @@ local fShouldRunTime  = 0
 
 local hTeamAncient, hEnemyAncient
 
--- === NEW: lightweight world context built once per GetDesireHelper() ===
+--------------------------------------------------------------------
+-- Context: single-pass unit scan, built once per GetDesireHelper()
+--------------------------------------------------------------------
 local C = {
     allyHeroes = {},
     enemyHeroes = {},
-    enemyNearbyExtra = 0, -- warlock golem / tombstone / phoenix sun / tower danger within 1200
-    allyNearbyExtra  = 0, -- allied phoenix sun within 1200
-    haveEnemyTowerThreat = false,
-    enemyTowers1200 = nil,
-    allyTowers1200  = nil,
+    enemyNearbyExtra = 0,
+    allyNearbyExtra  = 0,
+    allyTowers1200   = nil,
+    enemyTowers1200  = nil,
     enemyLaneCreeps1200 = nil,
-    aegisNearby1200 = false, -- reused by roshan logic branches
+    aegisNearby1200  = false,
 }
 
 local function scanDroppedForAegis(radius)
@@ -42,21 +42,13 @@ local function scanDroppedForAegis(radius)
 end
 
 local function buildContext()
-	-- local cacheKey = 'buildContext'..tostring(bot:GetPlayerID())
-	-- local cachedVar = Fu.Utils.GetCachedVars(cacheKey, 0.35 * (1 + Customize.ThinkLess))
-	-- if cachedVar ~= nil then return cachedVar end
-
-    -- reset
     C.allyHeroes, C.enemyHeroes = {}, {}
     C.enemyNearbyExtra, C.allyNearbyExtra = 0, 0
-    C.haveEnemyTowerThreat = false
 
-    -- cache these (used multiple times downstream)
-    C.allyTowers1200       = bot:GetNearbyTowers(1200, false)
-    C.enemyTowers1200      = bot:GetNearbyTowers(1200, true)
-    C.enemyLaneCreeps1200  = bot:GetNearbyLaneCreeps(1200, true)
+    C.allyTowers1200      = bot:GetNearbyTowers(1200, false)
+    C.enemyTowers1200     = bot:GetNearbyTowers(1200, true)
+    C.enemyLaneCreeps1200 = bot:GetNearbyLaneCreeps(1200, true)
 
-    -- single pass over ALL units; do 2 distance checks so we can fill both 1600-hero lists and 1200-specials
     local unitList = GetUnitList(UNIT_LIST_ALL)
     for _, u in pairs(unitList) do
         if Fu.IsValid(u)
@@ -69,7 +61,6 @@ local function buildContext()
            and not u:HasModifier('modifier_item_helm_of_the_undying_active')
            and not u:HasModifier('modifier_teleporting')
         then
-            -- fill hero lists within 1600 (original semantics)
             if Fu.IsValidHero(u)
                and GetUnitToUnitDistance(bot, u) <= 1600
                and ((Fu.IsSuspiciousIllusion(u) and u:HasModifier('modifier_arc_warden_tempest_double')) or not Fu.IsSuspiciousIllusion(u))
@@ -82,7 +73,7 @@ local function buildContext()
                 end
             end
 
-            -- special nearby adjustments within 1200
+            -- Special units within 1200 (golem/tombstone/sun/tower damage)
             if Fu.IsInRange(bot, u, 1200) then
                 local name = u:GetUnitName()
                 if bot:GetTeam() ~= u:GetTeam() then
@@ -92,11 +83,11 @@ local function buildContext()
                     then
                         C.enemyNearbyExtra = C.enemyNearbyExtra + 1
                     end
+                    -- Tower damage as extra enemy count
                     if string.find(name, 'tower') then
                         local towerDamage = bot:GetActualIncomingDamage(u:GetAttackDamage() * u:GetAttackSpeed() * 5.0, DAMAGE_TYPE_PHYSICAL) - botHealthRegen * 5.0
                         if towerDamage / botHealth >= 0.5 then
                             C.enemyNearbyExtra = C.enemyNearbyExtra + 1
-                            C.haveEnemyTowerThreat = true
                         end
                     end
                 else
@@ -108,23 +99,16 @@ local function buildContext()
         end
     end
 
-    -- cache aegis proximity (used twice originally)
     C.aegisNearby1200 = scanDroppedForAegis(1200)
-
-	-- Fu.Utils.SetCachedVars(cacheKey, C)
-	return C
+    return C
 end
 
--- === existing functions, now reusing context ===
-
+--------------------------------------------------------------------
+-- GetDesire
+--------------------------------------------------------------------
 function GetDesire()
-	if ShouldSkipBotThink(GetBot()) then return 0 end
-    -- local cacheKey = 'GetRetreatDesire'..tostring(bot:GetPlayerID())
-    -- local cachedVar = Fu.Utils.GetCachedVars(cacheKey, 0.35 * (1 + Customize.ThinkLess))
-    -- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
-    local res = GetDesireHelper()
-    -- Fu.Utils.SetCachedVars(cacheKey, res)
-    return GetAdjustedDesireValue(res)
+    if ShouldSkipBotThink(GetBot()) then return 0 end
+    return GetDesireHelper()
 end
 
 function GetDesireHelper()
@@ -145,7 +129,7 @@ function GetDesireHelper()
         return BOT_MODE_DESIRE_NONE
     end
 
-    -- cache bot state
+    -- Cache bot state
     botHP          = Fu.GetHP(bot)
     botMP          = Fu.GetMP(bot)
     botName        = bot:GetUnitName()
@@ -158,7 +142,7 @@ function GetDesireHelper()
     hTeamAncient   = GetAncient(GetTeam())
     hEnemyAncient  = GetAncient(GetOpposingTeam())
 
-    -- build world once
+    -- Build world context once
     buildContext()
     nAllyHeroes  = C.allyHeroes
     nEnemyHeroes = C.enemyHeroes
@@ -170,15 +154,84 @@ function GetDesireHelper()
     local bWeAreStronger = Fu.WeAreStronger(bot, 1600)
     local bTeamFight     = Fu.IsInTeamFight(bot, 1200)
 
-    if bTeamFight and botName == "npc_dota_hero_skeleton_king"
-        and bot:GetLevel() >= 6
+    -------------------------
+    -- Early exits (not part of desire formula)
+    -------------------------
+
+    -- Roshan mode stuck fix
+    if botActiveMode == BOT_MODE_ROSHAN
+        and not Fu.IsRoshanAlive()
+        and GetUnitToLocationDistance(bot, Fu.GetCurrentRoshanLocation())
+        and IsLocationVisible(Fu.GetCurrentRoshanLocation())
     then
+        if not C.aegisNearby1200 then
+            return BOT_MODE_DESIRE_MODERATE
+        end
+    end
+
+    -- Doing Roshan/Tormentor: don't retreat unless very low HP
+    if (Fu.IsDoingRoshan(bot) or Fu.IsDoingTormentor(bot)) and botHP > 0.2 then
+        return BOT_MODE_DESIRE_NONE
+    end
+
+    -- Ancient under threat: reduce retreat desire so bots stay and defend.
+    -- If 2+ allies alive nearby, only retreat at very low HP. Outnumbered or not,
+    -- running away means losing the ancient — better to fight together.
+    local nEnemiesAtAncient = Fu.GetEnemiesAroundAncient(bot, 3200)
+    if nEnemiesAtAncient > 0 then
+        local ancientLoc = GetAncient(bot:GetTeam()):GetLocation()
+        local distToAncient = GetUnitToLocationDistance(bot, ancientLoc)
+        if distToAncient < 4000 then
+            local aliveAllyCount = Fu.GetNumOfAliveHeroes(false)
+            -- With 2+ allies alive, only retreat if HP is critically low
+            if aliveAllyCount >= 2 and botHP > 0.15 then
+                return BOT_MODE_DESIRE_NONE
+            end
+            -- Solo defender: still reduce retreat so defend mode can compete
+            if aliveAllyCount >= 1 and botHP > 0.25 then
+                return BOT_MODE_DESIRE_LOW
+            end
+        end
+    end
+
+    -- Team pushing high ground: don't retreat at healthy HP with allies
+    if Fu.Utils.IsTeamPushingSecondTierOrHighGround(bot) and botHP > 0.5 then
+        local pushAllies = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE) or {}
+        if #pushAllies >= 2 then
+            return BOT_MODE_DESIRE_NONE
+        end
+    end
+
+    -- Bear is expendable after early game
+    if (bot.isBear or botName == 'npc_dota_hero_lone_druid_bear')
+    and not Fu.IsEarlyGame() then
+        if botHP >= 0.3 then
+            local allies = bot:GetNearbyHeroes(1200, false, BOT_MODE_NONE) or {}
+            if #allies >= 2 then
+                return BOT_MODE_DESIRE_NONE
+            end
+        end
+    end
+
+    -- Safe with allies: HP > 30%, 3+ allies, no enemies, no recent damage
+    if botHP > 0.3
+    and #nAllyHeroes >= 3
+    and #nEnemyHeroes == 0
+    and not bot:WasRecentlyDamagedByAnyHero(1.0)
+    and not bot:WasRecentlyDamagedByTower(1.0)
+    then
+        return BOT_MODE_DESIRE_NONE
+    end
+
+    -- WK reincarnation ready in teamfight
+    if bTeamFight and botName == "npc_dota_hero_skeleton_king" and botLevel >= 6 then
         local abilityR = bot:GetAbilityByName("skeleton_king_reincarnation")
         if abilityR:GetCooldownTimeRemaining() <= 1.0 and bot:GetMana() >= 160 then
             return BOT_MODE_DESIRE_NONE
         end
     end
 
+    -- Pre-horn: retreat from human enemies
     if DotaTime() < 0 and botHP < 1 then
         for _, enemy in pairs(nEnemyHeroes) do
             if Fu.IsValidHero(enemy) and not enemy:IsBot() then
@@ -187,20 +240,11 @@ function GetDesireHelper()
         end
     end
 
-    if botHP < 0.3 and #nEnemyHeroes >= 2 and bot:WasRecentlyDamagedByAnyHero(1) then
-        return RemapValClamped(botHP, 0.5, 0, BOT_MODE_DESIRE_HIGH, BOT_MODE_DESIRE_ABSOLUTE)
-    end
-    if X.LowChanceToRun() then
-        return BOT_MODE_DESIRE_MODERATE
-    end
-
-    -- Not part of actual retreat
+    -- Lone Druid aegis retrieval (not actual retreat)
     if (botName == 'npc_dota_hero_lone_druid' and DotaTime() > 25 and DotaTime() < fRetreatFromRoshanTime + 6.5) then
         return 3.33
     end
-
     local vRoshanLocation = Fu.GetCurrentRoshanLocation()
-
     if botName == 'npc_dota_hero_lone_druid'
         and botActiveMode == BOT_MODE_ITEM
         and GetUnitToLocationDistance(bot, vRoshanLocation)
@@ -212,32 +256,25 @@ function GetDesireHelper()
         end
     end
 
-    -- when roshan dies, every desire sometimes drops to 0 somehow and it lingers in Roshan mode (which is also 0)
-    if botActiveMode == BOT_MODE_ROSHAN
-        and not Fu.IsRoshanAlive()
-        and GetUnitToLocationDistance(bot, vRoshanLocation)
-        and IsLocationVisible(vRoshanLocation)
-    then
-        if not C.aegisNearby1200 then
-            return BOT_MODE_DESIRE_MODERATE
-        end
-    end
-
+    -------------------------
+    -- Modifier-based retreat
+    -------------------------
     if bot:HasModifier('modifier_fountain_fury_swipes_damage_increase')
         or (not bTeamFight and Fu.IsTargetedByEnemyWithModifier(nEnemyHeroes, 'modifier_skeleton_king_reincarnation_scepter_active'))
         or (not bTeamFight and Fu.IsTargetedByEnemyWithModifier(nEnemyHeroes, 'modifier_item_helm_of_the_undying_active'))
     then
-        return RemapValClamped(botHP, 0.9, 0.5, BOT_MODE_DESIRE_VERYLOW, BOT_MODE_DESIRE_ABSOLUTE)
+        return BOT_MODE_DESIRE_ABSOLUTE
     end
 
     if (bot:HasModifier('modifier_doom_bringer_doom_aura_enemy') and (#nEnemyHeroes > 0 or #nEnemyHeroes > #nAllyHeroes + 1))
-        or (bot:HasModifier('modifier_razor_static_link_debuff') and Fu.IsUnitNearby(bot ,nEnemyHeroes, 700, 'npc_dota_hero_razor', true) and #nEnemyHeroes >= #nAllyHeroes)
+        or (bot:HasModifier('modifier_razor_static_link_debuff') and Fu.IsUnitNearby(bot, nEnemyHeroes, 700, 'npc_dota_hero_razor', true) and #nEnemyHeroes >= #nAllyHeroes)
         or (bot:HasModifier('modifier_ursa_fury_swipes_damage_increase') and not bTeamFight and Fu.IsUnitNearby(bot, nEnemyHeroes, 700, 'npc_dota_hero_ursa', true))
         or (bot:HasModifier('modifier_ice_blast') and not bTeamFight and #nEnemyHeroes > #nAllyHeroes)
     then
-        return RemapValClamped(botHP, 0.9, 0.6, BOT_MODE_DESIRE_HIGH, BOT_MODE_DESIRE_ABSOLUTE)
+        return BOT_MODE_DESIRE_ABSOLUTE
     end
 
+    -- Huskar: ignore low HP if berserker's blood is active
     if botName == 'npc_dota_hero_huskar' and not bot:HasModifier('modifier_item_spirit_vessel_damage') then
         local hAbility = bot:GetAbilityByName('huskar_berserkers_blood')
         if hAbility and hAbility:IsTrained() and hAbility:GetLevel() >= 3 then
@@ -246,43 +283,45 @@ function GetDesireHelper()
         end
     end
 
-    if ((botMP < 0.4) and bot:DistanceFromFountain() <= 4000 and not bTeamFight) then
-        return RemapValClamped(botHP, 0.9, 0.2, BOT_MODE_DESIRE_HIGH, BOT_MODE_DESIRE_VERYHIGH)
+    -- Near fountain with recent damage: gradual retreat
+    if bot:DistanceFromFountain() <= 4000 and not bTeamFight then
+        if (botHP <= 0.6 or botMP < 0.4) then
+            return BOT_MODE_DESIRE_VERYHIGH
+        end
     end
 
+    -- Fountain aura: stay until healed (but leave earlier if ancient is under threat)
     if bot:HasModifier('modifier_fountain_aura_buff') then
-        if botHP <= 0.9 or (botMP <= 0.8 and botName ~= 'npc_dota_hero_huskar') then
-            return RemapValClamped(botHP, 0.9, 0.5, BOT_MODE_DESIRE_HIGH, BOT_MODE_DESIRE_ABSOLUTE)
-        end
-
-        if (#nEnemyHeroes > #nAllyHeroes) and not bWeAreStronger and not Fu.CanBeAttacked(hTeamAncient)
-        then
-            return RemapValClamped(botHP, 0.9, 0.5, BOT_MODE_DESIRE_HIGH, BOT_MODE_DESIRE_HIGH)
-        end
-    end
-
-    if Fu.IsInLaningPhase() or botHP < 0.35 then
-        local creepDamage = 0
-        local nEnemyCreeps = bot:GetNearbyCreeps(1200, true)
-        for _, creep in pairs(nEnemyCreeps) do
-            if Fu.IsValid(creep)
-                and not Fu.IsRoshan(creep)
-                and not Fu.IsTormentor(creep)
-                and creep:GetAttackTarget() == bot
-            then
-                creepDamage = creepDamage + bot:GetActualIncomingDamage(creep:GetAttackDamage() * creep:GetAttackSpeed() * 3.0, DAMAGE_TYPE_PHYSICAL)
+        local bAncientThreat = nEnemiesAtAncient and nEnemiesAtAncient > 0
+        if bAncientThreat then
+            -- Ancient under threat: leave fountain at 50% HP to defend, don't wait for 90%
+            if botHP <= 0.5 then
+                return BOT_MODE_DESIRE_ABSOLUTE
             end
+            -- Above 50% HP, let defend mode take over
+        elseif botHP <= 0.9 or (botMP <= 0.8 and botName ~= 'npc_dota_hero_huskar') then
+            return BOT_MODE_DESIRE_ABSOLUTE
         end
 
-        if creepDamage / (botHealth + botHealthRegen * 3.0) > 0.15 then
-            return RemapValClamped(botHP, 0.9, 0.5, BOT_MODE_DESIRE_HIGH, BOT_MODE_DESIRE_VERYHIGH)
+        if (#nEnemyHeroes > #nAllyHeroes) and not bWeAreStronger and not Fu.CanBeAttacked(hTeamAncient) then
+            return BOT_MODE_DESIRE_HIGH
         end
     end
 
-    -- should directly run
-    if bot:IsAlive() then
+    -- Creep damage during laning
+    if Fu.IsInLaningPhase() or (Fu.IsEarlyGame() and botHP < 0.35) then
+        local nEnemyCreeps = bot:GetNearbyCreeps(600, true)
+        if Fu.IsGoingOnSomeone(bot) and #nEnemyCreeps >= 4 and bot:WasRecentlyDamagedByCreep(3.0) then
+            return BOT_MODE_DESIRE_VERYHIGH
+        end
+    end
+
+    -------------------------
+    -- ShouldRun (hard override, rare triggers only)
+    -------------------------
+    if bot:IsAlive() and not bot:HasModifier('modifier_fountain_aura_buff') then
         if fCurrentRunTime ~= 0 and DotaTime() < fCurrentRunTime + fShouldRunTime then
-            return BOT_MODE_DESIRE_ABSOLUTE * 1.1
+            return BOT_DESIRE_OVERRIDE * 1.1
         else
             fCurrentRunTime = 0
         end
@@ -292,20 +331,25 @@ function GetDesireHelper()
             if fCurrentRunTime == 0 then
                 fCurrentRunTime = DotaTime()
             end
-            return BOT_MODE_DESIRE_ABSOLUTE * 1.1
+            return BOT_DESIRE_OVERRIDE * 1.1
         end
     end
 
-    -- try complete items
+    -------------------------
+    -- Try complete items near fountain
+    -------------------------
     local nCompletItemDesire = X.ConsiderCompleteItem()
     if nCompletItemDesire > 0 then
         return nCompletItemDesire
     end
 
-    -- ==== nearby counts (reusing context + last-seen augmentation) ====
+    -------------------------
+    -- HP-based desire formula
+    -------------------------
     local nEnemyNearbyCount = #nEnemyHeroes
     local nAllyNearbyCount  = #nAllyHeroes
 
+    -- Fog awareness: count recently-seen enemies
     local unseenCount = 0
     for _, id in pairs(GetTeamPlayers(GetOpposingTeam())) do
         if IsHeroAlive(id) then
@@ -318,12 +362,13 @@ function GetDesireHelper()
             end
         end
     end
-    if unseenCount > #nEnemyHeroes then nEnemyNearbyCount = unseenCount end
+    nEnemyNearbyCount = Max(nEnemyNearbyCount, unseenCount)
 
-    -- apply single-pass extras (golem/tombstone/sun/tower danger; ally sun)
+    -- Apply special unit extras (golem/tombstone/sun/tower)
     nEnemyNearbyCount = nEnemyNearbyCount + C.enemyNearbyExtra
     nAllyNearbyCount  = nAllyNearbyCount  + C.allyNearbyExtra
 
+    -- Laning near ally tower bonus
     if Fu.IsInLaningPhase()
         and Fu.IsValidBuilding(nAllyTowers[1])
         and bot:HasModifier('modifier_tower_aura_bonus')
@@ -332,14 +377,31 @@ function GetDesireHelper()
         nAllyNearbyCount = nAllyNearbyCount + 1
     end
 
-    -- regen over 5s lookahead (unchanged)
-    botHP = botHP + (botHealthRegen * 5.0 / bot:GetMaxHealth())
-    botMP = botMP + (botManaRegen * 5.0 / bot:GetMaxMana())
+    -- Ally WK reincarnation / Aegis count as extra ally
+    for _, ally in pairs(nAllyHeroes) do
+        if Fu.IsValidHero(ally) and not ally:IsIllusion()
+            and (GetUnitToUnitDistance(bot, ally) / ally:GetCurrentMovementSpeed()) <= 6.0
+        then
+            if Fu.IsHaveAegis(ally) then
+                nAllyNearbyCount = nAllyNearbyCount + 1
+            end
+            if ally:GetUnitName() == 'npc_dota_hero_skeleton_king' then
+                local hAbility = ally:GetAbilityByName('skeleton_king_reincarnation')
+                if hAbility and hAbility:IsTrained() and hAbility:GetCooldownTimeRemaining() == 0 and ally:GetMana() > hAbility:GetManaCost() * 1.5 then
+                    nAllyNearbyCount = nAllyNearbyCount + 1
+                end
+            end
+        end
+    end
+
+    -- Regen projection: 5s lookahead
+    botHP = Clamp(botHP + (botHealthRegen * 5.0 / bot:GetMaxHealth()), 0, 1)
+    botMP = Clamp(botMP + (botManaRegen * 5.0 / bot:GetMaxMana()), 0, 1)
 
     local nHealth = 0
     if botName == 'npc_dota_hero_medusa' then
-        local unitHealth    = botHealth - bot:GetMana()
-        local unitMaxHealth = bot:GetMaxHealth() - bot:GetMaxMana()
+        local unitHealth    = botHealth - (bot:GetMana() * 0.98 * (2 + 0.1 * botLevel))
+        local unitMaxHealth = bot:GetMaxHealth() - (bot:GetMaxMana() * 0.98 * (2 + 0.1 * botLevel))
         nHealth = (unitHealth / unitMaxHealth) * 0.2 + botMP * 0.8
     elseif botName == 'npc_dota_hero_huskar' then
         nHealth = botHP
@@ -347,26 +409,25 @@ function GetDesireHelper()
         nHealth = botHP * 0.8 + botMP * 0.2
     end
 
-    local nDesire = 1 - ((nHealth + 1 - (1 - nHealth) ^ 4) / 2)
+    local one = GetAdjustedDesireValue(1)
+    nHealth = RemapValClamped(nHealth, 0, 1, 0, one)
+    local nDesire = one - ((nHealth + one - one * ((1 - (nHealth ^ 2) / one) ^ 4)) / 2)
 
     if nEnemyNearbyCount > 0 then
         if nEnemyNearbyCount - nAllyNearbyCount > 0 then
-            nDesire = nDesire + (nEnemyNearbyCount - nAllyNearbyCount) * (0.75 / 4)
-            if Fu.IsInLaningPhase() then
-                nDesire = nDesire + (#Fu.GetHeroesTargetingUnit(nEnemyHeroes, bot)) * (0.75 / 4)
-            end
+            nDesire = nDesire + (nEnemyNearbyCount - nAllyNearbyCount) * (GetAdjustedDesireValue(BOT_MODE_DESIRE_HIGH) / 4)
         end
 
-        if not bWeAreStronger and nEnemyNearbyCount >= nAllyNearbyCount then nDesire = nDesire + 0.25 end
+        if not bWeAreStronger and nEnemyNearbyCount >= nAllyNearbyCount then nDesire = nDesire + GetAdjustedDesireValue(0.25) end
         if nAllyNearbyCount >= nEnemyNearbyCount or bWeAreStronger then
             if bot:HasModifier('modifier_oracle_false_promise_timer') and Fu.GetModifierTime(bot, 'modifier_oracle_false_promise_timer') > 2.0 and Fu.IsUnitNearby(bot, nAllyHeroes, 1200, 'npc_dota_hero_oracle', true) then
-                nDesire = nDesire - 0.25
+                nDesire = nDesire - GetAdjustedDesireValue(0.25)
             end
             if bot:HasModifier('modifier_dazzle_shallow_grave') and Fu.GetModifierTime(bot, 'modifier_dazzle_shallow_grave') >= 2.0 and Fu.IsUnitNearby(bot, nAllyHeroes, 1200, 'npc_dota_hero_dazzle', true) then
-                nDesire = nDesire - 0.2
+                nDesire = nDesire - GetAdjustedDesireValue(0.2)
             end
             if bot:HasModifier('modifier_item_satanic_unholy') then
-                nDesire = nDesire - 0.3
+                nDesire = nDesire - GetAdjustedDesireValue(0.3)
             end
 
             local hAbility = bot:GetAbilityByName('slark_shadow_dance')
@@ -374,63 +435,186 @@ function GetDesireHelper()
                 or (hAbility ~= nil and hAbility:IsTrained() and hAbility:GetCooldownTimeRemaining() <= 3 and bot:GetMana() >= 150)
                 or (bot:HasModifier('modifier_slark_shadow_dance') and Fu.GetModifierTime(bot, 'modifier_slark_shadow_dance') > 1.5)
             then
-                nDesire = nDesire - 0.3
+                nDesire = nDesire - GetAdjustedDesireValue(0.3)
             end
         end
     end
 
     if bot:DistanceFromFountain() > 4000 then
-        if (nEnemyNearbyCount == 0 and unseenCount == 0) and #nEnemyTowers == 0 then nDesire = nDesire - 0.25 end
+        if (nEnemyNearbyCount == 0 and unseenCount == 0) and #nEnemyTowers == 0 then
+            nDesire = nDesire - GetAdjustedDesireValue(0.25)
+        end
     end
 
     if Fu.IsInLaningPhase() then
         if not bot:WasRecentlyDamagedByAnyHero(3.0)
-            and botHP > 0.25
+            and not bot:WasRecentlyDamagedByCreep(2.0)
+            and not bot:WasRecentlyDamagedByTower(2.0)
             and bot:DistanceFromFountain() > 4000
             and (#Fu.GetHeroesTargetingUnit(nEnemyHeroes, bot) == 0)
         then
-            nDesire = nDesire - 0.75
-        end
-    end
-
-    -- Safe-to-heal check: if bot has healing items, no enemies nearby,
-    -- not recently damaged — don't retreat, stay and heal in place.
-    if nEnemyNearbyCount == 0
-        and not bot:WasRecentlyDamagedByAnyHero(5.0)
-        and not bot:WasRecentlyDamagedByTower(3.0)
-        and botHP > 0.15
-        and bot:DistanceFromFountain() > 3000
-        and (Fu.HasHealingItem(bot) or bot:GetHealthRegen() > 20)
-    then
-        nDesire = nDesire - 0.5
-    end
-
-    -- nDesire = nDesire + X.GetUnitDesire(1200) -- (left commented as original)
-    nDesire = nDesire + X.RetreatWhenTowerTargetedDesire()
-
-    return Min(nDesire, 1.0)
-end
-
-function X.LowChanceToRun()
-    local nEnemysHeroes = Fu.GetNearbyHeroes(bot, 900, true, BOT_MODE_NONE)
-    if #nEnemysHeroes >= 3 and #nEnemysHeroes >= #nAllyHeroes and botHP < 0.4
-        and bot:WasRecentlyDamagedByAnyHero(1) and bot:GetCurrentMovementSpeed() < 330
-    then
-        if Fu.IsValidHero(botTarget) and Fu.CanKillTarget(botTarget, bot:GetAttackDamage() * 2.5, DAMAGE_TYPE_PHYSICAL) then
-            return true
-        end
-        for _, enemy in pairs(nEnemysHeroes) do
-            if Fu.IsValidHero(enemy) and Fu.CanKillTarget(enemy, bot:GetAttackDamage() * 2.5, DAMAGE_TYPE_PHYSICAL) then
-                if not Fu.IsValidHero(botTarget) then
-                    bot:SetTarget(enemy)
-                end
-                return true
+            if botHP > 0.25
+                or botHealthRegen > 20
+                or bot:HasModifier('modifier_tango_heal')
+                or bot:HasModifier('modifier_flask_healing')
+                or bot:HasModifier('modifier_juggernaut_healing_ward_heal')
+                or bot:HasModifier('modifier_item_urn_heal')
+                or bot:HasModifier('modifier_item_spirit_vessel_heal')
+            then
+                nDesire = nDesire - GetAdjustedDesireValue(0.25)
             end
         end
     end
-    return false
+
+    if bot:HasModifier('modifier_slark_shadow_dance_passive_regen') then
+        nDesire = nDesire - GetAdjustedDesireValue(0.25)
+    end
+
+    -- Tower targeted desire: adds up to 0.9 through normal desire competition (not ShouldRun)
+    -- nDesire = nDesire + X.GetUnitDesire(1200)
+    -- nDesire = nDesire + X.RetreatWhenTowerTargetedDesire()
+
+    return Clamp(nDesire, 0.0, BOT_MODE_DESIRE_ABSOLUTE)
 end
 
+--------------------------------------------------------------------
+-- ShouldRun: only truly dangerous situations
+-- Returns duration in seconds. 0 = don't run.
+--------------------------------------------------------------------
+function X.ShouldRun()
+    if bot:IsChanneling() or not bot:IsAlive() then
+        return 0
+    end
+
+    -- Medusa stone gaze
+    if bot:HasModifier('modifier_medusa_stone_gaze_facing') then
+        local AttackTarget = bot:GetAttackTarget()
+        if AttackTarget ~= nil and AttackTarget:GetUnitName() == "npc_dota_hero_medusa"
+            and Fu.IsOtherAllyCanKillTarget(bot, AttackTarget)
+        then
+            -- ally can finish, don't run
+        else
+            return 3.33
+        end
+    end
+
+    -- Low HP walk-to-fountain ETA
+    if ((bot:GetCurrentMovementSpeed() > 330 and bot:DistanceFromFountain() < 10000) or bot:DistanceFromFountain() < 5000) and not bot:WasRecentlyDamagedByAnyHero(5.0) then
+        if botName == 'npc_dota_hero_medusa' then
+            local eta = bot:DistanceFromFountain() / bot:GetCurrentMovementSpeed()
+            if botMP < 0.2 and botMP + ((botManaRegen * eta) / bot:GetMaxMana()) < 0.4 then
+                return eta
+            end
+        else
+            local eta = bot:DistanceFromFountain() / bot:GetCurrentMovementSpeed()
+            if botHP < 0.2 and botHP + ((botHealthRegen * eta) / bot:GetMaxHealth()) < 0.4 then
+                return eta
+            end
+        end
+    end
+
+    -- Enemy-specific dangers
+    for _, enemyHero in pairs(nEnemyHeroes) do
+        if Fu.IsValidHero(enemyHero)
+            and not Fu.IsSuspiciousIllusion(enemyHero)
+            and not enemyHero:HasModifier('modifier_necrolyte_reapers_scythe')
+        then
+            local enemyHeroAttackRange = enemyHero:GetAttackRange()
+            if enemyHero:HasModifier('modifier_muerta_pierce_the_veil_buff') and Fu.IsInRange(bot, enemyHero, enemyHeroAttackRange) and botHP < 0.5 then
+                local fModifierTime = Fu.GetModifierTime(enemyHero, 'modifier_muerta_pierce_the_veil_buff')
+                if enemyHero:GetEstimatedDamageToTarget(false, bot, fModifierTime, DAMAGE_TYPE_MAGICAL) >= (botHealth + botHealthRegen * fModifierTime) then
+                    return fModifierTime
+                end
+            elseif enemyHero:HasModifier('modifier_bristleback_active_conical_quill_spray') and Fu.IsInRange(bot, enemyHero, 400) and not enemyHero:IsFacingLocation(botLocation, 70) then
+                return 3
+            end
+        end
+    end
+
+	-- Radiant bot lane: wisdom_shrine_ is near Dire's bot T1 — don't walk into tower range
+	if GetTeam() == TEAM_RADIANT
+        and BOT_MODE_WISDOM_SHRINE
+        and bot:GetActiveMode() == BOT_MODE_WISDOM_SHRINE
+        and bot:GetActiveModeDesire() >= BOT_MODE_DESIRE_HIGH then
+		local enemyT1 = GetTower(TEAM_DIRE, TOWER_BOT_1)
+		if enemyT1 ~= nil and enemyT1:IsAlive() and GetUnitToUnitDistance(bot, enemyT1) < 1600 then
+			return 2
+		end
+	end
+
+	-- Dire top lane: wisdom_shrine_ is near Radiant's top T1 — don't walk into tower range
+	if GetTeam() == TEAM_DIRE
+        and BOT_MODE_WISDOM_SHRINE
+        and bot:GetActiveMode() == BOT_MODE_WISDOM_SHRINE
+        and bot:GetActiveModeDesire() >= BOT_MODE_DESIRE_HIGH then
+		local enemyT1 = GetTower(TEAM_RADIANT, TOWER_TOP_1)
+		if enemyT1 ~= nil and enemyT1:IsAlive() and GetUnitToUnitDistance(bot, enemyT1) < 1600 then
+			return 2
+		end
+	end
+
+    -- Enemy fountain proximity
+    local enemyFountainDistance = Fu.GetDistanceFromEnemyFountain(bot)
+    if enemyFountainDistance < 1560 then
+        return 2
+    end
+
+    -- Early game: don't chase unkillable targets deep in enemy territory
+    if DotaTime() > 30 and Fu.IsEarlyGame() then
+        local botLane = bot:GetAssignedLane()
+        local nTeamId = GetTeam()
+        local bDeepInEnemy = (botLane == LANE_TOP and enemyFountainDistance < (nTeamId == TEAM_RADIANT and 12000 or 9000))
+            or (botLane == LANE_MID and enemyFountainDistance < (nTeamId == TEAM_RADIANT and 9000 or 8000))
+            or (botLane == LANE_BOT and enemyFountainDistance < (nTeamId == TEAM_RADIANT and 8700 or 11500))
+        if bDeepInEnemy
+            and Fu.IsValidHero(botTarget) and Fu.CanBeAttacked(botTarget)
+            and not Fu.IsSuspiciousIllusion(botTarget)
+            and not Fu.CanKillTarget(botTarget, bot:GetAttackDamage() * 2.33, DAMAGE_TYPE_PHYSICAL)
+        then
+            return 2.88
+        end
+    end
+
+    -- High ground with barracks + enemies alive
+    local nEnemyTowersSR = bot:GetNearbyTowers(900, true)
+    local nEnemyBarracks = bot:GetNearbyBarracks(900, true)
+    local aliveEnemyCount = Fu.GetNumOfAliveHeroes(true)
+    local enemyAncientDistance = GetUnitToUnitDistance(bot, hEnemyAncient)
+
+    if #nEnemyBarracks >= 1 and aliveEnemyCount >= 2 then
+        if #nEnemyTowersSR >= 2
+            or enemyAncientDistance <= 1314
+            or enemyFountainDistance <= 2828
+        then
+            return 2
+        end
+    end
+
+    -- Enemy base: retreat if near ancient/fountain, taking tower damage with no creep cover,
+    -- or HP < 90%. Only stay if actively about to kill a target within attack range.
+    if enemyAncientDistance <= 2000 or enemyFountainDistance <= 3000 then
+        local nAllyCreepsSR = bot:GetNearbyLaneCreeps(900, false)
+        local bTowerDanger = bot:WasRecentlyDamagedByTower(3.0) and #nAllyCreepsSR < 2
+        if bTowerDanger or botHP < 0.9 then
+            local bCanFinishTarget = false
+            if Fu.IsValidHero(botTarget) and Fu.CanBeAttacked(botTarget)
+                and Fu.IsInRange(bot, botTarget, bot:GetAttackRange() + 150)
+                and Fu.CanKillTarget(botTarget, bot:GetAttackDamage(), DAMAGE_TYPE_PHYSICAL)
+            then
+                bCanFinishTarget = true
+            end
+            if not bCanFinishTarget then
+                return 4
+            end
+        end
+    end
+
+    return 0
+end
+
+--------------------------------------------------------------------
+-- GetUnitDesire: retreat from dangerous summons (kept for future use)
+--------------------------------------------------------------------
 function X.GetUnitDesire(nRadius)
     local unitList = GetUnitList(UNIT_LIST_ENEMIES)
     for _, unit in pairs(unitList) do
@@ -470,6 +654,9 @@ function X.GetUnitDesire(nRadius)
     return 0
 end
 
+--------------------------------------------------------------------
+-- RetreatWhenTowerTargetedDesire: desire-based tower safety (kept for future use)
+--------------------------------------------------------------------
 function X.RetreatWhenTowerTargetedDesire()
     if DotaTime() > 10 * 60 or Fu.IsInTeamFight(bot, 1600) then
         return 0
@@ -500,258 +687,13 @@ function X.RetreatWhenTowerTargetedDesire()
     return 0
 end
 
-local enemyPids = nil;
-function X.ShouldRun()
-    if bot:HasModifier('modifier_medusa_stone_gaze_facing') 
-	then
-		AttackTarget=bot:GetAttackTarget()
-		if AttackTarget~=nil and AttackTarget:GetUnitName() == "npc_dota_hero_medusa"  
-		and Fu.IsOtherAllyCanKillTarget( bot, AttackTarget )
-		then
-			
-		else  
-			return 3.33
-		end
-	end
-    
-		
-	if bot:IsChanneling() 
-    or not bot:IsAlive()
-    then
-        return 0
-    end	   
-    
-    local botMode     = bot:GetActiveMode();
-    local hEnemyHeroList = Fu.GetEnemyList(bot,1600);
-    local hAllyHeroList  = Fu.GetAllyList(bot,1600);
-    local enemyFountainDistance = Fu.GetDistanceFromEnemyFountain(bot);
-    local enemyAncient = GetAncient(GetOpposingTeam());
-    local enemyAncientDistance = GetUnitToUnitDistance(bot,enemyAncient);
-    local aliveEnemyCount = Fu.GetNumOfAliveHeroes(true)
-    local rushEnemyTowerDistance = 250;
-
-    if enemyFountainDistance < 1000
-    then
-        return 2;
-    end
-
-    if bot:DistanceFromFountain() < 200
-		and botMode ~= BOT_MODE_RETREAT
-		and ( Fu.GetHP(bot) + Fu.GetMP(bot) < 1.7 )
-	then
-		return 3;
-	end
-
-    if botLevel < 6
-		and DotaTime() > 30
-		and DotaTime() < 8 * 60
-		and enemyFountainDistance < 8111
-	then
-		if botTarget ~= nil and botTarget:IsHero()
-		   and Fu.GetHP(botTarget) > 0.35
-		   and (  not Fu.IsInRange(bot,botTarget,bot:GetAttackRange() + 150) 
-				  or not Fu.CanKillTarget(botTarget, bot:GetAttackDamage() * 2.33, DAMAGE_TYPE_PHYSICAL) )
-		then
-			return 2.88;
-		end
-	end
-
-    for _, enemyHero in pairs(nEnemyHeroes) do
-        if Fu.IsValidHero(enemyHero)
-            and not Fu.IsSuspiciousIllusion(enemyHero)
-            and not enemyHero:HasModifier('modifier_necrolyte_reapers_scythe')
-        then
-            local enemyHeroAttackRange = enemyHero:GetAttackRange()
-            if (enemyHero:HasModifier('modifier_muerta_pierce_the_veil_buff') and Fu.IsInRange(bot, enemyHero, enemyHeroAttackRange) and botHP < 0.5) then
-                local fModifierTime = Fu.GetModifierTime(enemyHero, 'modifier_muerta_pierce_the_veil_buff')
-                if enemyHero:GetEstimatedDamageToTarget(false, bot, fModifierTime, DAMAGE_TYPE_MAGICAL) >= (botHealth + botHealthRegen * fModifierTime) then
-                    return fModifierTime
-                end
-            elseif (enemyHero:HasModifier('modifier_bristleback_active_conical_quill_spray') and Fu.IsInRange(bot, enemyHero, 400) and not enemyHero:IsFacingLocation(botLocation, 70)) then
-                return 3
-            end
-        end
-    end
-
-    local nEnemyTowers = bot:GetNearbyTowers(898, true);
-	local nEnemyBrracks = bot:GetNearbyBarracks(800,true);
-	
-	if #nEnemyBrracks >= 1 and aliveEnemyCount >= 2 and #hEnemyHeroList >= #hAllyHeroList
-	then
-		if #nEnemyTowers >= 2
-		   or enemyAncientDistance <= 1314
-		   or enemyFountainDistance <= 2828
-		then
-			return 2;
-		end
-	end
-    if nEnemyTowers[1] ~= nil and botLevel < 16
-	then
-		if nEnemyTowers[1]:HasModifier("modifier_invulnerable") and aliveEnemyCount > 1
-		then
-			return 2.5;
-		end
-		
-		if  enemyAncientDistance > 2100
-			and enemyAncientDistance < GetUnitToUnitDistance(nEnemyTowers[1],enemyAncient) - rushEnemyTowerDistance
-		then
-			local nTarget = Fu.GetProperTarget(bot);
-			if nTarget == nil
-			then
-				return 3.9;
-			end
-			
-			if Fu.IsValidHero(nTarget) and aliveEnemyCount > 2
-			then
-				
-				local assistAlly = false;
-				
-				for _,ally in pairs(hAllyHeroList)
-				do
-					if GetUnitToUnitDistance(ally,nTarget) <= ally:GetAttackRange() + 100
-						and (ally:GetAttackTarget() == nTarget or ally:GetTarget() == nTarget)
-					then
-						assistAlly = true;
-						break;
-					end
-				end
-				
-				if not assistAlly 
-				then
-					return 2.5;
-				end
-				
-			end
-		end
-    end
-        
-	-- 前期谨慎冲塔
-	if botLevel <= 10 and DotaTime() > 0
-    and (#hEnemyHeroList > 0 or bot:GetHealth() < 800)
-    then
-        local nLongEnemyTowers = bot:GetNearbyTowers(1200, true);
-        if bot:GetAssignedLane() == LANE_MID
-        then
-            nLongEnemyTowers = bot:GetNearbyTowers(1100, true);
-            nEnemyTowers     = bot:GetNearbyTowers(980, true);
-        end
-        if ( botLevel <= 5 or DotaTime() < 5 * 60 )
-            and nEnemyTowers[1] ~= nil
-        then
-            return 2;
-        end
-        if botLevel <= 9
-            and nEnemyTowers[1] ~= nil
-            and nEnemyTowers[1]:CanBeSeen()
-            and nEnemyTowers[1]:GetAttackTarget() == bot
-            and #hAllyHeroList <= 1
-        then
-            return 2;
-        end
-    end
-
-    if #hAllyHeroList <= 1 
-    and botMode ~= BOT_MODE_TEAM_ROAM
-    and botMode ~= BOT_MODE_LANING
-    and botMode ~= BOT_MODE_RETREAT
-    and ( botLevel <= 1 or botLevel > 5 ) 
-    and bot:DistanceFromFountain() > 1400
-    then
-        if enemyPids == nil then
-            enemyPids = GetTeamPlayers(GetOpposingTeam())
-        end	
-        local enemyCount = 0
-        for i = 1, #enemyPids do
-            local info = GetHeroLastSeenInfo(enemyPids[i])
-            if info ~= nil then
-                local dInfo = info[1]; 
-                if dInfo ~= nil and dInfo.time_since_seen < 2.0  
-                    and GetUnitToLocationDistance(bot,dInfo.location) < 1000 
-                then
-                    enemyCount = enemyCount +1;
-                end
-            end	
-        end
-        if (enemyCount >= 4 or #hEnemyHeroList >= 4) 
-            and botMode ~= BOT_MODE_ATTACK
-            and botMode ~= BOT_MODE_TEAM_ROAM
-            and bot:GetCurrentMovementSpeed() > 300
-        then
-            local nNearByHeroes = bot:GetNearbyHeroes(700,true,BOT_MODE_NONE);
-            if #nNearByHeroes < 2
-            then
-                return 4;
-            end
-        end	
-        if  botLevel >= 9 and botLevel <= 17  
-            and (enemyCount >= 3 or #hEnemyHeroList >= 3) 
-            and botMode ~= BOT_MODE_LANING
-            and bot:GetCurrentMovementSpeed() > 300
-        then
-            local nNearByHeroes = bot:GetNearbyHeroes(700,true,BOT_MODE_NONE);
-            if #nNearByHeroes < 2
-            then
-                return 3;
-            end
-        end
-        local nEnemy = bot:GetNearbyHeroes(800,true,BOT_MODE_NONE);
-        for _,enemy in pairs(nEnemy) do
-            if Fu.IsValid(enemy)
-                and enemy:GetUnitName() == "npc_dota_hero_necrolyte"
-                and enemy:GetMana() >= 200
-                and Fu.GetHP(bot) < 0.45
-                and enemy:IsFacingLocation(bot:GetLocation(),20)
-            then
-                return 3;
-            end
-        end
-	end
-
-    if Fu.Utils.HasModifierContainsName(bot, "warlock_golem") then
-        local nUnits = GetUnitList(UNIT_LIST_ENEMIES)
-        for _, unit in pairs(nUnits) do
-            if Fu.IsValid(unit)
-                and Fu.IsInRange(bot, unit, unit:GetAttackRange() + 400)
-            then
-                if ((Fu.GetHP(bot) < Fu.GetHP(unit) and Fu.GetHP(bot) < 0.75) or Fu.GetHP(bot) < 0.5) then
-                    return 3
-                end
-            end
-        end
-    end
-
-    if botLevel < 10
-        and bot:GetAttackDamage() < 133
-        and Fu.IsValid(botTarget)
-        and botTarget:IsAncientCreep()
-        and #nAllyHeroes <= 1
-        and bot:DistanceFromFountain() > 3000
-    then
-        return 6.21
-    end
-
-    if Fu.IsRealInvisible(bot)
-        and not Fu.IsEarlyGame()
-        and Fu.IsRetreating(bot)
-        and bot:GetActiveModeDesire() > 0.4
-        and #nAllyHeroes <= 1
-        and Fu.IsValidHero(nEnemyHeroes[1])
-        and botName ~= "npc_dota_hero_riki"
-        and botName ~= "npc_dota_hero_bounty_hunter"
-        and botName ~= "npc_dota_hero_slark"
-        and Fu.GetDistanceFromAncient(bot, false) < Fu.GetDistanceFromAncient(nEnemyHeroes[1], false)
-    then
-        return 5
-    end
-
-    return 0
-end
-
+--------------------------------------------------------------------
+-- ConsiderCompleteItem: recipe completion near fountain
+--------------------------------------------------------------------
 function X.ConsiderCompleteItem()
     local nTeamFightLocation = Fu.GetTeamFightLocation(bot)
     if nTeamFightLocation == nil and #nEnemyHeroes == 0 and bot:DistanceFromFountain() < 4400 and not bot:HasModifier('modifier_fountain_aura_buff') then
         if Fu.Item.GetEmptyInventoryAmount(bot) == 0 then
-            -- check if stash has recipe
             local bRecipeInStash = false
             local sItemRecipe = ''
             for i = 9, 14 do
@@ -785,7 +727,7 @@ function X.ConsiderCompleteItem()
                 end
 
                 if count > 0 and count == #tItemComponents then
-                    return BOT_MODE_DESIRE_ABSOLUTE * 1.5
+                    return BOT_DESIRE_OVERRIDE * 1.5
                 end
             end
         end
@@ -793,127 +735,11 @@ function X.ConsiderCompleteItem()
     return 0
 end
 
---------------------------------------------------------------------
--- Think: full retreat behavior (replaces Valve's default)
---------------------------------------------------------------------
-function Think()
-    if not bot:IsAlive() or bot:IsChanneling() or bot:IsUsingAbility() then return end
+-- No Think function: Valve's built-in retreat handles movement, items, TP.
 
-    local nEnemyHeroes = bot:GetNearbyHeroes(1600, true, BOT_MODE_NONE) or {}
-    local isSafe = #nEnemyHeroes == 0
-        and not bot:WasRecentlyDamagedByAnyHero(5.0)
-        and not bot:WasRecentlyDamagedByTower(3.0)
-        and bot:DistanceFromFountain() > 3000
-
-    local nBotHP = Fu.GetHP(bot)
-
-    -- SAFE + has healing: stop retreating and heal in place
-    if isSafe and nBotHP > 0.15 then
-        -- Already healing — stop moving, let regen tick
-        if bot:HasModifier('modifier_flask_healing')
-        or bot:HasModifier('modifier_tango_heal')
-        or bot:HasModifier('modifier_bottle_regeneration')
-        then
-            bot:Action_ClearActions(false)
-            return
-        end
-
-        -- Try to use a healing item
-        if Fu.HasHealingItem(bot) then
-            -- Flask
-            local flaskSlot = Fu.FindItemSlotNotInNonbackpack(bot, 'item_flask')
-            if flaskSlot >= 0 then
-                local flask = bot:GetItemInSlot(flaskSlot)
-                if flask and flask:IsFullyCastable() and bot:OriginalGetMaxHealth() - bot:OriginalGetHealth() > 500 then
-                    bot:Action_UseAbilityOnEntity(flask, bot)
-                    return
-                end
-            end
-
-            -- Tango
-            local tangoSlot = Fu.FindItemSlotNotInNonbackpack(bot, 'item_tango')
-            if tangoSlot < 0 then tangoSlot = Fu.FindItemSlotNotInNonbackpack(bot, 'item_tango_single') end
-            if tangoSlot >= 0 then
-                local tango = bot:GetItemInSlot(tangoSlot)
-                if tango and tango:IsFullyCastable() and bot:OriginalGetMaxHealth() - bot:OriginalGetHealth() > 200 then
-                    local trees = bot:GetNearbyTrees(800)
-                    if trees and #trees > 0 then
-                        bot:Action_UseAbilityOnTree(tango, trees[1])
-                        return
-                    end
-                end
-            end
-
-            -- Bottle
-            local bottleSlot = Fu.FindItemSlotNotInNonbackpack(bot, 'item_bottle')
-            if bottleSlot >= 0 then
-                local bottle = bot:GetItemInSlot(bottleSlot)
-                if bottle and bottle:IsFullyCastable() and bottle:GetCurrentCharges() > 0 then
-                    bot:Action_UseAbility(bottle)
-                    return
-                end
-            end
-
-            -- Faerie Fire (instant heal when low)
-            local faerieSlot = Fu.FindItemSlotNotInNonbackpack(bot, 'item_faerie_fire')
-            if faerieSlot >= 0 and nBotHP < 0.3 then
-                local faerie = bot:GetItemInSlot(faerieSlot)
-                if faerie and faerie:IsFullyCastable() then
-                    bot:Action_UseAbility(faerie)
-                    return
-                end
-            end
-
-            -- Mango (mana restore)
-            local mangoSlot = Fu.FindItemSlotNotInNonbackpack(bot, 'item_enchanted_mango')
-            if mangoSlot >= 0 and Fu.GetMP(bot) < 0.3 then
-                local mango = bot:GetItemInSlot(mangoSlot)
-                if mango and mango:IsFullyCastable() then
-                    bot:Action_UseAbility(mango)
-                    return
-                end
-            end
-
-            -- Healing Lotus
-            for _, lotusName in pairs({'item_famango', 'item_great_famango', 'item_greater_famango'}) do
-                local lotusSlot = Fu.FindItemSlotNotInNonbackpack(bot, lotusName)
-                if lotusSlot >= 0 then
-                    local lotus = bot:GetItemInSlot(lotusSlot)
-                    if lotus and lotus:IsFullyCastable() then
-                        bot:Action_UseAbilityOnEntity(lotus, bot)
-                        return
-                    end
-                end
-            end
-        end
-    end
-
-    -- DEFAULT RETREAT: walk toward fountain (replaces Valve's default)
-    -- Use TP scroll if available and far from fountain
-    if bot:DistanceFromFountain() > 5000 and #nEnemyHeroes == 0 and nBotHP < 0.3 then
-        local tpSlot = Fu.FindItemSlotNotInNonbackpack(bot, 'item_tpscroll')
-        if tpSlot >= 0 then
-            local tp = bot:GetItemInSlot(tpSlot)
-            if tp and tp:IsFullyCastable() then
-                local fountain = Fu.GetTeamFountain()
-                bot:Action_UseAbilityOnLocation(tp, fountain)
-                return
-            end
-        end
-    end
-
-    -- Walk toward fountain, avoiding enemies
-    local retreatTarget = Fu.GetTeamFountain()
-    if #nEnemyHeroes > 0 then
-        -- Run away from nearest enemy, angled toward fountain
-        local nearestEnemy = nEnemyHeroes[1]
-        if Fu.IsValidHero(nearestEnemy) then
-            local awayDir = Fu.VectorAway(bot:GetLocation(), nearestEnemy:GetLocation(), 500)
-            retreatTarget = awayDir
-        end
-    end
-
-    bot:Action_MoveToLocation(retreatTarget)
+if SafeCall then
+    local _origGetDesire = GetDesire
+    if _origGetDesire then GetDesire = SafeCall(_origGetDesire, 0, 'RETREAT_GetDesire') end
 end
 
 return X

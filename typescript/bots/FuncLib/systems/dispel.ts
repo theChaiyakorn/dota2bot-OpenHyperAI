@@ -429,7 +429,7 @@ export function ShouldUseAllyDispelItem(bot: Unit): LuaMultiReturn<[number, Unit
         // and ally has no Lotus buff yet
         if (!ally.HasModifier("modifier_item_lotus_orb_active")) {
             const enemiesNearAlly = ally.GetNearbyHeroes(800, true, BotMode.None);
-            if (enemiesNearAlly) {
+            if (enemiesNearAlly !== null && enemiesNearAlly !== undefined) {
                 for (const enemy of enemiesNearAlly) {
                     if (enemy && !enemy.IsNull() && enemy.IsAlive()) {
                         const eName = enemy.GetUnitName();

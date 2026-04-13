@@ -110,13 +110,13 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local Waveform              = bot:GetAbilityByName('morphling_waveform')
-local AdaptiveStrikeAGI     = bot:GetAbilityByName('morphling_adaptive_strike_agi')
-local AdaptiveStrikeSTR     = bot:GetAbilityByName('morphling_adaptive_strike_str')
-local AttributeShiftAGI     = bot:GetAbilityByName('morphling_morph_agi')
-local AttributeShiftSTR     = bot:GetAbilityByName('morphling_morph_str')
-local Morph                 = bot:GetAbilityByName('morphling_replicate')
-local MorphReplicate        = bot:GetAbilityByName('morphling_morph_replicate')
+local Waveform              = SafeAbility(bot:GetAbilityByName('morphling_waveform'), 'morphling_waveform', 'morphling')
+local AdaptiveStrikeAGI     = SafeAbility(bot:GetAbilityByName('morphling_adaptive_strike_agi'), 'morphling_adaptive_strike_agi', 'morphling')
+local AdaptiveStrikeSTR     = SafeAbility(bot:GetAbilityByName('morphling_adaptive_strike_str'), 'morphling_adaptive_strike_str', 'morphling')
+local AttributeShiftAGI     = SafeAbility(bot:GetAbilityByName('morphling_morph_agi'), 'morphling_morph_agi', 'morphling')
+local AttributeShiftSTR     = SafeAbility(bot:GetAbilityByName('morphling_morph_str'), 'morphling_morph_str', 'morphling')
+local Morph                 = SafeAbility(bot:GetAbilityByName('morphling_replicate'), 'morphling_replicate', 'morphling')
+local MorphReplicate        = SafeAbility(bot:GetAbilityByName('morphling_morph_replicate'), 'morphling_morph_replicate', 'morphling')
 
 local WaveformDesire, WaveformLocation
 local AdaptiveStrikeAGIDesire, AdaptiveStrikeAGITarget

@@ -125,12 +125,12 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local StickyBomb        = bot:GetAbilityByName('techies_sticky_bomb')
-local ReactiveTazer     = bot:GetAbilityByName('techies_reactive_tazer')
-local ReactiveTazerStop = bot:GetAbilityByName('techies_reactive_tazer_stop')
-local BlastOff          = bot:GetAbilityByName('techies_suicide')
-local MineFieldSign     = bot:GetAbilityByName('techies_minefield_sign')
-local ProximityMines    = bot:GetAbilityByName('techies_land_mines')
+local StickyBomb        = SafeAbility(bot:GetAbilityByName('techies_sticky_bomb'), 'techies_sticky_bomb', 'techies')
+local ReactiveTazer     = SafeAbility(bot:GetAbilityByName('techies_reactive_tazer'), 'techies_reactive_tazer', 'techies')
+local ReactiveTazerStop = SafeAbility(bot:GetAbilityByName('techies_reactive_tazer_stop'), 'techies_reactive_tazer_stop', 'techies')
+local BlastOff          = SafeAbility(bot:GetAbilityByName('techies_suicide'), 'techies_suicide', 'techies')
+local MineFieldSign     = SafeAbility(bot:GetAbilityByName('techies_minefield_sign'), 'techies_minefield_sign', 'techies')
+local ProximityMines    = SafeAbility(bot:GetAbilityByName('techies_land_mines'), 'techies_land_mines', 'techies')
 
 local StickyBombDesire, StickyBombLocation
 local ReactiveTazerDesire

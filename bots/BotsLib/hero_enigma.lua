@@ -139,13 +139,13 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local Malefice          = bot:GetAbilityByName('enigma_malefice')
-local DemonicSummoning  = bot:GetAbilityByName('enigma_demonic_conversion')
-local MidnightPulse     = bot:GetAbilityByName('enigma_midnight_pulse')
-local BlackHole         = bot:GetAbilityByName('enigma_black_hole')
+local Malefice          = SafeAbility(bot:GetAbilityByName('enigma_malefice'), 'enigma_malefice', 'enigma')
+local DemonicSummoning  = SafeAbility(bot:GetAbilityByName('enigma_demonic_conversion'), 'enigma_demonic_conversion', 'enigma')
+local MidnightPulse     = SafeAbility(bot:GetAbilityByName('enigma_midnight_pulse'), 'enigma_midnight_pulse', 'enigma')
+local BlackHole         = SafeAbility(bot:GetAbilityByName('enigma_black_hole'), 'enigma_black_hole', 'enigma')
 
-local MaleficeAdditionalInstanceTalent = bot:GetAbilityByName('special_bonus_unique_enigma_2')
-local MidnightPulseRadiusTalent = bot:GetAbilityByName('special_bonus_unique_enigma_6')
+local MaleficeAdditionalInstanceTalent = SafeAbility(bot:GetAbilityByName('special_bonus_unique_enigma_2'), 'special_bonus_unique_enigma_2', 'enigma')
+local MidnightPulseRadiusTalent = SafeAbility(bot:GetAbilityByName('special_bonus_unique_enigma_6'), 'special_bonus_unique_enigma_6', 'enigma')
 
 local MaleficeDesire, MaleficeTarget
 local DemonicSummoningDesire, DemonicSummoningLocation

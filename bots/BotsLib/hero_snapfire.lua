@@ -102,12 +102,12 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local ScatterBlast      = bot:GetAbilityByName('snapfire_scatterblast')
-local FiresnapCookie    = bot:GetAbilityByName('snapfire_firesnap_cookie')
-local LilShredder       = bot:GetAbilityByName('snapfire_lil_shredder')
-local GobbleUp          = bot:GetAbilityByName('snapfire_gobble_up')
-local SpitOut           = bot:GetAbilityByName('snapfire_spit_creep')
-local MortimerKisses    = bot:GetAbilityByName('snapfire_mortimer_kisses')
+local ScatterBlast      = SafeAbility(bot:GetAbilityByName('snapfire_scatterblast'), 'snapfire_scatterblast', 'snapfire')
+local FiresnapCookie    = SafeAbility(bot:GetAbilityByName('snapfire_firesnap_cookie'), 'snapfire_firesnap_cookie', 'snapfire')
+local LilShredder       = SafeAbility(bot:GetAbilityByName('snapfire_lil_shredder'), 'snapfire_lil_shredder', 'snapfire')
+local GobbleUp          = SafeAbility(bot:GetAbilityByName('snapfire_gobble_up'), 'snapfire_gobble_up', 'snapfire')
+local SpitOut           = SafeAbility(bot:GetAbilityByName('snapfire_spit_creep'), 'snapfire_spit_creep', 'snapfire')
+local MortimerKisses    = SafeAbility(bot:GetAbilityByName('snapfire_mortimer_kisses'), 'snapfire_mortimer_kisses', 'snapfire')
 
 local ScatterBlastDesire, ScatterBlastLocation
 local FiresnapCookieDesire, FiresnapCookieTarget

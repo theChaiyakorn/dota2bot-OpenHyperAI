@@ -15,12 +15,8 @@ local hAbilityCapture = bot:GetAbilityByName('ability_capture')
 
 function GetDesire()
 	if ShouldSkipBotThink(GetBot()) then return 0 end
-	-- local cacheKey = 'GetOutpostDesire'..tostring(bot:GetPlayerID())
-	-- local cachedVar = Fu.Utils.GetCachedVars(cacheKey, 0.5 * (1 + Customize.ThinkLess))
-	-- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
 	local res = GetDesireHelper()
-	-- Fu.Utils.SetCachedVars(cacheKey, res)
-	return GetAdjustedDesireValue(res)
+	return res
 end
 function GetDesireHelper()
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return BOT_MODE_DESIRE_NONE end
@@ -103,7 +99,7 @@ end
 
 function Think()
 	if Fu.CanNotUseAction(bot) then return end
-	if Fu.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "outpost") then return end
+	-- if Fu.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "outpost") then return end
 
 	if ClosestOutpost ~= nil
 	then
@@ -181,4 +177,12 @@ function IsSuitableToCaptureOutpost()
 	end
 
 	return true
+end
+
+-- SafeCall wrapping for error protection
+if SafeCall then
+  local _origGetDesire = GetDesire
+  local _origThink = Think
+  if _origGetDesire then GetDesire = SafeCall(_origGetDesire, 0, 'OUTPOST_GetDesire') end
+  if _origThink then Think = SafeCall(_origThink, nil, 'OUTPOST_Think') end
 end

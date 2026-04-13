@@ -7,7 +7,7 @@ local BotBuild = dofile(GetScriptDirectory() .. "/BotsLib/" .. string.gsub(botNa
 
 if BotBuild == nil
 then
-	print('[ERROR] No build config file found for bot: '..botName)
+	log('[ERROR] No build config file found for bot: '..botName)
 	return
 end
 

@@ -154,13 +154,13 @@ modifier_witch_doctor_death_ward
 --]]
 
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityAS = bot:GetAbilityByName( sAbilityList[4] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local talent2 = bot:GetAbilityByName( sTalentList[2] )
-local talent6 = bot:GetAbilityByName( sTalentList[6] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'witch_doctor')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'witch_doctor')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'witch_doctor')
+local abilityAS = SafeAbility(bot:GetAbilityByName(sAbilityList[4]), 'sAbilityList[4]', 'witch_doctor')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'witch_doctor')
+local talent2 = SafeAbility(bot:GetAbilityByName(sTalentList[2]), 'sTalentList[2]', 'witch_doctor')
+local talent6 = SafeAbility(bot:GetAbilityByName(sTalentList[6]), 'sTalentList[6]', 'witch_doctor')
 
 local castQDesire, castQTarget
 local castWDesire

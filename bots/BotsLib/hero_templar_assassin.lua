@@ -86,7 +86,7 @@ function X.MinionThink(hMinionUnit)
 			return
 		else
 			local abilitySTP = hMinionUnit:GetAbilityByName( "templar_assassin_self_trap" )
-			local abilityTP = bot:GetAbilityByName( "templar_assassin_trap" )
+			local abilityTP = SafeAbility(bot:GetAbilityByName("templar_assassin_trap"), 'templar_assassin_trap', 'templar_assassin')
 			local nRadius = 400
 			local nRange = bot:GetAttackRange()
 			local nEnemies = hMinionUnit:GetNearbyHeroes( nRadius - 12, true, BOT_MODE_NONE )
@@ -197,9 +197,9 @@ modifier_templar_assassin_refraction_holdout
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'templar_assassin')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'templar_assassin')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'templar_assassin')
 
 local castQDesire
 local castWDesire

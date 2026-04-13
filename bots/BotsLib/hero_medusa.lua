@@ -129,12 +129,12 @@ modifier_medusa_stone_gaze_stone
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'medusa')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'medusa')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'medusa')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'medusa')
 local abilityM = nil
-local GorgonGrasp = bot:GetAbilityByName('medusa_gorgon_grasp')
+local GorgonGrasp = SafeAbility(bot:GetAbilityByName('medusa_gorgon_grasp'), 'medusa_gorgon_grasp', 'medusa')
 
 local castQDesire
 local castWDesire, castWTarget
@@ -174,7 +174,7 @@ function X.SkillsComplement()
 
 
 	castRDesire = X.ConsiderR()
-	if castRDesire > 0 
+	if castRDesire > 0
 	then
 
 		Fu.SetQueuePtToINT( bot, true )
@@ -183,7 +183,7 @@ function X.SkillsComplement()
 		return
 
 	end
-	
+
 	GorgonGraspDesire, GorgonGraspLocation = X.ConsiderGorgonGrasp()
 	if GorgonGraspDesire > 0
 	then
@@ -196,6 +196,13 @@ function X.SkillsComplement()
 	if castQDesire > 0
 	then
 		bot:Action_UseAbility( abilityQ )
+		return
+	end
+
+	castEDesire = X.ConsiderE()
+	if castEDesire > 0
+	then
+		bot:Action_UseAbility( abilityE )
 		return
 	end
 
@@ -229,7 +236,11 @@ function X.ConsiderGorgonGrasp()
 		and Fu.IsInRange(bot, enemyHero, nCastRange)
 		and Fu.CanCastOnNonMagicImmune(enemyHero)
 		then
-			if enemyHero:IsChanneling()
+			if enemyHero:HasModifier('modifier_teleporting') then
+				if Fu.GetModifierTime(enemyHero, 'modifier_teleporting') > nDelay + nCastPoint then
+					return BOT_ACTION_DESIRE_HIGH, enemyHero:GetLocation()
+				end
+			elseif enemyHero:IsChanneling()
 			then
 				return BOT_ACTION_DESIRE_HIGH, enemyHero:GetLocation()
 			end

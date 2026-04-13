@@ -61,6 +61,32 @@ Customize picks, bans, and roles in [Customize/general.lua](bots/Customize/gener
 
 ---
 
+## Enhanced Mode (FretBots)
+
+Standard bot games use Valve's default difficulty system, which is limited -- even "Unfair" bots feel easy once you know the patterns.
+
+**Enhanced Mode** gives huge unfair advantages to bots to make the game more challenging for you. 
+
+With a dynamic bonus system that gives bots scaling stat advantages (gold, XP, damage, armor, etc.), making games feel more like playing against real opponents.
+
+**Why use it:**
+- Bots become genuinely challenging at higher difficulties without just giving them perfect reflexes
+- Neutral items drop properly for bots.
+- AI chatbot integration -- bots respond to your chat messages
+- Difficulty voting at game start so all players can agree on the challenge level
+- Customizable ally/enemy scaling -- make enemy bots harder while keeping ally bots reasonable
+- A set of new in-game commands for fun, e.g. "ps holy_moly" (plays funny sounds), "kb xxx" (kills a bot), "networth" (checks bots networth), etc etc.
+
+**How to enable:**
+1. Run the installer: `bots/Install-to-vscript/quick-install-oha-windows.bat` (Windows) or `quick-install-oha-linux.sh` (Linux)
+2. This copies bot scripts to the `vscripts` directory where FretBots can load
+3. Create a Custom Lobby with **Local Host** and start the game
+4. Players vote on difficulty (1-10) during the first minute, or it uses the default from settings
+
+For full details, setup options, and troubleshooting: [Enhanced Mode Guide](https://github.com/forest0xia/dota2bot-OpenHyperAI/discussions/68)
+
+---
+
 ## Customization
 
 | What | Where |

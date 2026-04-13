@@ -112,10 +112,10 @@ function X.MinionThink(hMinionUnit)
 
 end
 
-local AetherRemnant = bot:GetAbilityByName( "void_spirit_aether_remnant" )
-local Dissimilate   = bot:GetAbilityByName( "void_spirit_dissimilate" )
-local ResonantPulse = bot:GetAbilityByName( "void_spirit_resonant_pulse" )
-local AstralStep    = bot:GetAbilityByName( "void_spirit_astral_step" )
+local AetherRemnant = SafeAbility(bot:GetAbilityByName("void_spirit_aether_remnant"), 'void_spirit_aether_remnant', 'void_spirit')
+local Dissimilate   = SafeAbility(bot:GetAbilityByName("void_spirit_dissimilate"), 'void_spirit_dissimilate', 'void_spirit')
+local ResonantPulse = SafeAbility(bot:GetAbilityByName("void_spirit_resonant_pulse"), 'void_spirit_resonant_pulse', 'void_spirit')
+local AstralStep    = SafeAbility(bot:GetAbilityByName("void_spirit_astral_step"), 'void_spirit_astral_step', 'void_spirit')
 
 local AetherRemnantDesire, AetherRemnantLocation
 local DissimilateDesire

@@ -119,10 +119,10 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local Fissure       = bot:GetAbilityByName('earthshaker_fissure')
-local EnchantTotem  = bot:GetAbilityByName('earthshaker_enchant_totem')
-local Aftershock    = bot:GetAbilityByName('earthshaker_aftershock')
-local EchoSlam      = bot:GetAbilityByName('earthshaker_echo_slam')
+local Fissure       = SafeAbility(bot:GetAbilityByName('earthshaker_fissure'), 'earthshaker_fissure', 'earthshaker')
+local EnchantTotem  = SafeAbility(bot:GetAbilityByName('earthshaker_enchant_totem'), 'earthshaker_enchant_totem', 'earthshaker')
+local Aftershock    = SafeAbility(bot:GetAbilityByName('earthshaker_aftershock'), 'earthshaker_aftershock', 'earthshaker')
+local EchoSlam      = SafeAbility(bot:GetAbilityByName('earthshaker_echo_slam'), 'earthshaker_echo_slam', 'earthshaker')
 
 local FissureDesire, FissureLocation
 local EnchantTotemDesire, EnchantTotemLocation, WantToJump

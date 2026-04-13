@@ -137,7 +137,7 @@ function X.MinionThink(hMinionUnit)
 		Minion.IllusionThink( hMinionUnit )
 	end
 
-	-- print("dazzle minion")
+	-- log("dazzle minion")
 	-- Fu.Utils.PrintTable(hMinionUnit)
 end
 
@@ -168,17 +168,16 @@ modifier_dazzle_bad_juju_armor
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityF = bot:GetAbilityByName( sAbilityList[5] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local NothlProjection = bot:GetAbilityByName("dazzle_nothl_projection")
-local NothlProjectionEnd = bot:GetAbilityByName("dazzle_nothl_projection_end")
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'dazzle')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'dazzle')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'dazzle')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'dazzle')
+local NothlProjection = SafeAbility(bot:GetAbilityByName("dazzle_nothl_projection"), 'dazzle_nothl_projection', 'dazzle')
+local NothlProjectionEnd = SafeAbility(bot:GetAbilityByName("dazzle_nothl_projection_end"), 'dazzle_nothl_projection_end', 'dazzle')
 
-local talent3 = bot:GetAbilityByName( sTalentList[3] )
-local talent4 = bot:GetAbilityByName( sTalentList[4] )
-local talent6 = bot:GetAbilityByName( sTalentList[6] )
+local talent3 = SafeAbility(bot:GetAbilityByName(sTalentList[3]), 'sTalentList[3]', 'dazzle')
+local talent4 = SafeAbility(bot:GetAbilityByName(sTalentList[4]), 'sTalentList[4]', 'dazzle')
+local talent6 = SafeAbility(bot:GetAbilityByName(sTalentList[6]), 'sTalentList[6]', 'dazzle')
 
 local castQDesire, castQTarget
 local castWDesire, castWTarget
@@ -198,13 +197,12 @@ function X.SkillsComplement()
 	if Fu.CanNotUseAbility( bot ) or bot:IsInvisible() or isPhysicalBody then return end
 
 	-- Re-fetch ability handles each tick
-	abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-	abilityW = bot:GetAbilityByName( sAbilityList[2] )
-	abilityE = bot:GetAbilityByName( sAbilityList[3] )
-	abilityF = bot:GetAbilityByName( sAbilityList[5] )
-	abilityR = bot:GetAbilityByName( sAbilityList[6] )
-	NothlProjection = bot:GetAbilityByName("dazzle_nothl_projection")
-	NothlProjectionEnd = bot:GetAbilityByName("dazzle_nothl_projection_end")
+	abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'dazzle')
+	abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'dazzle')
+	abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'dazzle')
+	abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'dazzle')
+	NothlProjection = SafeAbility(bot:GetAbilityByName("dazzle_nothl_projection"), 'dazzle_nothl_projection', 'dazzle')
+	NothlProjectionEnd = SafeAbility(bot:GetAbilityByName("dazzle_nothl_projection_end"), 'dazzle_nothl_projection_end', 'dazzle')
 
 	-- Cache per-tick variables
 	local ctx = AbilityCtx.Build(bot)
@@ -217,6 +215,7 @@ function X.SkillsComplement()
 	hEnemyList = ctx.enemies
 	hAllyList = ctx.allies
 
+	castWDesire, castWTarget = X.ConsiderW()
 	if ( castWDesire > 0 )
 	then
 
@@ -239,6 +238,7 @@ function X.SkillsComplement()
 		return
 	end
 
+	castQDesire, castQTarget = X.ConsiderQ()
 	if ( castQDesire > 0 )
 	then
 
@@ -248,7 +248,7 @@ function X.SkillsComplement()
 		return
 	end
 
-
+	castEDesire, castETarget = X.ConsiderE()
 	if ( castEDesire > 0 )
 	then
 

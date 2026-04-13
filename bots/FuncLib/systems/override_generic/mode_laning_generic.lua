@@ -14,6 +14,29 @@ local tangoDesire, tangoTarget, tangoSlot
 local fNextMovementTime = 0
 
 function X.GetDesire()
+	-- Bear: drop laning desire when hero is fighting — bear should join, not lane.
+	local isBear = bot.isBear or string.find(bot:GetUnitName(), 'lone_druid_bear')
+	if isBear then
+		local Utils = require(GetScriptDirectory()..'/FuncLib/systems/utils')
+		local ld = Utils.GetLoneDruid(bot)
+		if ld and ld.hero and Fu.IsValidHero(ld.hero) and ld.hero:IsAlive() then
+			local heroMode = ld.hero:GetActiveMode()
+			-- Hero is doing something: bear should follow, not lane independently
+			if heroMode == BOT_MODE_ATTACK
+			or heroMode == BOT_MODE_DEFEND_ALLY
+			or heroMode == BOT_MODE_TEAM_ROAM
+			or heroMode == BOT_MODE_ROSHAN
+			or heroMode == BOT_MODE_FARM then
+				return BOT_MODE_DESIRE_NONE
+			end
+			-- Hero has an attack target nearby: bear should help
+			local heroTarget = Fu.GetProperTarget(ld.hero)
+			if Fu.IsValidHero(heroTarget) and GetUnitToUnitDistance(bot, heroTarget) < 1200 then
+				return BOT_MODE_DESIRE_NONE
+			end
+		end
+	end
+
 	tangoDesire, tangoTarget = ConsiderTango()
 	if tangoDesire > 0 then
 		return BOT_MODE_DESIRE_ABSOLUTE
@@ -52,9 +75,8 @@ function GetBotTargetLane()
 	return assignedLane
 end
 
--- Think (reference structure with local additions)
 function X.Think()
-	if not bot:IsAlive() or Fu.CanNotUseAction(bot) or bot:IsUsingAbility() or bot:IsChanneling() or bot:IsDisarmed() then return end
+	if not bot:IsAlive() or Fu.CanNotUseAction(bot) or bot:IsChanneling() or bot:IsDisarmed() then return end
 
 	local botAttackRange = bot:GetAttackRange()
 	local botAssignedLane = assignedLane or bot:GetAssignedLane()
@@ -70,16 +92,17 @@ function X.Think()
 		return
 	end
 
-	-- Safety: retreat if being targeted by heroes, tower, or heavy creep damage (reference pattern)
+	-- Safety: retreat if being targeted by heroes, tower, or heavy creep damage.
+	-- During laning: back off 500 toward base (don't run to fountain).
 	if (bot:WasRecentlyDamagedByAnyHero(2.0) and #Fu.GetHeroesTargetingUnit(tEnemyHeroes, bot) >= 1)
 	or (Fu.IsValidBuilding(tEnemyTowers[1]) and tEnemyTowers[1]:GetAttackTarget() == bot)
 	or (bot:WasRecentlyDamagedByCreep(2.0) and not (bot:HasModifier('modifier_tower_aura') or bot:HasModifier('modifier_tower_aura_bonus')) and #nAllyCreeps > 0) then
-		local safeLoc = GetLaneFrontLocation(GetTeam(), botAssignedLane, -1200)
-		bot:Action_MoveToLocation(safeLoc)
+		local safeLoc = Fu.AdjustLocationWithOffsetTowardsFountain(bot:GetLocation(), 500)
+		bot:Action_MoveToLocation(safeLoc + RandomVector(50))
 		return
 	end
 
-	-- Drop tower aggro (reference pattern)
+	-- Drop tower aggro
 	if bot:WasRecentlyDamagedByTower(1.0) and #nEnemyCreeps > 0 then
 		local nEnemyTowersClose = bot:GetNearbyTowers(750, true)
 		if #nEnemyTowersClose > 0 then
@@ -92,21 +115,28 @@ function X.Think()
 		end
 	end
 
-	-- Stay away from enemy tower if few creeps
+	-- Stay away from enemy tower if few creeps 
 	if Fu.IsValidBuilding(tEnemyTowers[1]) then
 		local dist = GetUnitToUnitDistance(bot, tEnemyTowers[1])
 		if dist < 800 and #nEnemyCreeps < 3 then
-			bot:Action_MoveToLocation(Fu.VectorAway(bot:GetLocation(), tEnemyTowers[1]:GetLocation(), 800))
+			bot:Action_MoveToLocation(Fu.VectorAway(bot:GetLocation(), tEnemyTowers[1]:GetLocation(), 950) + RandomVector(75))
+			return
+		end
+		-- Don't last-hit creeps that are under enemy tower unless safe
+		if dist < 900 and bot:WasRecentlyDamagedByTower(2.0) then
+			bot:Action_MoveToLocation(Fu.VectorAway(bot:GetLocation(), tEnemyTowers[1]:GetLocation(), 950))
 			return
 		end
 	end
 
-	-- Last-hit with support suppression (reference: lane partner check)
+	-- Last-hit with support suppression
+	-- Bear always last-hits freely — same player as hero, no CS conflict.
 	local hitCreep = GetBestLastHitCreep(nEnemyCreeps)
 	if Fu.IsValid(hitCreep) then
+		local isBear = bot.isBear or string.find(bot:GetUnitName(), 'lone_druid_bear')
 		local nLanePartner = Fu.GetLanePartner(bot)
-		-- Support defers to core lane partner if partner is alive and nearby
-		if nLanePartner == nil
+		if isBear
+		or nLanePartner == nil
 		or Fu.IsCore(bot)
 		or (not Fu.IsCore(bot) and Fu.IsCore(nLanePartner)
 			and (not nLanePartner:IsAlive() or not Fu.IsInRange(bot, nLanePartner, 800)))
@@ -128,8 +158,10 @@ function X.Think()
 	end
 
 	-- Support harass: only when few enemy creeps nearby (low aggro risk)
+	-- Bear never harasses — always prioritize last-hits
+	local isBear = bot.isBear or string.find(bot:GetUnitName(), 'lone_druid_bear')
 	local nCloseEnemyCreeps = bot:GetNearbyLaneCreeps(600, true)
-	if #nCloseEnemyCreeps <= 1 and not Fu.IsCore(bot) then
+	if #nCloseEnemyCreeps <= 1 and not Fu.IsCore(bot) and not isBear then
 		local harassTarget = GetHarassTarget(tEnemyHeroes)
 		if Fu.IsValidHero(harassTarget) then
 			bot:Action_AttackUnit(harassTarget, true)

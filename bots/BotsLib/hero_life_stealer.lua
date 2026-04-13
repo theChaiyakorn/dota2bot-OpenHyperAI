@@ -199,13 +199,13 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local Rage          = bot:GetAbilityByName('life_stealer_rage')
+local Rage          = SafeAbility(bot:GetAbilityByName('life_stealer_rage'), 'life_stealer_rage', 'life_stealer')
 -- local Feast         = bot:GetAbilityByName('life_stealer_feast')
 -- local GhoulFrenzy   = bot:GetAbilityByName('life_stealer_ghoul_frenzy')
-local OpenWounds    = bot:GetAbilityByName('life_stealer_open_wounds')
-local Infest        = bot:GetAbilityByName('life_stealer_infest')
-local Consume       = bot:GetAbilityByName('life_stealer_consume')
-local Control       = bot:GetAbilityByName('life_stealer_control')
+local OpenWounds    = SafeAbility(bot:GetAbilityByName('life_stealer_open_wounds'), 'life_stealer_open_wounds', 'life_stealer')
+local Infest        = SafeAbility(bot:GetAbilityByName('life_stealer_infest'), 'life_stealer_infest', 'life_stealer')
+local Consume       = SafeAbility(bot:GetAbilityByName('life_stealer_consume'), 'life_stealer_consume', 'life_stealer')
+local Control       = SafeAbility(bot:GetAbilityByName('life_stealer_control'), 'life_stealer_control', 'life_stealer')
 
 
 local RageDesire
@@ -220,10 +220,10 @@ local bGoingOnSomeone
 local bRetreating
 function X.SkillsComplement()
     -- Re-fetch ability handles each tick for safety
-    Rage       = bot:GetAbilityByName('life_stealer_rage')
-    OpenWounds = bot:GetAbilityByName('life_stealer_open_wounds')
-    Infest     = bot:GetAbilityByName('life_stealer_infest')
-    Consume    = bot:GetAbilityByName('life_stealer_consume')
+    Rage       = SafeAbility(bot:GetAbilityByName('life_stealer_rage'), 'life_stealer_rage', 'life_stealer')
+    OpenWounds = SafeAbility(bot:GetAbilityByName('life_stealer_open_wounds'), 'life_stealer_open_wounds', 'life_stealer')
+    Infest     = SafeAbility(bot:GetAbilityByName('life_stealer_infest'), 'life_stealer_infest', 'life_stealer')
+    Consume    = SafeAbility(bot:GetAbilityByName('life_stealer_consume'), 'life_stealer_consume', 'life_stealer')
 
     bAttacking = Fu.IsAttacking(bot)
     botHP = Fu.GetHP(bot)

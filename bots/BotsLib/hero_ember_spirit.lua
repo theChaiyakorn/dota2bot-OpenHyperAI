@@ -112,11 +112,11 @@ function X.MinionThink(hMinionUnit)
 	end
 end
 
-local SearingChains 		= bot:GetAbilityByName( "ember_spirit_searing_chains" )
-local SleightOfFist 		= bot:GetAbilityByName( "ember_spirit_sleight_of_fist" )
-local FlameGuard 			= bot:GetAbilityByName( "ember_spirit_flame_guard" )
-local ActivateFireRemnant 	= bot:GetAbilityByName( "ember_spirit_activate_fire_remnant" )
-local FireRemnant 			= bot:GetAbilityByName( "ember_spirit_fire_remnant" )
+local SearingChains 		= SafeAbility(bot:GetAbilityByName("ember_spirit_searing_chains"), 'ember_spirit_searing_chains', 'ember_spirit')
+local SleightOfFist 		= SafeAbility(bot:GetAbilityByName("ember_spirit_sleight_of_fist"), 'ember_spirit_sleight_of_fist', 'ember_spirit')
+local FlameGuard 			= SafeAbility(bot:GetAbilityByName("ember_spirit_flame_guard"), 'ember_spirit_flame_guard', 'ember_spirit')
+local ActivateFireRemnant 	= SafeAbility(bot:GetAbilityByName("ember_spirit_activate_fire_remnant"), 'ember_spirit_activate_fire_remnant', 'ember_spirit')
+local FireRemnant 			= SafeAbility(bot:GetAbilityByName("ember_spirit_fire_remnant"), 'ember_spirit_fire_remnant', 'ember_spirit')
 
 local SearingChainsDesire
 local SleightOfFistDesire, SoFLocation

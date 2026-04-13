@@ -131,19 +131,20 @@ X['sSkillList'] = Fu.Skill.GetSkillList( sAbilityList, nAbilityBuildList, sTalen
 X['bDeafaultAbility'] = false
 X['bDeafaultItem'] = false
 
-local EchoStomp             = bot:GetAbilityByName('elder_titan_echo_stomp')
-local AstralSpirit          = bot:GetAbilityByName('elder_titan_ancestral_spirit')
-local MoveAstralSpirit      = bot:GetAbilityByName('elder_titan_move_spirit')
-local ReturnAstralSpirit    = bot:GetAbilityByName('elder_titan_return_spirit')
-local NaturalOrder          = bot:GetAbilityByName('elder_titan_natural_order')
-local EarthSplitter         = bot:GetAbilityByName('elder_titan_earth_splitter')
+local EchoStomp             = SafeAbility(bot:GetAbilityByName('elder_titan_echo_stomp'), 'elder_titan_echo_stomp', 'elder_titan')
+local AstralSpirit          = SafeAbility(bot:GetAbilityByName('elder_titan_ancestral_spirit'), 'elder_titan_ancestral_spirit', 'elder_titan')
+local MoveAstralSpirit      = SafeAbility(bot:GetAbilityByName('elder_titan_move_spirit'), 'elder_titan_move_spirit', 'elder_titan')
+local ReturnAstralSpirit    = SafeAbility(bot:GetAbilityByName('elder_titan_return_spirit'), 'elder_titan_return_spirit', 'elder_titan')
+local NaturalOrder          = SafeAbility(bot:GetAbilityByName('elder_titan_natural_order'), 'elder_titan_natural_order', 'elder_titan')
+local EarthSplitter         = SafeAbility(bot:GetAbilityByName('elder_titan_earth_splitter'), 'elder_titan_earth_splitter', 'elder_titan')
 
 local botTarget
 local nEnemyHeroes, nAllyHeroes
 
-local touchedUnits = { }
-bot.theAstralSpirit = nil
-local targetTouchUnits = nil
+local spiritCastLoc = nil   -- where we aimed the spirit
+local spiritCastTime = 0    -- when we cast it
+local SPIRIT_DURATION = 10  -- max spirit lifetime (ability duration)
+
 
 -- Helper: check if enemy is in Chronosphere or Black Hole
 local function IsInChronoOrBlackHole(enemy)
@@ -169,34 +170,22 @@ local function IsInChronoOrBlackHoleWithDuration(enemy, minDuration)
 	return false
 end
 
+-- Spirit is invisible to bot API unit lists. Track state via ability cooldown.
+local function IsSpiritActive()
+	return AstralSpirit and not AstralSpirit:IsFullyCastable()
+		and spiritCastLoc ~= nil
+		and (DotaTime() - spiritCastTime) < SPIRIT_DURATION
+end
+
 function X.MinionThink(hMinionUnit)
-	-- Re-fetch ability handles each tick
-	EchoStomp          = bot:GetAbilityByName('elder_titan_echo_stomp')
-	ReturnAstralSpirit = bot:GetAbilityByName('elder_titan_return_spirit')
-
-	if Fu.Utils.IsUnitWithName(hMinionUnit, 'elder_titan_ancestral_spirit') and SpiritShouldBeAvailable() then
-        bot.theAstralSpirit = hMinionUnit
-
-		if EchoStomp:IsInAbilityPhase() or bot:IsChanneling() then bot:Action_ClearActions(false); return end
-		if bot:IsUsingAbility() or bot:IsCastingAbility() then return end
-		if hMinionUnit:IsUsingAbility() or hMinionUnit:IsCastingAbility() then return end
-
-        if ConsiderEchoStomp(bot.theAstralSpirit) > 0 then
-            bot:Action_UseAbility(EchoStomp)
-            return
-        end
-
-		if ConsiderReturnMinion() > 0 then
-			bot:Action_UseAbility(ReturnAstralSpirit)
-            return
-        end
-	end
-
     Minion.MinionThink(hMinionUnit)
 end
 
 local bGoingOnSomeone
 local bInTeamFight
+local fLastSpiritMoveTime = 0
+local SPIRIT_MOVE_INTERVAL = 1.0 -- only redirect spirit every 3s to avoid interrupting hero
+
 function X.SkillsComplement()
 	if Fu.CanNotUseAbility(bot) or bot:IsCastingAbility() or bot:IsChanneling() then return end
 
@@ -204,44 +193,64 @@ function X.SkillsComplement()
 	bGoingOnSomeone = ctx.isEngaging
 	bInTeamFight = ctx.isTeamFight
 
-	-- Re-fetch ability handles each tick
-	EchoStomp          = bot:GetAbilityByName('elder_titan_echo_stomp')
-	AstralSpirit       = bot:GetAbilityByName('elder_titan_ancestral_spirit')
-	MoveAstralSpirit   = bot:GetAbilityByName('elder_titan_move_spirit')
-	ReturnAstralSpirit = bot:GetAbilityByName('elder_titan_return_spirit')
-	NaturalOrder       = bot:GetAbilityByName('elder_titan_natural_order')
-	EarthSplitter      = bot:GetAbilityByName('elder_titan_earth_splitter')
-
 	-- Cache per-tick variables
     nEnemyHeroes = ctx.enemies
     nAllyHeroes = ctx.allies
-
     botTarget = ctx.target
 
+	MoveAstralSpirit      = SafeAbility(bot:GetAbilityByName('elder_titan_move_spirit'), 'elder_titan_move_spirit', 'elder_titan')
+	ReturnAstralSpirit    = SafeAbility(bot:GetAbilityByName('elder_titan_return_spirit'), 'elder_titan_return_spirit', 'elder_titan')
+
+	-- 1) Always prioritize non-spirit skills first (echo stomp, earth splitter)
+	--    These run even when spirit is out
 	if ConsiderEchoStomp(bot) > 0 then
 		bot:Action_UseAbility(EchoStomp)
 		return
 	end
 
-    local AstralSpiritDesire, AstralSpiritLocation = ConsiderAstralSpirit()
-    if AstralSpiritDesire > 0 then
-		Fu.SetQueuePtToINT(bot, false)
-		touchedUnits = { }
-        targetTouchUnits = nil
-		bot:ActionQueue_UseAbilityOnLocation(AstralSpirit, AstralSpiritLocation)
-    end
-
     local EarthSplitterDesire, EarthSplitterLocation = ConsiderEarthSplitter()
     if EarthSplitterDesire > 0 then
 		Fu.SetQueuePtToINT(bot, false)
 		bot:ActionQueue_UseAbilityOnLocation(EarthSplitter, EarthSplitterLocation)
+		return
     end
 
-    local castMoveAstralSpiritDesire, castMoveAstralSpiritLocation = ConsiderMoveAstralSpirit();
-	if castMoveAstralSpiritDesire > 0
-    then
-        bot:Action_UseAbilityOnLocation(MoveAstralSpirit, castMoveAstralSpiritLocation);
-        return;
+	-- 2) Spirit active: return or occasionally redirect
+	if IsSpiritActive() then
+		-- Return spirit when conditions met
+		if ConsiderReturnSpirit() > 0 and ReturnAstralSpirit ~= nil and Fu.CanCastAbility(ReturnAstralSpirit) then
+			bot:Action_UseAbility(ReturnAstralSpirit)
+			return
+		end
+
+		-- Move spirit only when safe and throttled (every 3s)
+		-- Skip if bot is being hit — don't interrupt retreat/fighting
+		local closestEnemy = nEnemyHeroes and nEnemyHeroes[1] or nil
+		local bInEnemyRange = Fu.IsValidHero(closestEnemy) and Fu.IsInRange(bot, closestEnemy, closestEnemy:GetAttackRange() + 150)
+		if DotaTime() > fLastSpiritMoveTime + SPIRIT_MOVE_INTERVAL
+		and not bot:WasRecentlyDamagedByAnyHero(2.0)
+		and not bot:WasRecentlyDamagedByTower(2.0)
+		and not bInEnemyRange
+		and MoveAstralSpirit ~= nil and Fu.CanCastAbility(MoveAstralSpirit)
+		then
+			local moveDesire, moveLoc = ConsiderMoveAstralSpirit()
+			if moveDesire > 0 and moveLoc ~= nil then
+				bot:Action_UseAbilityOnLocation(MoveAstralSpirit, moveLoc)
+				fLastSpiritMoveTime = DotaTime()
+			end
+		end
+		-- Don't block other hero actions — just return without casting anything else
+		return
+	end
+
+	-- 3) No spirit out: consider casting Astral Spirit
+    local AstralSpiritDesire, AstralSpiritLocation = ConsiderAstralSpirit()
+    if AstralSpiritDesire > 0 then
+		Fu.SetQueuePtToINT(bot, false)
+		spiritCastLoc = AstralSpiritLocation
+		spiritCastTime = DotaTime()
+		fLastSpiritMoveTime = DotaTime() -- don't immediately move after casting
+		bot:ActionQueue_UseAbilityOnLocation(AstralSpirit, AstralSpiritLocation)
     end
 end
 
@@ -264,41 +273,45 @@ function ConsiderAstralSpirit()
 	return BOT_ACTION_DESIRE_NONE
 end
 
-function SpiritShouldBeAvailable()
-    return not ReturnAstralSpirit:IsHidden() and ReturnAstralSpirit:GetCooldownTimeRemaining() == 0
-end
-
 function ConsiderMoveAstralSpirit()
-    if not MoveAstralSpirit:IsFullyCastable() then return BOT_ACTION_DESIRE_NONE end
-    if not SpiritShouldBeAvailable() then return BOT_ACTION_DESIRE_NONE end
-    if bot.theAstralSpirit == nil then return BOT_ACTION_DESIRE_NONE end
+    if MoveAstralSpirit == nil then return BOT_ACTION_DESIRE_NONE end
+    if not IsSpiritActive() then return BOT_ACTION_DESIRE_NONE end
 
-    if targetTouchUnits == nil then
-        local enemyCreeps = bot:GetNearbyCreeps(1600, true);
-        targetTouchUnits = Fu.Utils.CombineTablesUnique(nEnemyHeroes, enemyCreeps)
-    end
-
-    if targetTouchUnits ~= nil then
-        if #targetTouchUnits >= 1 and #touchedUnits < #targetTouchUnits then
-            for i, enemy in pairs(targetTouchUnits)
-            do
-                if Fu.IsValid(enemy)
-                and (not Fu.Utils.HasValue(touchedUnits, enemy))
-                and Fu.Utils.GetLocationToLocationDistance(bot.theAstralSpirit:GetLocation(), enemy:GetLocation()) > 30 then
-                    return BOT_ACTION_DESIRE_VERYHIGH, enemy:GetLocation();
-                else
-                    table.remove(targetTouchUnits, i)
-                    table.insert(touchedUnits, enemy)
-                end
+    -- Move spirit toward the closest visible enemy hero near the cast area
+    local enemies = nEnemyHeroes or bot:GetNearbyHeroes(1600, true, BOT_MODE_NONE) or {}
+    local bestTarget = nil
+    local bestDist = 99999
+    for _, enemy in pairs(enemies) do
+        if Fu.IsValidHero(enemy) then
+            local dist = Fu.Utils.GetLocationToLocationDistance(spiritCastLoc, enemy:GetLocation())
+            if dist < bestDist then
+                bestDist = dist
+                bestTarget = enemy
             end
         end
+    end
+
+    if bestTarget ~= nil then
+        return BOT_ACTION_DESIRE_VERYHIGH, bestTarget:GetLocation()
+    end
+
+    return BOT_ACTION_DESIRE_NONE
+end
+
+function ConsiderReturnSpirit()
+    -- Return spirit after it's been out long enough to have hit things
+    if not IsSpiritActive() then return BOT_ACTION_DESIRE_NONE end
+    local elapsed = DotaTime() - spiritCastTime
+    -- Return after 4+ seconds, or if no enemies nearby to move toward
+    if elapsed >= 4 then
+        return BOT_ACTION_DESIRE_HIGH
     end
     return BOT_ACTION_DESIRE_NONE
 end
 
 function ConsiderEarthSplitter()
 	if not EarthSplitter:IsFullyCastable() then return BOT_ACTION_DESIRE_NONE end
-    if bot:IsUsingAbility() or bot:IsCastingAbility() then return BOT_ACTION_DESIRE_NONE end
+    if bot:IsCastingAbility() then return BOT_ACTION_DESIRE_NONE end
 
 	local nCastRange = EarthSplitter:GetSpecialValueInt('AbilityCastRange')
     local crack_width = 300
@@ -347,16 +360,6 @@ function ConsiderEarthSplitter()
 		end
 
 	end
-	return BOT_ACTION_DESIRE_NONE
-end
-
-function ConsiderReturnMinion()
-    if bot:IsUsingAbility() or bot:IsCastingAbility() then return BOT_ACTION_DESIRE_NONE end
-
-    if targetTouchUnits ~= nil and #touchedUnits >= #targetTouchUnits * 0.7 then
-        return BOT_ACTION_DESIRE_HIGH
-    end
-
 	return BOT_ACTION_DESIRE_NONE
 end
 

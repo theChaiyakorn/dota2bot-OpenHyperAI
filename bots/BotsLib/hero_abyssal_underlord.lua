@@ -126,10 +126,10 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local Firestorm     = bot:GetAbilityByName('abyssal_underlord_firestorm')
-local PitOfMalice   = bot:GetAbilityByName('abyssal_underlord_pit_of_malice')
+local Firestorm     = SafeAbility(bot:GetAbilityByName('abyssal_underlord_firestorm'), 'abyssal_underlord_firestorm', 'abyssal_underlord')
+local PitOfMalice   = SafeAbility(bot:GetAbilityByName('abyssal_underlord_pit_of_malice'), 'abyssal_underlord_pit_of_malice', 'abyssal_underlord')
 -- local AtrophyAura   = bot:GetAbilityByName('abyssal_underlord_atrophy_aura')
-local FiendsGate    = bot:GetAbilityByName('abyssal_underlord_dark_portal')
+local FiendsGate    = SafeAbility(bot:GetAbilityByName('abyssal_underlord_dark_portal'), 'abyssal_underlord_dark_portal', 'abyssal_underlord')
 
 local FirestormDesire, FirestormLocation
 local PitOfMaliceDesire, PitOfMaliceLocation

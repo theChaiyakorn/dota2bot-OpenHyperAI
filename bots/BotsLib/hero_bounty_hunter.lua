@@ -211,12 +211,12 @@ modifier_bounty_hunter_track
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local FriendlyShadow = bot:GetAbilityByName( 'bounty_hunter_wind_walk_ally' )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local talent3 = bot:GetAbilityByName( sTalentList[3] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'bounty_hunter')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'bounty_hunter')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'bounty_hunter')
+local FriendlyShadow = SafeAbility(bot:GetAbilityByName('bounty_hunter_wind_walk_ally'), 'bounty_hunter_wind_walk_ally', 'bounty_hunter')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'bounty_hunter')
+local talent3 = SafeAbility(bot:GetAbilityByName(sTalentList[3]), 'sTalentList[3]', 'bounty_hunter')
 
 local castQDesire, castQTarget
 local castEDesire
@@ -241,8 +241,7 @@ function X.SkillsComplement()
 	hAllyList = ctx.allies
 	if talent3:IsTrained() then talent3Damage = talent3:GetSpecialValueInt( "value" ) end
 
-
-
+	castEDesire = X.ConsiderE()
 	if ( castEDesire > 0 )
 	then
 
@@ -260,7 +259,7 @@ function X.SkillsComplement()
 		return
 	end
 
-
+	castRDesire, castRTarget = X.ConsiderR()
 	if ( castRDesire > 0 )
 	then
 
@@ -270,7 +269,7 @@ function X.SkillsComplement()
 		return
 	end
 
-
+	castQDesire, castQTarget = X.ConsiderQ()
 	if ( castQDesire > 0 )
 	then
 

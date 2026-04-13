@@ -121,12 +121,12 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local StrokeOfFate      = bot:GetAbilityByName('grimstroke_dark_artistry')
-local PhantomsEmbrace   = bot:GetAbilityByName('grimstroke_ink_creature')
-local InkSwell          = bot:GetAbilityByName('grimstroke_spirit_walk')
-local InkExplosion      = bot:GetAbilityByName('grimstroke_return')
-local DarkPortrait      = bot:GetAbilityByName('grimstroke_dark_portrait')
-local SoulBind          = bot:GetAbilityByName('grimstroke_soul_chain')
+local StrokeOfFate      = SafeAbility(bot:GetAbilityByName('grimstroke_dark_artistry'), 'grimstroke_dark_artistry', 'grimstroke')
+local PhantomsEmbrace   = SafeAbility(bot:GetAbilityByName('grimstroke_ink_creature'), 'grimstroke_ink_creature', 'grimstroke')
+local InkSwell          = SafeAbility(bot:GetAbilityByName('grimstroke_spirit_walk'), 'grimstroke_spirit_walk', 'grimstroke')
+local InkExplosion      = SafeAbility(bot:GetAbilityByName('grimstroke_return'), 'grimstroke_return', 'grimstroke')
+local DarkPortrait      = SafeAbility(bot:GetAbilityByName('grimstroke_dark_portrait'), 'grimstroke_dark_portrait', 'grimstroke')
+local SoulBind          = SafeAbility(bot:GetAbilityByName('grimstroke_soul_chain'), 'grimstroke_soul_chain', 'grimstroke')
 
 local StrokeOfFateDesire, StrokeOfFateLocation
 local PhantomsEmbraceDesire, PhantomsEmbraceTarget

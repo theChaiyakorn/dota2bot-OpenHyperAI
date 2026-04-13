@@ -140,12 +140,12 @@ modifier_skeleton_king_reincarnation_scepter_active
 
 --]]
 
-local abilityQ = bot:GetAbilityByName('skeleton_king_hellfire_blast')
-local abilityW = bot:GetAbilityByName('skeleton_king_spectral_blade')
-local abilityE = bot:GetAbilityByName('skeleton_king_mortal_strike')
-local abilityR = bot:GetAbilityByName('skeleton_king_reincarnation')
-local talent5 = bot:GetAbilityByName( sTalentList[5] )
-local talent6 = bot:GetAbilityByName( sTalentList[6] )
+local abilityQ = SafeAbility(bot:GetAbilityByName('skeleton_king_hellfire_blast'), 'skeleton_king_hellfire_blast', 'skeleton_king')
+local abilityW = SafeAbility(bot:GetAbilityByName('skeleton_king_spectral_blade'), 'skeleton_king_spectral_blade', 'skeleton_king')
+local abilityE = SafeAbility(bot:GetAbilityByName('skeleton_king_mortal_strike'), 'skeleton_king_mortal_strike', 'skeleton_king')
+local abilityR = SafeAbility(bot:GetAbilityByName('skeleton_king_reincarnation'), 'skeleton_king_reincarnation', 'skeleton_king')
+local talent5 = SafeAbility(bot:GetAbilityByName(sTalentList[5]), 'sTalentList[5]', 'skeleton_king')
+local talent6 = SafeAbility(bot:GetAbilityByName(sTalentList[6]), 'sTalentList[6]', 'skeleton_king')
 
 local castQDesire, castQTarget
 local castWDesire
@@ -157,7 +157,7 @@ function X.SkillsComplement()
 
 
 	if Fu.CanNotUseAbility( bot ) or bot:IsInvisible() then return end
-    if not abilityW or abilityW:IsHidden() then abilityW = bot:GetAbilityByName('skeleton_king_bone_guard') end
+    if not abilityW or abilityW:IsHidden() then abilityW = SafeAbility(bot:GetAbilityByName('skeleton_king_bone_guard'), 'skeleton_king_bone_guard', 'skeleton_king') end
 
 	local ctx = AbilityCtx.Build(bot)
 	nKeepMana = 160

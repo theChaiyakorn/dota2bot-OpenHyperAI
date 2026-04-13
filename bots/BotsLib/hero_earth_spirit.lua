@@ -153,13 +153,13 @@ function X.MinionThink(hMinionUnit)
 
 end
 
-local BoulderSmash = bot:GetAbilityByName( "earth_spirit_boulder_smash" )
-local RollingBoulder = bot:GetAbilityByName( "earth_spirit_rolling_boulder" )
-local GeomagneticGrip = bot:GetAbilityByName( "earth_spirit_geomagnetic_grip" )
-local StoneRemnant = bot:GetAbilityByName( "earth_spirit_stone_caller" )
-local Magnetize = bot:GetAbilityByName( "earth_spirit_magnetize" )
-local GripAllies = bot:GetAbilityByName( "special_bonus_unique_earth_spirit_2" )
-local EchantRemnant = bot:GetAbilityByName( "earth_spirit_petrify" )
+local BoulderSmash = SafeAbility(bot:GetAbilityByName("earth_spirit_boulder_smash"), 'earth_spirit_boulder_smash', 'earth_spirit')
+local RollingBoulder = SafeAbility(bot:GetAbilityByName("earth_spirit_rolling_boulder"), 'earth_spirit_rolling_boulder', 'earth_spirit')
+local GeomagneticGrip = SafeAbility(bot:GetAbilityByName("earth_spirit_geomagnetic_grip"), 'earth_spirit_geomagnetic_grip', 'earth_spirit')
+local StoneRemnant = SafeAbility(bot:GetAbilityByName("earth_spirit_stone_caller"), 'earth_spirit_stone_caller', 'earth_spirit')
+local Magnetize = SafeAbility(bot:GetAbilityByName("earth_spirit_magnetize"), 'earth_spirit_magnetize', 'earth_spirit')
+local GripAllies = SafeAbility(bot:GetAbilityByName("special_bonus_unique_earth_spirit_2"), 'special_bonus_unique_earth_spirit_2', 'earth_spirit')
+local EchantRemnant = SafeAbility(bot:GetAbilityByName("earth_spirit_petrify"), 'earth_spirit_petrify', 'earth_spirit')
 
 local BoulderSmashDesire, BoulderSmashLocation, CanRemnantSmashCombo, CanKickNearbyStone
 local RollingBoulderDesire, RollingBoulderLocation, CanRemnantRollCombo

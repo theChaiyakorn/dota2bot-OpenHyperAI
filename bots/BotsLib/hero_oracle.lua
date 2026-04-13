@@ -134,12 +134,12 @@ modifier_oracle_false_promise
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local talent3 = bot:GetAbilityByName( sTalentList[3] )
-local abilityD = bot:GetAbilityByName( sAbilityList[4] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'oracle')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'oracle')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'oracle')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'oracle')
+local talent3 = SafeAbility(bot:GetAbilityByName(sTalentList[3]), 'sTalentList[3]', 'oracle')
+local abilityD = SafeAbility(bot:GetAbilityByName(sAbilityList[4]), 'sAbilityList[4]', 'oracle')
 
 local castQDesire, castQTarget
 local castWDesire, castWTarget

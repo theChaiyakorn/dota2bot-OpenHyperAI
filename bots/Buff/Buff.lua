@@ -41,20 +41,20 @@ function Buff:AddBotsToTable()
             local playerID = PlayerResource:GetNthPlayerIDOnTeam(nTeam, i)
             local player = PlayerResource:GetPlayer(playerID)
             -- local connectionState = PlayerResource:GetConnectionState(playerID)
-            -- print('Setting up Buff for player: '..playerID..', connection state: '..tostring(connectionState))
+            -- log('Setting up Buff for player: '..playerID..', connection state: '..tostring(connectionState))
             if player then
                 local hero = player:GetAssignedHero()
                 local team = player:GetTeam()
                 if hero ~= nil then
                     if PlayerResource:GetSteamID(hero:GetMainControllingPlayer()) == PlayerResource:GetSteamID(100) then
-                        -- print('Instering bot player: '..hero:GetUnitName()..', to team: '..team)
+                        -- log('Instering bot player: '..hero:GetUnitName()..', to team: '..team)
                         table.insert(botTable[team], hero)
                     end
                 else
-                    -- print('[WARN] Failed to add player '.. playerID .. ' to bots list. Spectator?')
+                    -- log('[WARN] Failed to add player '.. playerID .. ' to bots list. Spectator?')
                 end
             else
-                -- print('[WARN] Failed to add player '.. playerID .. ' to bots list. Spectator?')
+                -- log('[WARN] Failed to add player '.. playerID .. ' to bots list. Spectator?')
             end
         end
     end
@@ -67,7 +67,7 @@ function Buff:Init()
 
     if initDelay < initDelayDuration then
         if GameRules:State_Get() > 6 then initDelay = initDelay + 1 end
-        -- print('[Buff] Wait for all heroes to be loaded in game...')
+        -- log('[Buff] Wait for all heroes to be loaded in game...')
         return 1
     end
     Timers:RemoveTimer(InitTimerName)

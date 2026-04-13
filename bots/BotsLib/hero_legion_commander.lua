@@ -109,12 +109,12 @@ modifier_legion_commander_duel
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local talent2 = bot:GetAbilityByName( sTalentList[2] )
-local talent5 = bot:GetAbilityByName( sTalentList[5] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'legion_commander')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'legion_commander')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'legion_commander')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'legion_commander')
+local talent2 = SafeAbility(bot:GetAbilityByName(sTalentList[2]), 'sTalentList[2]', 'legion_commander')
+local talent5 = SafeAbility(bot:GetAbilityByName(sTalentList[5]), 'sTalentList[5]', 'legion_commander')
 
 local castQDesire, castQTarget
 local castWDesire, castWTarget

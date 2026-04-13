@@ -365,7 +365,7 @@ export const GetClosestNeutralSpwan = function (bot: Unit, availableCampList: an
         let dist = GetUnitToLocationDistance(bot, camp.cattr.location);
         if (IsEnemyCamp(camp)) dist *= 1.5;
 
-        if (IsTheClosestOne(bot, camp.cattr.location) && dist < minDist && (bot.GetLevel() >= 10 || !IsAncientCamp(camp))) {
+        if (IsTheClosestOne(bot, camp.cattr.location) && dist < minDist && (!IsAncientCamp(camp) || (bot.GetLevel() >= 10 && (bot as any).GetArmor() >= 6))) {
             minDist = dist;
             closestCamp = camp;
         }
@@ -571,7 +571,8 @@ export const IsModeSuitableToFarm = function (bot: Unit): boolean {
 };
 
 export const IsTimeToFarm = function (bot: Unit): boolean {
-    if (DotaTime() < 5 * 60 || DotaTime() > 90 * 60) {
+    const farmMinTime = IsModeTurbo() ? 3 * 60 : 5 * 60;
+    if (DotaTime() < farmMinTime || DotaTime() > 90 * 60) {
         return false;
     }
 

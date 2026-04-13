@@ -87,11 +87,11 @@ function X.MinionThink(hMinionUnit)
 
 end
 
-local AcidSpray                 = bot:GetAbilityByName( "alchemist_acid_spray" )
-local UnstableConcoction        = bot:GetAbilityByName( "alchemist_unstable_concoction" )
-local UnstableConcoctionThrow   = bot:GetAbilityByName( "alchemist_unstable_concoction_throw" )
-local ChemicalRage              = bot:GetAbilityByName( "alchemist_chemical_rage" )
-local BerserkPotion             = bot:GetAbilityByName( "alchemist_berserk_potion" )
+local AcidSpray                 = SafeAbility(bot:GetAbilityByName("alchemist_acid_spray"), 'alchemist_acid_spray', 'alchemist')
+local UnstableConcoction        = SafeAbility(bot:GetAbilityByName("alchemist_unstable_concoction"), 'alchemist_unstable_concoction', 'alchemist')
+local UnstableConcoctionThrow   = SafeAbility(bot:GetAbilityByName("alchemist_unstable_concoction_throw"), 'alchemist_unstable_concoction_throw', 'alchemist')
+local ChemicalRage              = SafeAbility(bot:GetAbilityByName("alchemist_chemical_rage"), 'alchemist_chemical_rage', 'alchemist')
+local BerserkPotion             = SafeAbility(bot:GetAbilityByName("alchemist_berserk_potion"), 'alchemist_berserk_potion', 'alchemist')
 
 local AcidSprayDesire, AcidSprayLocation
 local UnstableConcoctionDesire

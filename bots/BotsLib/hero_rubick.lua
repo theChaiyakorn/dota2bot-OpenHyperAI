@@ -167,13 +167,13 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local Telekinesis       = bot:GetAbilityByName('rubick_telekinesis')
-local TelekinesisLand   = bot:GetAbilityByName('rubick_telekinesis_land')
-local FadeBolt          = bot:GetAbilityByName('rubick_fade_bolt')
+local Telekinesis       = SafeAbility(bot:GetAbilityByName('rubick_telekinesis'), 'rubick_telekinesis', 'rubick')
+local TelekinesisLand   = SafeAbility(bot:GetAbilityByName('rubick_telekinesis_land'), 'rubick_telekinesis_land', 'rubick')
+local FadeBolt          = SafeAbility(bot:GetAbilityByName('rubick_fade_bolt'), 'rubick_fade_bolt', 'rubick')
 -- local ArcaneSupremacy   = bot:GetAbilityByName('rubick_null_field')
-local StolenSpell1      = bot:GetAbilityByName('rubick_empty1')
-local StolenSpell2      = bot:GetAbilityByName('rubick_empty2')
-local SpellSteal        = bot:GetAbilityByName('rubick_spell_steal')
+local StolenSpell1      = SafeAbility(bot:GetAbilityByName('rubick_empty1'), 'rubick_empty1', 'rubick')
+local StolenSpell2      = SafeAbility(bot:GetAbilityByName('rubick_empty2'), 'rubick_empty2', 'rubick')
+local SpellSteal        = SafeAbility(bot:GetAbilityByName('rubick_spell_steal'), 'rubick_spell_steal', 'rubick')
 
 local TelekinesisDesire, TelekinesisTarget
 local TelekinesisLandDesire, TelekinesisLandLocation
@@ -404,7 +404,7 @@ function X.ConsiderTelekinesisLand()
     end
 
     local nDistance = TelekinesisLand:GetSpecialValueInt('radius')
-    local nTalent8 = bot:GetAbilityByName('special_bonus_unique_rubick_8')
+    local nTalent8 = SafeAbility(bot:GetAbilityByName('special_bonus_unique_rubick_8'), 'special_bonus_unique_rubick_8', 'rubick')
     if nTalent8:IsTrained()
     then
         nDistance = nDistance + nTalent8:GetSpecialValueInt('value')
@@ -746,22 +746,22 @@ function X.ConsiderSpellSteal()
     local nInRangeEnemy = Fu.GetEnemiesNearLoc(bot:GetLocation(), nCastRange + 300)
     for _, enemyHero in pairs(nInRangeEnemy)
     do
-        -- print("Rubick considering spell steal on an enemy...")
+        -- log("Rubick considering spell steal on an enemy...")
         if Fu.IsValidHero(enemyHero)
         and Fu.CanCastOnTargetAdvanced(enemyHero)
         and not Fu.IsSuspiciousIllusion(enemyHero)
         and not Fu.IsMeepoClone(enemyHero)
         then
-            -- print("Rubick considering spell steal on a valid target enemy...")
+            -- log("Rubick considering spell steal on a valid target enemy...")
             if enemyHero:IsUsingAbility()
             or enemyHero:IsCastingAbility()
             or Fu.IsCastingUltimateAbility(enemyHero)
             or enemyHero:GetLevel() > 10
             then
-                -- print("Rubick considering spell steal on a valid target enemy that casted an ability...")
+                -- log("Rubick considering spell steal on a valid target enemy that casted an ability...")
                 local ss1Weight = SPL.GetSpellReplaceWeight(StolenSpell1) * 100
                 local ranInt = RandomInt(1, 70)
-                -- print("Rubick considering spell steal on a valid target enemy that casted an ability: weight="..ss1Weight..", random int="..ranInt)
+                -- log("Rubick considering spell steal on a valid target enemy that casted an ability: weight="..ss1Weight..", random int="..ranInt)
 
                 if bot:HasScepter()
                 then

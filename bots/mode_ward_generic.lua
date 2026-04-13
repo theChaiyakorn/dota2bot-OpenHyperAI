@@ -27,14 +27,14 @@ function GetDesire()
 	-- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
 	local res = GetDesireHelper()
 	-- Fu.Utils.SetCachedVars(cacheKey, res)
-	return GetAdjustedDesireValue(RemapValClamped(Fu.GetHP(bot) * res, 0, 1, BOT_MODE_DESIRE_NONE, res))
+	return RemapValClamped(Fu.GetHP(bot) * res, 0, 1, BOT_MODE_DESIRE_NONE, res)
 end
 function GetDesireHelper()
     if not X.IsSuitableToWard() then
         return BOT_MODE_DESIRE_NONE
     end
 
-	-- 如果在打高地 就别撤退去干别的
+	-- Don't leave team when pushing or defending together
 	if Fu.Utils.IsTeamPushingSecondTierOrHighGround(bot) then
 		return BOT_MODE_DESIRE_NONE
 	end
@@ -59,14 +59,12 @@ function GetDesireHelper()
         local hAvailabeObserverWardSpots = W.GetAvailabeObserverWardSpots(bot)
         hTargetSpot = W.GetClosestObserverWardSpot(bot, hAvailabeObserverWardSpots)
 		if hTargetSpot and (not X.IsEnemyCloserToWardLocation(hTargetSpot.location) or Fu.IsRealInvisible(bot)) then
-			if DotaTime() < 0 and DotaTime() > (Fu.IsModeTurbo() and -45 or -60) then
+			if DotaTime() > 0 and GetUnitToLocationDistance(bot, hTargetSpot.location) > 4000 then
+				-- Too far from ward spot, don't walk across the map
+			elseif DotaTime() < 0 and DotaTime() > (Fu.IsModeTurbo() and -45 or -60) then
 				return BOT_MODE_DESIRE_ABSOLUTE
-			end
-
-			if DotaTime() > fLastWardPlantTime + 1.0 then
-				if GetUnitToLocationDistance(bot, hTargetSpot.location) <= 3200 then
-					return BOT_MODE_DESIRE_VERYHIGH
-				end
+			elseif DotaTime() > fLastWardPlantTime + 1.0 then
+				return BOT_MODE_DESIRE_VERYHIGH
 			end
 		end
     end
@@ -87,10 +85,10 @@ function GetDesireHelper()
         local hPossibleSentryWardSpots = W.GetPossibleSentryWardSpots(bot)
         hTargetSpot = W.GetClosestSentryWardSpot(bot, hPossibleSentryWardSpots)
 		if hTargetSpot and (not X.IsEnemyCloserToWardLocation(hTargetSpot.location) or Fu.IsRealInvisible(bot)) then
-			if DotaTime() > fLastWardPlantTime + 1.0 then
-				if GetUnitToLocationDistance(bot, hTargetSpot.location) <= 3200 then
-					return BOT_MODE_DESIRE_VERYHIGH
-				end
+			if DotaTime() > 0 and GetUnitToLocationDistance(bot, hTargetSpot.location) > 4000 then
+				-- Too far from ward spot, don't walk across the map
+			elseif DotaTime() > fLastWardPlantTime + 1.0 then
+				return BOT_MODE_DESIRE_VERYHIGH
 			end
 		end
     end
@@ -100,7 +98,7 @@ end
 
 function Think()
 	if Fu.CanNotUseAction(bot) then return end
-	if Fu.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "ward") then return end
+	-- if Fu.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "ward") then return end
 	if hTargetSpot then
 		if ObserverWard and Fu.CanCastAbility(ObserverWard) then
 			if GetUnitToLocationDistance(bot, hTargetSpot.location) <= nObserverWardCastRange then
@@ -205,4 +203,11 @@ function X.IsEnemyCloserToWardLocation(vLocation)
 	end
 
 	return false
+end
+-- SafeCall wrapping for error protection
+if SafeCall then
+  local _origGetDesire = GetDesire
+  local _origThink = Think
+  if _origGetDesire then GetDesire = SafeCall(_origGetDesire, 0, 'WARD_GetDesire') end
+  if _origThink then Think = SafeCall(_origThink, nil, 'WARD_Think') end
 end

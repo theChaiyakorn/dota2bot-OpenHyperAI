@@ -133,7 +133,7 @@ local function splitHeroNameFromMessage(message)
 end
 
 function Chat:HandleFailMessage(message, isBotSay)
-    -- print("API Failure: " .. message)
+    -- log("API Failure: " .. message)
     countErrorMsg = countErrorMsg + 1
     if countErrorMsg <= 3 then
         if isBotSay then
@@ -154,7 +154,7 @@ function Chat:HandleFailMessage(message, isBotSay)
 end
 
 function Chat:HandleResponseMessage(inputText, message)
-    -- print("API Response: " .. message)
+    -- log("API Response: " .. message)
     local foundBot = false
     local aiText, heroHame = splitHeroNameFromMessage(message)
     if heroHame then

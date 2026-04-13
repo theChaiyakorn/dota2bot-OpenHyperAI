@@ -39,8 +39,8 @@ local sItemSellList = BotBuild['sSellList']
 
 
 if sPurchaseList == nil then
-	print("[ERROR] Can't load purchase list for: " .. botName)
-	print("Stack Trace:", debug.traceback())
+	log("[ERROR] Can't load purchase list for: " .. botName)
+	log("Stack Trace:", debug.traceback())
 	return
 end
 
@@ -352,7 +352,7 @@ local function GeneralPurchase()
 						ClearCurrBuyingBasicItemList()
 						bot.SecretShop = false
 					else
-						print( botName.." 未能购买物品 "..bot.currBuyingBasicItem.." : "..tostring( bot:ActionImmediate_PurchaseItem( bot.currBuyingBasicItem ) ) )
+						log( botName.." 未能购买物品 "..bot.currBuyingBasicItem.." : "..tostring( bot:ActionImmediate_PurchaseItem( bot.currBuyingBasicItem ) ) )
 					end
 				end
 			end
@@ -430,7 +430,7 @@ local function TurboModeGeneralPurchase()
 				-- out of stock, skip that item.
 				ClearCurrBuyingBasicItemList()
 			else
-				print( botName.." 未能购买物品 "..bot.currBuyingBasicItem.." : "..tostring( bot:ActionImmediate_PurchaseItem( bot.currBuyingBasicItem ) ) )
+				log( botName.." 未能购买物品 "..bot.currBuyingBasicItem.." : "..tostring( bot:ActionImmediate_PurchaseItem( bot.currBuyingBasicItem ) ) )
 			end
 		end
 	end
@@ -444,7 +444,7 @@ function ItemPurchaseThink()
 	if isStale then return end
 	if freshName ~= botName then
 		if not freshBot:IsAlive() then return end
-		print("[ARDM] Item purchase: hero changed from "..botName.." to "..freshName)
+		log("[ARDM] Item purchase: hero changed from "..botName.." to "..freshName)
 		bot = freshBot
 		botName = freshName
 
@@ -531,7 +531,7 @@ function ItemPurchaseThink()
 			if item ~= nil then
 				if string.find(entry.name, 'recipe') or entry.cost < 1000 then
 					bot:ActionImmediate_SellItem(item)
-					print("[ARDM] Sold: "..entry.name.." (cost: "..entry.cost..")")
+					log("[ARDM] Sold: "..entry.name.." (cost: "..entry.cost..")")
 				end
 			end
 		end
@@ -548,7 +548,7 @@ function ItemPurchaseThink()
 				local item = bot:GetItemInSlot(entry.slot)
 				if item ~= nil then
 					bot:ActionImmediate_SellItem(item)
-					print("[ARDM] Sold (full inv): "..entry.name.." (cost: "..entry.cost..")")
+					log("[ARDM] Sold (full inv): "..entry.name.." (cost: "..entry.cost..")")
 					nFreeSlots = nFreeSlots + 1
 				end
 			end
@@ -568,7 +568,7 @@ function ItemPurchaseThink()
 	if bot.needPurchaseRebuild then
 		bot.needPurchaseRebuild = nil
 		local nNewPos = Fu.GetPosition(bot)
-		print("[PosSwap] Item purchase rebuild for "..botName.." -> pos"..nNewPos)
+		log("[PosSwap] Item purchase rebuild for "..botName.." -> pos"..nNewPos)
 
 		-- Reload BotBuild to get new role's item list
 		local heroFile = string.gsub(botName, "npc_dota_", "")
@@ -627,7 +627,7 @@ function ItemPurchaseThink()
 		bot.currBuyingRequiredCounts = nil
 		bot.rebuildCount = 0
 		bot.countInvCheck = 0
-		print("[PosSwap] Purchase list rebuilt with "..#bot.purchaseListInReverseOrder.." items")
+		log("[PosSwap] Purchase list rebuilt with "..#bot.purchaseListInReverseOrder.." items")
 	end
 
 	if bot.lastItemPurchaseFrameProcessTime == nil then bot.lastItemPurchaseFrameProcessTime = currentTime end
@@ -669,50 +669,28 @@ function ItemPurchaseThink()
 		end
 	end
 
-	if bot == Utils.GetLoneDruid(bot).hero then
-		local bear = Utils.GetLoneDruid(bot).bear
-		if bear ~= nil then
-			local hEnemyList = Fu.GetNearbyHeroes(bot, 1000, true, BOT_MODE_NONE)
-			if #hEnemyList >= 1 then return end
-			
-			if not bear:IsAlive() or bear:IsChanneling() or bear:IsUsingAbility() or Utils.CountBackpackEmptySpace(bear) <= 0 then return end
-			if bear:HasModifier('modifier_item_ultimate_scepter_consumed') then return end
-
-			local bearNetworth = Item.GetItemTotalWorthInSlots(bear)
-			if GetUnitToUnitDistance(bot, bear) < 400 then
-				for i = 0, 9
-				do
-					local item = bot:GetItemInSlot( i )
-					if item ~= nil
-					then
-						local itemName = item:GetName()
-						if Utils.HasValue(Item['tEarlyConsumableItem'], itemName)
-						or Utils.HasValue(Item['item_ultimate_scepter'], itemName)
-						or (string.find(itemName, 'boot') and bearNetworth > 600)
-						or itemName == 'item_tpscroll' and Item.HasItem(bear, 'item_tpscroll')
-						then
-							-- do nothing, keep it.
-						elseif Utils.CountBackpackEmptySpace(bear) >= 1 then
-							bot:Action_DropItem(item, bear:GetLocation())
-						end
-					end
-				end
-			end
-		end
-	end
+	-- Lone Druid item transfer: moved to mode_team_roam_generic.lua
+	-- (desire+think allows proper prioritization of drop/pickup actions).
+	-- Bear pickup of dropped items is kept here since it's lightweight.
 	if Utils.IsBear(bot) and bot:IsAlive() then
+		local bearItemsMap = Utils.GetLoneDruid(bot).bearItemsMap or {}
 		local dropItemList = GetDroppedItemList()
-		for _, tDropItem in pairs( dropItemList )
-		do
-			if tDropItem.owner == Utils.GetLoneDruid(bot).hero and not string.find(tDropItem.item:GetName(), 'token')
-			and not (string.find(tDropItem.item:GetName(), 'boot') and Item.HasItemWithName(bot, 'boot')) then
-				local distance = GetUnitToLocationDistance(bot, tDropItem.location)
-				if distance > 200 and distance < 1000 and tDropItem.owner == bot
-				then
-					bot:Action_MoveToLocation(tDropItem.location)
-				elseif distance <= 100 then
-					bot:Action_PickUpItem(tDropItem.item)
-					return
+		for _, tDropItem in pairs( dropItemList ) do
+			if tDropItem.owner == Utils.GetLoneDruid(bot).hero
+			and tDropItem.item ~= nil
+			and not string.find(tDropItem.item:GetName(), 'token')
+			then
+				local itemName = tDropItem.item:GetName()
+				-- Only pick up items from the bear items list
+				if bearItemsMap[itemName] and not Item.HasItem(bot, itemName) then
+					local distance = GetUnitToLocationDistance(bot, tDropItem.location)
+					if distance > 100 and distance < 1000 then
+						bot:Action_MoveToLocation(tDropItem.location)
+						return
+					elseif distance <= 100 then
+						bot:Action_PickUpItem(tDropItem.item)
+						return
+					end
 				end
 			end
 		end
@@ -768,7 +746,9 @@ function ItemPurchaseThink()
 	end
 
 	-- Init Healing Items in Lane; works for now
+	-- Skip for Lone Druid hero and bear — they share courier and rebuy flasks infinitely
 	if Fu.IsInLaningPhase()
+	and not string.find(botName, 'lone_druid')
 	then
 		if botLevel < 6
 		and bot:IsAlive()
@@ -949,19 +929,7 @@ function ItemPurchaseThink()
 		buyRD = true
 	end
 
-	--死前如果会损失金钱则购买额外TP
 	local tpCost = GetItemCost( "item_tpscroll" )
-	if botGold >= tpCost
-		and bot:IsAlive()
-		and botGold < ( tpCost + botWorth / 40 )
-		and botHP < 0.08
-		and botHP >= 1
-		and bot:WasRecentlyDamagedByAnyHero( 3.1 )
-		and not HasSufficientTp()
-		and Item.GetItemCharges( bot, 'item_tpscroll' ) <= 2
-	then
-		bot:ActionImmediate_PurchaseItem( "item_tpscroll" )
-	end
 	
 	--正常买备用tp
 	if currentTime > 4 * 60
@@ -982,19 +950,6 @@ function ItemPurchaseThink()
 		end
 	end
 
-	-- --辅助死前如果会损失金钱则购买粉
-	if botGold >= GetItemCost( "item_dust" )
-		and bot:IsAlive()
-		and botLevel > 6
-		and Fu.GetPosition(bot) >= 4
-		and botGold < ( GetItemCost( "item_dust" )  + botWorth / 40 )
-		and botHP < 0.06
-		and bot:WasRecentlyDamagedByAnyHero( 3.1 )
-		and Item.GetItemCharges( bot, 'item_dust' ) <= 1
-		and Utils.CountBackpackEmptySpace(bot) >= 2
-	then
-		bot:ActionImmediate_PurchaseItem( "item_dust" )
-	end
 
 	--交换魂泪的位置避免过早被破坏
 	if currentTime > 180
@@ -1063,8 +1018,11 @@ function ItemPurchaseThink()
 
 		local preEmpty = 2
 		if botLevel <= 17 then preEmpty = 1 end
+		-- Supports need at least 1 free slot for wards/dust purchases
+		if not Fu.IsCore(bot) and botLevel > 10 then preEmpty = 2 end
 		if emptySlot <= preEmpty - 1
 		then
+			-- Standard early item sell (all roles)
 			for i = 1, #Item['tEarlyItem']
 			do
 				local itemName = Item['tEarlyItem'][i]
@@ -1075,10 +1033,25 @@ function ItemPurchaseThink()
 					break
 				end
 			end
+
+			-- Supports (pos 4-5): also sell wand and other early items when full
+			if slotToSell == nil and not Fu.IsCore(bot) then
+				for i = 1, #Item['tSupportSellWhenFull']
+				do
+					local itemName = Item['tSupportSellWhenFull'][i]
+					local itemSlot = bot:FindItemSlot( itemName )
+					if itemSlot >= 0 and itemSlot <= 8
+					then
+						slotToSell = itemSlot
+						break
+					end
+				end
+			end
 		end
 
-
-		if botWorth > 10000
+		-- Cores: sell stat items when backpack is full and networth is high
+		if slotToSell == nil
+			and botWorth > 10000
 			and bot:GetItemInSlot( 6 ) ~= nil
 			and bot:GetItemInSlot( 7 ) ~= nil
 		then
@@ -1150,7 +1123,7 @@ function ItemPurchaseThink()
 			local slot = bot:FindItemSlot(lotusName)
 			if slot >= 0 then
 				bot:Action_DropItem(bot:GetItemInSlot(slot), bot:GetLocation())
-				print("[Item] Core "..botName.." dropped "..lotusName.." (past 30min)")
+				log("[Item] Core "..botName.." dropped "..lotusName.." (past 30min)")
 			end
 		end
 	end
@@ -1180,7 +1153,7 @@ function ItemPurchaseThink()
 				or Item.HasItem(bot, 'item_travel_boots_2')
 				or Item.HasItem(bot, 'item_boots_of_bearing'))
 			then
-				print("[Purchase] Skipping "..nextItem.." — already have boots")
+				log("[Purchase] Skipping "..nextItem.." — already have boots")
 				bot.purchaseListInReverseOrder[#bot.purchaseListInReverseOrder] = nil
 			else
 				break

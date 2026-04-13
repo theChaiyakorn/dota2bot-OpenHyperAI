@@ -169,10 +169,10 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local Flux 			= bot:GetAbilityByName('arc_warden_flux')
-local MagneticField = bot:GetAbilityByName('arc_warden_magnetic_field')
-local SparkWraith 	= bot:GetAbilityByName('arc_warden_spark_wraith')
-local TempestDouble = bot:GetAbilityByName('arc_warden_tempest_double')
+local Flux 			= SafeAbility(bot:GetAbilityByName('arc_warden_flux'), 'arc_warden_flux', 'arc_warden')
+local MagneticField = SafeAbility(bot:GetAbilityByName('arc_warden_magnetic_field'), 'arc_warden_magnetic_field', 'arc_warden')
+local SparkWraith 	= SafeAbility(bot:GetAbilityByName('arc_warden_spark_wraith'), 'arc_warden_spark_wraith', 'arc_warden')
+local TempestDouble = SafeAbility(bot:GetAbilityByName('arc_warden_tempest_double'), 'arc_warden_tempest_double', 'arc_warden')
 
 local FluxDesire, FluxTarget
 local MagneticFieldDesire, MagneticFieldTarget

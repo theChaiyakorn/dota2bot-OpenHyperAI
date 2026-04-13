@@ -3,7 +3,9 @@ import * as Fu from "bots/FuncLib/func_utils";
 import Customize = require("bots/Customize/general");
 import { Barracks, BotMode, BotModeDesire, DamageType, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import { IsValidUnit, GetLocationToLocationDistance, RadiantFountainTpPoint, DireFountainTpPoint } from "./utils";
-import { getGlobalGameState, getGlobalLocationState, getCachedAlliesNearLoc, getCachedEnemiesNearLoc, autoCleanupCache, getCachedData } from "./cache";
+import { getGlobalGameState, getGlobalLocationState, getCachedAlliesNearLoc, getCachedEnemiesNearLoc, autoCleanupCache } from "./cache";
+import { add } from "bots/ts_libs/utils/native-operators";
+import * as CK from "bots/FuncLib/systems/cache_keys";
 
 Customize.ThinkLess = Customize.Enable ? Customize.ThinkLess : 1;
 
@@ -12,11 +14,62 @@ Customize.ThinkLess = Customize.Enable ? Customize.ThinkLess : 1;
  * (kept from Lua; comments preserved)
  */
 const pingTimeDelta = 5;
-const StartToPushTime = 16 * 60; // after X mins, start considering to push.
-const BOT_MODE_DESIRE_EXTRA_LOW = 0.02;
+// const BOT_MODE_DESIRE_EXTRA_LOW = 0.02; // No longer used — push returns 0 or meaningful desire
 
 /** Module-scoped state (cache-ish). Keep small and intentional. */
 let hEnemyAncient: Unit | null = null;
+
+/** Per-tick push cache — expensive computations shared across all 15 GetPushDesire calls per tick */
+let _pushCacheTick = -1;
+let _pushCacheBestLane: Lane | null = null;
+let _pushCacheEnemiesAtAncient = 0;
+let _pushCacheEnemiesOnHG = 0;
+let _pushCacheLaneBlocked: Record<number, boolean> = {};
+let _pushCacheDefendPingSuppressed = false;
+let _pushCacheRecentDefendTime = 0;
+let nMaxDesire = 0.6;
+
+/** 5-man push: in bot-only games, when 3+ allies push a lane, all bots join */
+let _fiveManPushLane: Lane | null = null;
+let _fiveManPushUntil = 0;
+let _isAllBotsGame: boolean | null = null; // cached once
+
+/** Post-defend push boost: after defend desire drops for a lane, boost push for 10s */
+const _postDefendBoost: Record<number, number> = {}; // lane → time when boost expires
+const _prevDefendDesire: Record<number, number> = {}; // lane → previous frame's defend desire
+const POST_DEFEND_PUSH_DURATION = 10;
+
+function refreshPushCache(team: Team): void {
+    const now = GameTime();
+    if (math.floor(now * 10) === _pushCacheTick) return; // same tick
+    _pushCacheTick = math.floor(now * 10);
+
+    const gameState = getGlobalGameState();
+    const ourAncient = gameState.ourAncient;
+
+    // Ancient threat
+    _pushCacheEnemiesAtAncient = ourAncient !== null ? Fu.Utils.CountEnemyHeroesNear(ourAncient.GetLocation(), BASE_ANC_RADIUS) : 0;
+
+    // Enemies on high ground
+    _pushCacheEnemiesOnHG = Fu.Utils.CountEnemyHeroesOnHighGround(team);
+
+    // Lane blocked by 2+ enemies
+    _pushCacheLaneBlocked = {};
+    for (const dl of [Lane.Top, Lane.Mid, Lane.Bot] as Lane[]) {
+        const dlFront = GetLaneFrontLocation(team, dl, 0);
+        _pushCacheLaneBlocked[dl] = Fu.Utils.CountEnemyHeroesNear(dlFront, 2200) >= 2;
+    }
+
+    // Defend ping
+    const gs = (Fu.Utils as any)["GameStates"];
+    _pushCacheDefendPingSuppressed = gs !== undefined && gs["defendPings"] !== undefined && now - gs["defendPings"].pingedTime <= 5.0;
+
+    // Recent defend time
+    _pushCacheRecentDefendTime = (gs || {})["recentDefendTime"] || 0;
+
+    // Best lane (same for all bots)
+    _pushCacheBestLane = null; // reset, computed lazily per-lane
+}
 
 /** Performance cache - avoid redundant calculations between GetPushDesire (300ms) and Think (every frame) */
 type CachedGameState = {
@@ -209,8 +262,8 @@ const OBJECTIVE_LEASH_RANGE = 2600; // max distance from bot to consider high-gr
 
 // Barracks ≈ 200 from T3, T4 ≈ 800 from barracks; favor inner-ring first
 // Lower score is better. Priority: Barracks (melee>ranged) < T3 < T4 < Fillers
-const SCORE_BARRACKS_MELEE = 0;
-const SCORE_BARRACKS_RANGED = 0.1;
+const SCORE_BARRACKS_RANGED = 0; // Ranged rax first
+const SCORE_BARRACKS_MELEE = 0.1;
 const SCORE_T3 = 0.5;
 const SCORE_T4 = 1.8;
 // const SCORE_FILLER = 1.9;
@@ -233,7 +286,7 @@ export function GetPushDesire(bot: Unit, lane: Lane): BotModeDesire {
         return BotModeDesire.None;
     }
 
-    if (bot.GetLevel() < 3) {
+    if (bot.GetLevel() < 6) {
         return BotModeDesire.None;
     }
 
@@ -245,275 +298,306 @@ export function GetPushDesire(bot: Unit, lane: Lane): BotModeDesire {
     //     return cachedVar;
     // }
 
-    // 2) compute and publish
-    const res = GetPushDesireHelper(bot, lane);
-    // Fu.Utils.SetCachedVars(cacheKey, res);
+    const res = math.min(GetPushDesireHelper(bot, lane), 1.0);
     (bot as any).pushDesire = res;
-    return res;
+    return res as BotModeDesire;
 }
 
 /* -----------------------------------------------------------------------------
  * Desire core
  * ---------------------------------------------------------------------------*/
 export function GetPushDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
-    // Keep the intent: avoid pushing too early or when other team jobs override.
     if ((bot as any).laneToPush == null) (bot as any).laneToPush = lane;
 
-    // Update global caches
     autoCleanupCache();
     const gameState = getGlobalGameState();
     const locationState = getGlobalLocationState();
-    // const unitState = updateUnitStateCache(); // Not used in this function
+    const team = gameState.team;
 
-    let nMaxDesire = 0.82;
-    const nSearchRange = 2000;
+    // Refresh per-tick cache (shared across all 15 calls)
+    refreshPushCache(team);
+
     const botActiveMode = bot.GetActiveMode();
-    const nModeDesire = bot.GetActiveModeDesire();
     const bMyLane = bot.GetAssignedLane() === lane;
-    const isMidOrEarlyGame = gameState.isEarlyGame || gameState.isMidGame;
-
     hEnemyAncient = gameState.enemyAncient;
 
-    // Current, LOCAL threat picture around the bot (not reused across Think)
+    // --- Cheap early exits (no expensive calls) ---
+
+    if (gameState.isLaningPhase && !bMyLane && Fu.IsCore(bot)) return BotModeDesire.None;
+    if (gameState.aliveAllyCount <= gameState.aliveEnemyCount - 2) return BotModeDesire.None;
+    if (_pushCacheDefendPingSuppressed) return BotModeDesire.None;
+    if (_pushCacheEnemiesAtAncient >= 1) return BotModeDesire.None;
+    if (_pushCacheLaneBlocked[lane]) return BotModeDesire.None;
+
+    // All team members must be level 6+
+    for (let i = 1; i <= 5; i++) {
+        const member = GetTeamMember(i);
+        if (member !== null && member.GetLevel() < 6) return BotModeDesire.None;
+    }
+
+    // Don't push alone into enemies (separate core/non-core like reference)
+    const nInRangeAlly = Fu.GetAlliesNearLoc(bot.GetLocation(), 1600);
+    const nInRangeEnemy = Fu.GetEnemiesNearLoc(bot.GetLocation(), 1600);
+    let nInRangeAllyCore = 0;
+    let nInRangeEnemyCore = 0;
+    for (const ally of nInRangeAlly) {
+        if (Fu.IsValidHero(ally) && Fu.IsCore(ally)) nInRangeAllyCore++;
+    }
+    for (const enemy of nInRangeEnemy) {
+        if (Fu.IsValidHero(enemy) && Fu.IsCore(enemy)) nInRangeEnemyCore++;
+    }
+    if ((nInRangeAlly.length < nInRangeEnemy.length && nInRangeAllyCore < nInRangeEnemyCore) || (nInRangeAlly.length <= 1 && nInRangeEnemy.length > 0)) {
+        return BotModeDesire.None;
+    }
+
+    // Sync lane selection with hard bot modes
+    if (botActiveMode === BotMode.PushTowerTop) (bot as any).laneToPush = Lane.Top;
+    else if (botActiveMode === BotMode.PushTowerMid) (bot as any).laneToPush = Lane.Mid;
+    else if (botActiveMode === BotMode.PushTowerBot) (bot as any).laneToPush = Lane.Bot;
+
+    // --- Per-bot checks (can't cache, depends on bot position) ---
+
     const alliesHere = getCachedAlliesNearLoc(bot.GetLocation(), 1600);
     const enemiesHere = getCachedEnemiesNearLoc(bot.GetLocation(), 1600);
+    const enemyFountain = team === Team.Radiant ? DireFountainTpPoint : RadiantFountainTpPoint;
+    const laneFront = GetLaneFrontLocation(team, lane, 0);
 
-    // --- Strong base-defense gate for push ---
-    const team = gameState.team;
-    const ourAncient = gameState.ourAncient;
-    const enemiesAtAncient = Fu.Utils.CountEnemyHeroesNear(ourAncient!.GetLocation(), BASE_ANC_RADIUS);
-    // If Ancient under direct pressure → return 0 so push never outbids defend
-    if (enemiesAtAncient >= 1) return BotModeDesire.None;
+    if (alliesHere.length <= 1 && gameState.aliveEnemyCount >= 3) return BotModeDesire.None;
 
-    // If ANY lane has enemy heroes pushing toward our buildings, suppress push entirely.
-    // This prevents push 0.07 from beating defend 0.07 during desire oscillation.
-    const defendLanes: Lane[] = [Lane.Top, Lane.Mid, Lane.Bot];
-    for (const dl of defendLanes) {
-        const laneFront = GetLaneFrontLocation(team, dl, 0);
-        const enemiesAtLane = Fu.Utils.CountEnemyHeroesNear(laneFront, 2200);
-        if (enemiesAtLane >= 2) return BotModeDesire.None;
-    }
+    // --- nMaxDesire caps ---
+    const isDeepPush = GetLocationToLocationDistance(laneFront, enemyFountain) < 5000;
 
-    // --- Push safety gates ---
-    // Never push alone when 3+ enemies alive
-    if (alliesHere.length <= 1 && gameState.aliveEnemyCount >= 3) {
-        return BotModeDesire.None;
+    if (isDeepPush && (alliesHere.length < 3 || gameState.aliveAllyCount < gameState.aliveEnemyCount)) {
+        nMaxDesire = math.min(nMaxDesire, 0.15);
     }
-    // Never push with 2+ hero count disadvantage
-    if (gameState.aliveAllyCount <= gameState.aliveEnemyCount - 2) {
-        return BotModeDesire.None;
-    }
-    // Don't push deep (past T2 toward enemy base) when alone or outnumbered
-    const enemyFountain = gameState.team === Team.Radiant ? DireFountainTpPoint : RadiantFountainTpPoint;
-    const laneFront = GetLaneFrontLocation(gameState.team, lane, 0);
-    if (GetLocationToLocationDistance(laneFront, enemyFountain) < 5000) {
-        if (alliesHere.length < 3 || gameState.aliveAllyCount < gameState.aliveEnemyCount) {
-            nMaxDesire = math.min(nMaxDesire, 0.08);
-        }
-    }
-    // Reduce desire when low HP
     if (Fu.GetHP(bot) < 0.5) {
         nMaxDesire = math.min(nMaxDesire, 0.25);
     }
-    // Caution when all enemies alive and no advantage
     if (gameState.aliveEnemyCount >= 5 && gameState.aliveAllyCount <= gameState.aliveEnemyCount) {
         nMaxDesire = math.min(nMaxDesire, 0.41);
     }
-    // (Removed enemy-nearby cap — push/attack desire compete naturally.
-    // The old 0.3 cap prevented bots from pushing when enemies were nearby,
-    // even when the team had advantage.)
 
-    // Sync lane selection with hard bot modes
-    if (botActiveMode === BotMode.PushTowerTop) {
-        (bot as any).laneToPush = Lane.Top;
-    } else if (botActiveMode === BotMode.PushTowerMid) {
-        (bot as any).laneToPush = Lane.Mid;
-    } else if (botActiveMode === BotMode.PushTowerBot) {
-        (bot as any).laneToPush = Lane.Bot;
-    }
-
-    // Do not push too early (Turbo is faster-time environment)
-    const currentTime = gameState.currentTime;
-
-    // Ignore push if someone just pinged "defend" recently
-    (Fu.Utils as any)["GameStates"] = (Fu.Utils as any)["GameStates"] || {};
-    (Fu.Utils as any)["GameStates"]["defendPings"] = (Fu.Utils as any)["GameStates"]["defendPings"] || { pingedTime: GameTime() };
-    if (GameTime() - (Fu.Utils as any)["GameStates"]["defendPings"].pingedTime <= 5.0) {
+    // Doing Roshan with team → don't push
+    if (Fu.IsDoingRoshan(bot) && Fu.GetAlliesNearLoc(locationState.roshanLocation, 2800).length >= 3) {
         return BotModeDesire.None;
     }
 
-    // Early laning rules & neutral objectives that override pushing
-    if (
-        (!bMyLane && Fu.IsCore(bot) && gameState.isLaningPhase) ||
-        (Fu.IsDoingRoshan(bot) && Fu.GetAlliesNearLoc(locationState.roshanLocation, 2800).length >= 3) ||
-        (isMidOrEarlyGame &&
-            (Fu.GetAlliesNearLoc(locationState.tormentorLocation, 1600).length >= 3 || Fu.GetAlliesNearLoc(locationState.tormentorWaitingLocation, 2500).length >= 3))
-    ) {
-        return BOT_MODE_DESIRE_EXTRA_LOW as BotModeDesire;
-    }
-
-    // If a team member is still very low level, hold pushes entirely
-    for (let i = 1; i <= GetTeamPlayers(team).length; i++) {
-        const member = GetTeamMember(i);
-        if (member !== null && member.GetLevel() < 6) {
-            return BotModeDesire.None;
-        }
-    }
-
-    // Human opponents → delay high-commit pushes before a certain time
-    const [nH] = Fu.Utils.NumHumanBotPlayersInTeam(GetOpposingTeam());
-    if (nH > 0 && currentTime <= StartToPushTime) {
-        return BOT_MODE_DESIRE_EXTRA_LOW as BotModeDesire;
-    }
-
-    // If we are actively defending, cap the max desire slightly lower
-    if (Fu.IsDefending(bot) && nModeDesire >= 0.8) {
-        nMaxDesire = 0.75;
-    }
-
-    // Respect allied "attack here" human ping on a tower if it matches lane
+    // Respect allied "attack here" human ping on a tower
     const [human, humanPing] = Fu.GetHumanPing();
     if (human !== null && humanPing !== null && !humanPing.normal_ping && DotaTime() > 0) {
         const [isPinged, pingedLane] = Fu.IsPingCloseToValidTower(GetOpposingTeam(), humanPing, 700, 5.0);
         if (isPinged && lane === pingedLane && GameTime() < humanPing.time + pingTimeDelta) {
-            return 0.9 as BotModeDesire;
+            return 0.6 as BotModeDesire; // human pinged, push this lane
         }
     }
 
-    // If we're off doing Tormentor far from enemy ancient, lower desire
-    if (hEnemyAncient && hEnemyAncient !== null) {
-        if (Fu.IsDoingTormentor(bot) && GetUnitToUnitDistance(bot, hEnemyAncient) > 4000) {
-            return BOT_MODE_DESIRE_EXTRA_LOW as BotModeDesire;
-        }
-    }
-
-    // Team state snapshot (used for several gates below) - using cached values
-    const aAliveCount = gameState.aliveAllyCount;
-    const eAliveCount = gameState.aliveEnemyCount;
-    const aAliveCoreCount = gameState.aliveAllyCoreCount;
-    const eAliveCoreCount = gameState.aliveEnemyCoreCount;
-
-    const hAncient = gameState.ourAncient;
-    // Base push desire calculation - missing function implementation
-    let nPushDesire = 0.5; // Default base desire
-    //   const allyKills = Fu.GetNumOfTeamTotalKills(false) + 1;
-    //   const enemyKills = Fu.GetNumOfTeamTotalKills(true) + 1;
-    //   const teamKillsRatio = allyKills / enemyKills; // (not used later but retained)
-
-    // If enemies are at our ancient and we have few allies nearby → cap desire
-    const teamAncientLoc = hAncient!.GetLocation();
-    const nEffAlliesNearAncient = Fu.GetAlliesNearLoc(teamAncientLoc, 4500).length + Fu.Utils.GetAllyIdsInTpToLocation(teamAncientLoc, 4500).length;
-    const nEnemiesAroundAncient = Fu.GetEnemiesAroundLoc(teamAncientLoc, 4500);
-    if (nEnemiesAroundAncient > 0 && nEffAlliesNearAncient < 1) {
-        nMaxDesire = 0.65;
-    }
-
-    // Enhanced local threat assessment - consider team advantages
-    const networthAdvantage = gameState.teamNetworth - gameState.enemyNetworth;
-    const enemyAverageLevel = Fu.GetAverageLevel(true);
-    const levelAdvantage = gameState.averageLevel - enemyAverageLevel;
-    const hasSignificantAdvantage = networthAdvantage > 15000 || levelAdvantage > 2;
-
-    // If outnumbered in *local* area, desire is very low (avoid feed)
-    // But be more lenient when team has significant advantages
-    if (alliesHere.length < enemiesHere.length && alliesHere.length <= eAliveCount - 1 && aAliveCount < eAliveCount) {
-        if (hasSignificantAdvantage && alliesHere.length >= enemiesHere.length - 1) {
-            // Allow pushing when team has big advantage even if slightly outnumbered locally
-            nMaxDesire = Math.min(nMaxDesire, 0.6); // Reduce but don't eliminate
-        } else {
-            return BotModeDesire.VeryLow;
-        }
-    }
-
-    // If critical items/spells are cooling down near the push location → be cautious
-    const vEnemyLaneFrontLocation = GetLaneFrontLocation(gameState.enemyTeam, lane, 0);
-    const waitForSpells = ShouldWaitForImportantItemsSpells(vEnemyLaneFrontLocation);
-    if (waitForSpells && eAliveCount >= aAliveCount && eAliveCoreCount >= aAliveCoreCount) {
-        nMaxDesire = Math.min(nMaxDesire, 0.5);
-    }
-
-    // If already targeting a building that is backdoored, kill desire immediately
-    const botTarget = bot.GetAttackTarget();
-    if (Fu.IsValidBuilding(botTarget) && !botTarget!.GetUnitName().includes("tower1") && !botTarget!.GetUnitName().includes("tower2")) {
-        if (HasBackdoorProtect(botTarget!)) {
-            return BOT_MODE_DESIRE_EXTRA_LOW as BotModeDesire;
-        }
-    }
-
-    // If close to enemy Ancient and it is hittable, prioritize it proportionally to HP
+    // If close to enemy Ancient and it is hittable → all in
     if (
         hEnemyAncient &&
-        GetUnitToUnitDistance(bot, hEnemyAncient) < nSearchRange * 0.5 &&
+        GetUnitToUnitDistance(bot, hEnemyAncient) < 1000 &&
         Fu.CanBeAttacked(hEnemyAncient) &&
-        !bot.WasRecentlyDamagedByAnyHero(1) &&
-        Fu.GetHP(bot) > 0.5 &&
+        Fu.GetHP(bot) > 0.4 &&
         !HasBackdoorProtect(hEnemyAncient)
     ) {
         bot.SetTarget(hEnemyAncient);
         bot.Action_AttackUnit(hEnemyAncient, true);
-        return RemapValClamped(Fu.GetHP(bot), 0, 0.5, BotModeDesire.None, 0.98) as BotModeDesire;
+        return 0.6 as BotModeDesire; // ancient hittable, go all in
     }
 
-    // Decide which lane to push; consider mid early, ally proximity, etc.
-    const pushLane = WhichLaneToPush(bot, lane);
-    const isCurrentLanePushLane = pushLane === lane;
+    // If already targeting a backdoored building, stop
+    const botTarget = bot.GetAttackTarget();
+    if (Fu.IsValidBuilding(botTarget) && HasBackdoorProtect(botTarget!)) {
+        return BotModeDesire.None;
+    }
 
-    // Enhanced group push logic - more aggressive when team has advantages
-    if ((!Fu.IsCore(bot) && isCurrentLanePushLane) || (Fu.IsCore(bot) && ((Fu.IsLateGame() && isCurrentLanePushLane) || isMidOrEarlyGame))) {
-        // More flexible conditions for allowing pushes when team has advantages
-
-        // Allow pushes more easily when we have significant advantages
-        const allowNumbers =
-            eAliveCount === 0 ||
-            aAliveCoreCount >= eAliveCoreCount ||
-            (aAliveCoreCount >= 1 && aAliveCount >= eAliveCount + 2) ||
-            // New: Allow pushes with networth advantage even if slightly outnumbered
-            (networthAdvantage > 8000 && aAliveCount >= eAliveCount - 1) ||
-            // New: Allow pushes with level advantage
-            (levelAdvantage > 2 && aAliveCount >= eAliveCount - 1);
-
-        if (allowNumbers) {
-            // Aegis bonus
-            if (gameState.hasAegis) {
-                nPushDesire = nPushDesire + 0.3;
-            }
-
-            // Enhanced networth advantage calculation - more aggressive scaling
-            if (aAliveCount >= eAliveCount - 1) {
-                // Allow even when slightly outnumbered
-                const networthBonus = RemapValClamped(networthAdvantage, 3000, 20000, 0.0, 1.5);
-                nPushDesire = nPushDesire + networthBonus;
-            }
-
-            // New: Level advantage bonus
-            if (levelAdvantage > 0) {
-                const levelBonus = RemapValClamped(levelAdvantage, 0, 8, 0.0, 0.8);
-                nPushDesire = nPushDesire + levelBonus;
-            }
-
-            // New: Group size advantage bonus
-            if (aAliveCount > eAliveCount) {
-                const groupBonus = RemapValClamped(aAliveCount - eAliveCount, 1, 3, 0.1, 0.4);
-                nPushDesire = nPushDesire + groupBonus;
-            }
-
-            return RemapValClamped(nPushDesire * Fu.GetHP(bot), 0, 1, 0, nMaxDesire) as BotModeDesire;
+    // After taking barracks on ANY lane, push desire should stay high
+    // to continue toward T4/ancient or switch to next lane
+    const anyBarracksDown =
+        !Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Top) || !Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Mid) || !Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Bot);
+    // After barracks fall, boost push desire toward ancient (safety caps below still apply)
+    let barracksDownBoost = false;
+    if (anyBarracksDown && hEnemyAncient) {
+        const ancientDist = GetUnitToUnitDistance(bot, hEnemyAncient);
+        const alliesNearAncient = Fu.GetAlliesNearLoc(hEnemyAncient.GetLocation(), 3000);
+        if (ancientDist < 3000 && alliesNearAncient.length >= 2) {
+            barracksDownBoost = true;
         }
     }
 
-    // Mid/late game fallback: if nothing else to do, bots should group push
-    // rather than sitting idle. Give a mild baseline desire for the best lane.
-    if (!gameState.isLaningPhase && gameState.currentTime > 15 * 60) {
-        const pushLane = WhichLaneToPush(bot, lane);
-        if (pushLane === lane && Fu.GetHP(bot) > 0.5 && aAliveCount >= eAliveCount - 1) {
-            // 0.2 pre-adjustment → ~0.14 post-adjustment. Enough to beat 0.07
-            // defend/push defaults but not enough to override real modes.
-            return 0.2 as BotModeDesire;
+    // --- Simplified push desire calculation ---
+    const aAliveCount = gameState.aliveAllyCount;
+    const eAliveCount = gameState.aliveEnemyCount;
+    // Cache best lane per tick (WhichLaneToPush is expensive but result is global)
+    if (_pushCacheBestLane === null) {
+        _pushCacheBestLane = WhichLaneToPush(bot, lane);
+    }
+    const isCurrentLanePushLane = _pushCacheBestLane === lane;
+
+    // Lane selection: late game → split push to shove lanes, then converge on best lane past river.
+    // Early/mid game → allow split push on non-best lanes with reduced desire.
+    // If bot is deep in enemy territory on this lane, keep pushing it — don't switch lanes mid-push
+    // Unless the lane's barracks are all destroyed (only T4/ancient left, which are shared)
+    const distToEnemyFountain = GetLocationToLocationDistance(bot.GetLocation(), enemyFountain);
+    const isDeepInEnemyTerritory = distToEnemyFountain < 5000;
+    const botCurrentPushLane = (bot as any).laneToPush;
+    const laneHasBarracks = Fu.Utils.IsAnyBarracksOnLaneAlive(false, lane);
+    if (isDeepInEnemyTerritory && lane === botCurrentPushLane && laneHasBarracks) {
+        // Committed to this lane deep in enemy base with barracks to hit — keep pushing
+    } else if (!isCurrentLanePushLane) {
+        // Not the best lane to push
+        return BotModeDesire.None;
+    }
+
+    // Count allies pushing or near the push lane front
+    let alliesPushing = 0;
+    const teamPlayers = GetTeamPlayers(gameState.team);
+    for (let i = 1; i <= teamPlayers.length; i++) {
+        const member = GetTeamMember(i);
+        if (member !== null && member.IsAlive() && member !== bot) {
+            const memberMode = member.GetActiveMode();
+            const isPushMode = memberMode === BotMode.PushTowerTop || memberMode === BotMode.PushTowerMid || memberMode === BotMode.PushTowerBot;
+            const nearLaneFront = GetUnitToLocationDistance(member, laneFront) < 2500;
+            if (isPushMode || nearLaneFront) {
+                alliesPushing++;
+            }
         }
     }
 
-    // Default: no reason to push. Return 0 so push never wins by default.
-    return BotModeDesire.None;
+    // --- 5-man push grouping (bot-only games) ---
+    // When 3+ allies are pushing a lane and no humans on enemy team, all bots join.
+    if (_isAllBotsGame === null) {
+        _isAllBotsGame = !Fu.Utils.IsHumanPlayerInTeam(GetTeam()) && !Fu.Utils.IsHumanPlayerInTeam(GetOpposingTeam());
+    }
+    if (_isAllBotsGame && !gameState.isLaningPhase && !gameState.isEarlyGame) {
+        // Detect: which lane has 3+ allies pushing?
+        if (alliesPushing >= 2 && lane === _pushCacheBestLane) {
+            // 2 others + this bot = 3
+            _fiveManPushLane = lane;
+            _fiveManPushUntil = DotaTime() + 8;
+        }
+        // If a 5-man push is active, boost desire for that lane, suppress others
+        if (_fiveManPushLane !== null && DotaTime() < _fiveManPushUntil) {
+            if (lane === _fiveManPushLane) {
+                return math.max(0.55, RemapValClamped(GetPushLaneDesire(lane), 0, 1, 0, nMaxDesire)) as BotModeDesire;
+            } else {
+                return BotModeDesire.None;
+            }
+        } else {
+            _fiveManPushLane = null;
+        }
+    }
+
+    // Base desire from Valve's lane push evaluation (0-1), remapped to (0-nMaxDesire)
+    let nPushDesire = RemapValClamped(GetPushLaneDesire(lane), 0, 1, 0, nMaxDesire);
+    // --- Precompute conditions ---
+    const botLevel = bot.GetLevel();
+    const botHP = Fu.GetHP(bot);
+    const aAliveCoreCount = gameState.aliveAllyCoreCount;
+    const eAliveCoreCount = gameState.aliveEnemyCoreCount;
+
+    const bFavorableConditions =
+        eAliveCount === 0 ||
+        aAliveCoreCount >= eAliveCoreCount ||
+        (aAliveCoreCount >= 1 && aAliveCount >= eAliveCount + 2) ||
+        (hEnemyAncient && GetUnitToUnitDistance(bot, hEnemyAncient) < 3500 && alliesHere.length >= enemiesHere.length);
+    if (!bFavorableConditions) {
+        return BotModeDesire.None;
+    }
+
+    // Bonuses only after early game
+    if (!gameState.isEarlyGame) {
+        if (gameState.hasAegis && aAliveCount >= 4) {
+            nPushDesire += RemapValClamped(0.25, 0, 1, 0, 0.7);
+        }
+        if (aAliveCount >= eAliveCount && gameState.averageLevel >= 12) {
+            const networthAdvantage = gameState.teamNetworth - gameState.enemyNetworth;
+            nPushDesire += RemapValClamped(networthAdvantage, 5000, 10000, 0.0, RemapValClamped(0.5, 0, 1, 0, 0.7));
+        }
+    }
+
+    const readyToPush = botLevel >= 6 && (!gameState.isLaningPhase || aAliveCount >= eAliveCount + 2 || (eAliveCount <= 2 && aAliveCount >= 4));
+
+    // Early exit: HG defense active (uses cached values)
+    if (_pushCacheEnemiesOnHG >= 2 && DotaTime() - _pushCacheRecentDefendTime < 10) {
+        return BotModeDesire.None;
+    }
+
+    // Deep in enemy territory pushing T2/HG: back off if outnumbered and not full HP
+    if (hEnemyAncient && GetLaneBuildingTier(lane) >= 2) {
+        const distToEnemyAncient = GetUnitToUnitDistance(bot, hEnemyAncient);
+        if (distToEnemyAncient < 6000 && alliesHere.length < eAliveCount && botHP < 0.8) {
+            return BotModeDesire.None;
+        }
+    }
+
+    // --- Compute result: base desire, capped by nMaxDesire ---
+    let result = math.min(math.max(nPushDesire, 0), nMaxDesire);
+
+    // === CAPS (suppress desire) ===
+    if (alliesHere.length <= 1 && enemiesHere.length >= 2) result = math.min(result, 0.2);
+
+    // Deep push risk: team weakened → back off
+    if (isDeepPush && alliesHere.length >= 2) {
+        let lowHPCount = 0;
+        let totalHP = 0;
+        for (const ally of alliesHere) {
+            if (Fu.IsValidHero(ally)) {
+                const hp = Fu.GetHP(ally);
+                totalHP += hp;
+                if (hp < 0.4) lowHPCount++;
+            }
+        }
+        const avgHP = alliesHere.length > 0 ? totalHP / alliesHere.length : 1;
+        if (lowHPCount >= 2 && avgHP < 0.6 && eAliveCount >= alliesHere.length - 2) {
+            result = math.min(result, 0.15);
+        }
+    }
+
+    // === FLOORS (boost desire) — stronger conditions override weaker ===
+    if (!gameState.isLaningPhase) {
+        result = math.max(result, 0.02);
+    }
+
+    // Bonuses only after early game
+    if (readyToPush && botHP > 0.4 && !gameState.isEarlyGame) {
+        // Won a fight: enemies mostly dead — push now
+        if (eAliveCount <= 2 && aAliveCount >= 4) {
+            result = math.max(result, eAliveCount === 0 ? 0.525 : 0.45);
+        }
+        // Barracks down, team near ancient: push to finish
+        if (barracksDownBoost) {
+            result = math.max(result, 0.5);
+        }
+    }
+
+    // Group push: if 3+ allies pushing THIS lane, supports should join
+    if (isCurrentLanePushLane && Fu.GetPosition(bot) >= 4) {
+        const pushModeForLane = lane === Lane.Top ? BotMode.PushTowerTop : lane === Lane.Mid ? BotMode.PushTowerMid : BotMode.PushTowerBot;
+        let alliesPushingThisLane = 0;
+        for (let i = 1; i <= GetTeamPlayers(GetTeam()).length; i++) {
+            const member = GetTeamMember(i);
+            if (member && member !== bot && member.IsAlive() && member.GetActiveMode() === pushModeForLane) {
+                alliesPushingThisLane++;
+            }
+        }
+        if (alliesPushingThisLane >= 3) {
+            result = math.max(result, 0.6);
+        }
+    }
+
+    // Post-defend push momentum: after defend desire drops, boost push for this lane
+    const currentDefend = GetDefendLaneDesire(lane);
+    const prevDefend = _prevDefendDesire[lane] || 0;
+    _prevDefendDesire[lane] = currentDefend;
+    // Defend desire dropped significantly → enemies cleared, counter-push
+    if (prevDefend > 0.3 && currentDefend < 0.15) {
+        _postDefendBoost[lane] = DotaTime() + POST_DEFEND_PUSH_DURATION;
+    }
+    if (_postDefendBoost[lane] && DotaTime() < _postDefendBoost[lane]) {
+        result = math.max(result, 0.45);
+    }
+
+    return result as BotModeDesire;
 }
 
 /* -----------------------------------------------------------------------------
@@ -541,6 +625,17 @@ function UnitIsMeleeBarracks(u: Unit): boolean {
 function UnitIsRangedBarracks(u: Unit): boolean {
     return UnitIsBarracks(u) && !!u && u.GetUnitName().includes("ranged");
 }
+/** True when the ranged barracks partner on the same lane is already destroyed. */
+function IsRangedPartnerDead(u: Unit): boolean {
+    if (!UnitIsMeleeBarracks(u)) return false;
+    const enemy = GetOpposingTeam();
+    const n = u.GetUnitName();
+    let rangedPartner: Unit | null = null;
+    if (n.includes("top")) rangedPartner = GetBarracks(enemy, Barracks.TopRanged);
+    else if (n.includes("mid")) rangedPartner = GetBarracks(enemy, Barracks.MidRanged);
+    else rangedPartner = GetBarracks(enemy, Barracks.BotRanged);
+    return rangedPartner === null || !rangedPartner.IsAlive();
+}
 function UnitIsT3(u: Unit): boolean {
     return u === GetTower(GetOpposingTeam(), Tower.Top3) || u === GetTower(GetOpposingTeam(), Tower.Mid3) || u === GetTower(GetOpposingTeam(), Tower.Bot3);
 }
@@ -558,22 +653,35 @@ function UnitIsT4(u: Unit): boolean {
  * Compute a score for an objective; lower is better.
  * Base priority + mild distance terms; prefer closer to the bot and to approach targetLoc.
  */
+function UnitIsT1orT2(u: Unit): boolean {
+    const enemy = GetOpposingTeam();
+    return (
+        u === GetTower(enemy, Tower.Top1) ||
+        u === GetTower(enemy, Tower.Mid1) ||
+        u === GetTower(enemy, Tower.Bot1) ||
+        u === GetTower(enemy, Tower.Top2) ||
+        u === GetTower(enemy, Tower.Mid2) ||
+        u === GetTower(enemy, Tower.Bot2)
+    );
+}
+
+const SCORE_T1T2 = 0.2;
+
 function ObjectiveScore(bot: Unit, u: Unit | null, targetLoc?: Vector | null): number {
     if (!UnitIsValidObjective(u)) return Number.POSITIVE_INFINITY;
 
-    const base =
-        (UnitIsMeleeBarracks(u) && SCORE_BARRACKS_MELEE) ||
-        (UnitIsRangedBarracks(u) && SCORE_BARRACKS_RANGED) ||
-        (UnitIsT3(u) && SCORE_T3) ||
-        // (UnitIsFiller(u) && SCORE_FILLER) ||
-        (UnitIsT4(u) && SCORE_T4) ||
-        2.0; // anything unknown → worst
+    let base = 2.0;
+    if (UnitIsRangedBarracks(u)) base = SCORE_BARRACKS_RANGED;
+    // Melee rax gets ranged priority when its ranged partner is already dead (finish the lane)
+    else if (UnitIsMeleeBarracks(u)) base = IsRangedPartnerDead(u) ? SCORE_BARRACKS_RANGED : SCORE_BARRACKS_MELEE;
+    else if (UnitIsT1orT2(u)) base = SCORE_T1T2;
+    else if (UnitIsT3(u)) base = SCORE_T3;
+    else if (UnitIsT4(u)) base = SCORE_T4;
 
     const dBot = GetUnitToUnitDistance(bot, u);
     if (dBot > OBJECTIVE_LEASH_RANGE) return Number.POSITIVE_INFINITY;
 
-    // Distance nudges (kept light so priority dominates)
-    const d1 = dBot / 2000.0; // 0 .. ~1.3
+    const d1 = dBot / 2000.0;
     const d2 = targetLoc ? GetUnitToLocationDistance(u, targetLoc) / 2500.0 : 0;
 
     return base + 0.35 * d1 + 0.2 * d2;
@@ -589,13 +697,10 @@ function SelectOrStickHGTarget(bot: Unit, lane: Lane, targetLoc?: Vector | null)
     const now = GameTime();
     const current = state.target || null;
 
-    // Respect stickiness if current is valid
-    if (current && now < (state.lockUntil ?? 0)) {
+    // Respect stickiness if current is still a valid objective
+    if (current && UnitIsValidObjective(current) && now < (state.lockUntil ?? 0)) {
         return current;
     }
-    // if (current && UnitIsValidObjective(current) && now < (state.lockUntil ?? 0)) {
-    //     return current;
-    // }
 
     const currentScore = current ? ObjectiveScore(bot, current, targetLoc) : Number.POSITIVE_INFINITY;
 
@@ -632,6 +737,65 @@ function SelectOrStickHGTarget(bot: Unit, lane: Lane, targetLoc?: Vector | null)
 
     state.target = null;
     state.lockUntil = undefined;
+    return null;
+}
+
+/** Get the next enemy building to destroy on a lane (T1→T2→T3→rax→T4 order). Cached per tick. */
+const _nextBuildingCache: Record<number, { tick: number; result: Unit | null }> = {};
+function GetNextEnemyBuildingOnLane(lane: Lane): Unit | null {
+    const tick = math.floor(GameTime() * 10);
+    const cached = _nextBuildingCache[lane];
+    if (cached && cached.tick === tick) return cached.result;
+
+    const enemy = GetOpposingTeam();
+    let result: Unit | null = null;
+
+    const towerOrder =
+        lane === Lane.Top ? [Tower.Top1, Tower.Top2, Tower.Top3] : lane === Lane.Mid ? [Tower.Mid1, Tower.Mid2, Tower.Mid3] : [Tower.Bot1, Tower.Bot2, Tower.Bot3];
+    for (const tid of towerOrder) {
+        const t = GetTower(enemy, tid);
+        if (t !== null && t.IsAlive()) {
+            result = t;
+            break;
+        }
+    }
+    if (!result) {
+        const raxOrder =
+            lane === Lane.Top
+                ? [Barracks.TopRanged, Barracks.TopMelee]
+                : lane === Lane.Mid
+                  ? [Barracks.MidRanged, Barracks.MidMelee]
+                  : [Barracks.BotRanged, Barracks.BotMelee];
+        for (const rid of raxOrder) {
+            const r = GetBarracks(enemy, rid);
+            if (r !== null && r.IsAlive()) {
+                result = r;
+                break;
+            }
+        }
+    }
+    if (!result) {
+        const t4a = GetTower(enemy, Tower.Base1);
+        const t4b = GetTower(enemy, Tower.Base2);
+        if (t4a !== null && t4a.IsAlive()) result = t4a;
+        else if (t4b !== null && t4b.IsAlive()) result = t4b;
+    }
+    if (!result) {
+        const ancient = GetAncient(enemy);
+        if (ancient !== null && ancient.IsAlive()) result = ancient;
+    }
+
+    _nextBuildingCache[lane] = { tick, result };
+    return result;
+}
+
+/** Get the nearest alive friendly tower on a lane (T1→T2→T3 order) */
+function _getNearestFriendlyTowerForPush(team: Team, lane: Lane): Unit | null {
+    const towerIds = lane === Lane.Top ? [0, 3, 6] : lane === Lane.Mid ? [1, 4, 7] : [2, 5, 8];
+    for (const tid of towerIds) {
+        const t = GetTower(team, tid);
+        if (t && t.IsAlive()) return t;
+    }
     return null;
 }
 
@@ -707,21 +871,23 @@ export function WhichLaneToPush(_bot: Unit, _lane: Lane): Lane {
     midLaneScore *= 0.05 * countMid + 1;
     botLaneScore *= 0.05 * countBot + 1;
 
-    // Prefer lanes with lower-tier outer buildings first. Start mid slightly.
+    // Prefer lanes with lower-tier outer buildings first
     const topTier = GetLaneBuildingTier(Lane.Top);
     const midTier = GetLaneBuildingTier(Lane.Mid);
     const botTier = GetLaneBuildingTier(Lane.Bot);
 
-    if (midTier < topTier && midTier < botTier) {
-        midLaneScore *= 0.5;
-        if (!Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Mid)) midLaneScore *= 0.5;
-    } else if (topTier < midTier && topTier < botTier) {
-        topLaneScore *= 0.5;
-        if (!Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Top)) topLaneScore *= 0.5;
-    } else if (botTier < topTier && botTier < midTier) {
-        botLaneScore *= 0.5;
-        if (!Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Bot)) botLaneScore *= 0.5;
-    }
+    topLaneScore *= RemapValClamped(topTier, 1, 3, 0.25, 1);
+    midLaneScore *= RemapValClamped(midTier, 1, 3, 0.25, 1);
+    botLaneScore *= RemapValClamped(botTier, 1, 3, 0.25, 1);
+
+    // Prioritize lanes where OUR barracks are down but ENEMY barracks are still up
+    // (enemy mega creeps push hard, need to push back and take their barracks too)
+    const ourTopRaxDown = !Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Top);
+    const ourMidRaxDown = !Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Mid);
+    const ourBotRaxDown = !Fu.Utils.IsAnyBarracksOnLaneAlive(false, Lane.Bot);
+    if (ourTopRaxDown && Fu.Utils.IsAnyBarracksOnLaneAlive(true, Lane.Top)) topLaneScore *= 0.15;
+    if (ourMidRaxDown && Fu.Utils.IsAnyBarracksOnLaneAlive(true, Lane.Mid)) midLaneScore *= 0.15;
+    if (ourBotRaxDown && Fu.Utils.IsAnyBarracksOnLaneAlive(true, Lane.Bot)) botLaneScore *= 0.15;
 
     // Pull toward lanes where allies already are
     topLaneScore = presence_adjust(topLaneScore, vTop);
@@ -738,14 +904,55 @@ export function WhichLaneToPush(_bot: Unit, _lane: Lane): Lane {
 /* -----------------------------------------------------------------------------
  * Think loop
  * ---------------------------------------------------------------------------*/
-let fNextMovementTime = 0;
+// let fNextMovementTime = 0; // Removed — simplified movement fallback
 
 export function PushThink(bot: Unit, lane: Lane): void {
-    const now = DotaTime();
-
-    // 1) baseline action gates
     if (Fu.CanNotUseAction(bot)) return;
-    if (Fu.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "push")) return;
+
+    // Deaggro tower, deny tower/hero
+    if (Fu.TryDropTowerAggro(bot)) return;
+    if (Fu.TryDenyTower(bot)) return;
+    if (Fu.TryDenyAllyHero(bot)) return;
+
+    // Near enemy fountain: fall back behind ally creeps
+    const enemyFountainLoc = GetTeam() === Team.Radiant ? DireFountainTpPoint : RadiantFountainTpPoint;
+    const botData = bot as any;
+    if (GetLocationToLocationDistance(bot.GetLocation(), enemyFountainLoc) < 1500) {
+        botData._fountainRetreatUntil = DotaTime() + 4.0;
+        // Calculate retreat target
+        const allyCreeps = bot.GetNearbyLaneCreeps(1600, false);
+        if (allyCreeps && allyCreeps.length >= 1) {
+            const creepLoc = allyCreeps[allyCreeps.length - 1].GetLocation();
+            botData._fountainRetreatLoc = Fu.AdjustLocationWithOffsetTowardsFountain(creepLoc, 200);
+        } else {
+            botData._fountainRetreatLoc = GetLaneFrontLocation(GetTeam(), lane, -500);
+        }
+    }
+    if (botData._fountainRetreatUntil && DotaTime() <= botData._fountainRetreatUntil) {
+        // If taking hero damage, skip the override — let normal push/attack logic handle it
+        if (bot.WasRecentlyDamagedByAnyHero(1.0)) {
+            // don't override, fall through to push logic
+        } else if (botData._fountainRetreatLoc && GetUnitToLocationDistance(bot, botData._fountainRetreatLoc) > 300) {
+            // Not yet at safe spot — keep moving there
+            bot.Action_MoveToLocation(botData._fountainRetreatLoc);
+            return;
+        } else {
+            // Arrived at safe spot — clear timer, resume push
+            botData._fountainRetreatUntil = 0;
+        }
+    }
+    // if (Fu.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, ThinkActionType.Push)) return;
+
+    // Lane redirect: if bot is far from the desired push lane, move there first
+    // Skip if bot was recently hit by an enemy hero (stay and fight / retreat instead)
+    {
+        const laneFront = GetLaneFrontLocation(GetTeam(), lane, 0);
+        const distToLaneFront = GetUnitToLocationDistance(bot, laneFront);
+        if (distToLaneFront > 2000 && !bot.WasRecentlyDamagedByAnyHero(3.0)) {
+            bot.Action_MoveToLocation(add(laneFront, RandomVector(100)));
+            return;
+        }
+    }
 
     // Update global caches
     autoCleanupCache();
@@ -756,18 +963,6 @@ export function PushThink(bot: Unit, lane: Lane): void {
     const botState = updateBotStateCache(bot);
     const botLocation = botState.location;
 
-    // TP to push lane if far away — bots should commit to push, not wander
-    const pushFront = GetLaneFrontLocation(gameState.team, lane, 0);
-    const distToPush = GetUnitToLocationDistance(bot, pushFront);
-    if (distToPush > 4000 && !bot.HasModifier("modifier_teleporting") && !(bot as any)._roshDipActive) {
-        const tp = Fu.Utils.GetItemFromFullInventory(bot, "item_tpscroll");
-        if (tp && Fu.CanCastAbility(tp)) {
-            const tpTarget = GetLaneFrontLocation(gameState.team, lane, -500);
-            bot.Action_UseAbilityOnLocation(tp as any, tpTarget);
-            return;
-        }
-    }
-
     // Use global cached threat picture
     const alliesHere = getCachedAlliesNearLoc(botLocation, 1600);
     const enemiesHere = getCachedEnemiesNearLoc(botLocation, 1600);
@@ -776,16 +971,16 @@ export function PushThink(bot: Unit, lane: Lane): void {
     const botAttackRange = botState.attackRange;
     const botHp = botState.hp;
     let fDeltaFromFront =
-        Math.min(botHp, 0.7) * 800 -
-        500 + // healthier → stand a bit closer
-        RemapValClamped(botAttackRange, 300, 700, 0, -300); // longer range → stand further back
-    fDeltaFromFront = Math.max(Math.min(fDeltaFromFront, 250), -200); // Reduced minimum retreat from -600 to -200
+        Math.min(botHp, 0.7) * 1000 -
+        700 + // healthier → stand a bit closer (match ref: 0.7*1000-700 = 0 at 70% HP, -700 at 0% HP)
+        RemapValClamped(botAttackRange, 300, 700, 0, -600); // longer range → stand further back (match ref)
+    // No aggressive clamping — let low-HP bots retreat far enough to escape tower range
 
     // 4) Use cached tower & creep context
     const nEnemyTowers = botState.nearbyTowers;
     const nAllyCreeps = botState.nearbyLaneCreeps;
 
-    // 4) Enhanced retreat logic - less conservative when team has advantages
+    // 4) Outnumbered or backdoor: fall back well behind lane front (match ref: -1000 - longestRange)
     if (alliesHere.length < enemiesHere.length || IsAnyTargetBackdooredAt(bot, lane)) {
         let longestRange = 0;
         for (const enemyHero of enemiesHere) {
@@ -795,49 +990,155 @@ export function PushThink(bot: Unit, lane: Lane): void {
             }
         }
 
-        // Consider team advantages when deciding retreat distance
-        const gameState = getGlobalGameState();
-        const networthAdvantage = gameState.teamNetworth - gameState.enemyNetworth;
-        const enemyAverageLevel = Fu.GetAverageLevel(true);
-        const levelAdvantage = gameState.averageLevel - enemyAverageLevel;
-        const hasTeamAdvantage = networthAdvantage > 5000 || levelAdvantage > 1;
-
-        // More aggressive positioning when team has advantages
-        if (enemiesHere.length >= alliesHere.length + 1 || botHp < 0.3) {
-            if (hasTeamAdvantage && botHp > 0.4) {
-                // Less retreat when team has advantage and bot is healthy
-                fDeltaFromFront = Math.max(-200, -80 - 0.25 * longestRange);
-            } else {
-                fDeltaFromFront = Math.max(-300, -120 - 0.35 * longestRange);
-            }
-        } else {
-            if (hasTeamAdvantage && botHp > 0.5) {
-                // Stay closer when team has advantage
-                fDeltaFromFront = Math.max(-50, -20 - 0.1 * longestRange);
-            } else {
-                fDeltaFromFront = Math.max(-100, -50 - 0.2 * longestRange);
-            }
-        }
+        fDeltaFromFront = -1000 - longestRange;
     }
 
     // 5) Compute our approach waypoint for this lane
-    const targetLoc = GetLaneFrontLocation(gameState.team, lane, fDeltaFromFront);
+    // If lane front collapsed near fountain (creeps all dead), use nearest tower instead
+    let targetLoc = GetLaneFrontLocation(gameState.team, lane, fDeltaFromFront);
+    const teamFountain = gameState.team === Team.Radiant ? RadiantFountainTpPoint : DireFountainTpPoint;
+    if (GetLocationToLocationDistance(targetLoc, teamFountain) < 3000) {
+        // Use nearest alive tower on the lane, or the raw lane front with 0 offset
+        const pushTower = _getNearestFriendlyTowerForPush(gameState.team, lane);
+        if (pushTower) {
+            targetLoc = pushTower.GetLocation();
+        } else {
+            targetLoc = GetLaneFrontLocation(gameState.team, lane, 0);
+        }
+    }
+
+    // Only hold forward position if ally creeps are nearby to tank.
+    // Otherwise fall back to lane front — standing alone ahead of creeps is dangerous.
+    const botDistToFountain = GetLocationToLocationDistance(botLocation, teamFountain);
+    const targetDistToFountain = GetLocationToLocationDistance(targetLoc, teamFountain);
+    if (botDistToFountain > targetDistToFountain + 500) {
+        if (nAllyCreeps.length >= 2 || alliesHere.length >= 3) {
+            targetLoc = botLocation;
+        }
+        // else: fall back to targetLoc (lane front) — no creep cover
+    }
 
     // Update bot cache with target location for distance calculations (only if needed)
     if (!botState.distanceToTargetLoc || Math.abs(botState.distanceToTargetLoc - GetUnitToLocationDistance(bot, targetLoc)) > 50) {
         updateBotStateCache(bot, targetLoc);
     }
 
-    // 6) If the nearest enemy tower is shooting (or just shot) us → kite back
-    if (
-        Fu.IsValidBuilding(nEnemyTowers[0]) &&
-        (nEnemyTowers[0].GetAttackTarget() === bot || (nEnemyTowers[0].GetAttackTarget() !== bot && bot.WasRecentlyDamagedByTower(nAllyCreeps.length <= 2 ? 4.0 : 2.0)))
-    ) {
-        const nDamage = nEnemyTowers[0].GetAttackDamage() * nEnemyTowers[0].GetAttackSpeed() * 5.0 - bot.GetHealthRegen() * 5.0;
-        if (bot.GetActualIncomingDamage(nDamage, DamageType.Physical) / bot.GetHealth() > 0.15 || nAllyCreeps.length > 2) {
-            const retreat = Math.min(fDeltaFromFront - 200, -300);
-            const retreatLoc = GetLaneFrontLocation(gameState.team, lane, retreat);
-            bot.Action_MoveToLocation(retreatLoc);
+    // 6) If the tower is targeting US or recently hit us → back off (match ref: attack target OR WasRecentlyDamagedByTower)
+    // Move toward base by enough distance to exit tower attack range (not toward lane front which may be behind us)
+    if (Fu.IsValidBuilding(nEnemyTowers[0]) && (nEnemyTowers[0].GetAttackTarget() === bot || bot.WasRecentlyDamagedByTower(nAllyCreeps.length <= 2 ? 4.0 : 2.0))) {
+        const towerRange = nEnemyTowers[0].GetAttackRange() + 200; // tower range + safety margin
+        let shouldRetreat = false;
+
+        // Low HP: always retreat from tower aggro
+        if (botHp < 0.6) {
+            shouldRetreat = true;
+        } else {
+            // Higher HP: retreat only if projected damage is dangerous
+            const nDamage = nEnemyTowers[0].GetAttackDamage() * nEnemyTowers[0].GetAttackSpeed() * 5.0 - bot.GetHealthRegen() * 5.0;
+            if (bot.GetActualIncomingDamage(nDamage, DamageType.Physical) / bot.GetHealth() > 0.4) {
+                shouldRetreat = true;
+            }
+        }
+
+        if (shouldRetreat) {
+            // Move away from tower toward our base, just outside tower attack range
+            const retreatLoc = Fu.AdjustLocationWithOffsetTowardsFountain(nEnemyTowers[0].GetLocation(), towerRange);
+            bot.Action_MoveToLocation(add(retreatLoc, RandomVector(80)));
+            return;
+        }
+    }
+
+    // 6a) No creep tank near enemy tower: fall back behind ally creeps
+    // Unless no enemies at all or enemies are very low HP (killable)
+    if (Fu.IsValidBuilding(nEnemyTowers[0]) && nAllyCreeps.length === 0) {
+        const towerDist = GetUnitToUnitDistance(bot, nEnemyTowers[0]);
+        if (towerDist < 900) {
+            let bEnemiesLowHP = true;
+            if (enemiesHere.length > 0) {
+                for (const enemy of enemiesHere) {
+                    if (Fu.IsValidHero(enemy) && Fu.GetHP(enemy) > 0.3) {
+                        bEnemiesLowHP = false;
+                        break;
+                    }
+                }
+            } else {
+                bEnemiesLowHP = false; // no enemies = not a kill opportunity, just unsafe
+            }
+
+            if (!bEnemiesLowHP) {
+                const retreatLoc = GetLaneFrontLocation(GetTeam(), lane, -500);
+                bot.Action_MoveToLocation(add(retreatLoc, RandomVector(150)));
+                return;
+            }
+        }
+    }
+
+    // 6b) Glyph/backdoor active: fall back behind lane front
+    // Uses GetLaneFrontLocation with negative delta — always returns a walkable point along the lane path,
+    // avoids cliff edges on HG pushes, and bots naturally spread due to individual movement timing.
+    {
+        const glyphBuilding = nEnemyTowers[0] || GetNextEnemyBuildingOnLane(lane);
+        if (glyphBuilding !== null && Fu.Utils.IsValidTower(glyphBuilding) && glyphBuilding.HasModifier("modifier_fountain_glyph")) {
+            let nEnemyHeroLongestAttackRange = 0;
+            const nearbyEnemies = Fu.GetEnemiesNearLoc(bot.GetLocation(), 1600);
+            for (const enemyHero of nearbyEnemies) {
+                if (Fu.IsValidHero(enemyHero) && !Fu.IsSuspiciousIllusion(enemyHero)) {
+                    const range = enemyHero.GetAttackRange();
+                    if (range > nEnemyHeroLongestAttackRange) nEnemyHeroLongestAttackRange = range;
+                }
+            }
+            const retreatDelta = -1000 - nEnemyHeroLongestAttackRange;
+            const retreatLoc = GetLaneFrontLocation(GetTeam(), lane, retreatDelta);
+            // Attack non-glyphed enemy creeps on the way back
+            const enemyCreeps = (bot.GetNearbyCreeps(botAttackRange + 200, true) || []) as Unit[];
+            if (enemyCreeps.length > 0 && Fu.CanBeAttacked(enemyCreeps[0]) && !enemyCreeps[0].HasModifier("modifier_fountain_glyph")) {
+                bot.Action_AttackUnit(enemyCreeps[0], true);
+            } else {
+                bot.Action_MoveToLocation(add(retreatLoc, RandomVector(200)));
+            }
+            return;
+        }
+    }
+
+    // 6c) Creep aggro retreat: if lane creeps are targeting us, fall back
+    {
+        const nearbyEnemyCreeps = bot.GetNearbyLaneCreeps(1200, true);
+        if (nearbyEnemyCreeps) {
+            for (const creep of nearbyEnemyCreeps) {
+                if (Fu.IsValid(creep) && creep.GetAttackTarget() === bot) {
+                    bot.Action_MoveToLocation(targetLoc);
+                    return;
+                }
+            }
+        }
+    }
+
+    // Safety gate: only attack targets when we have creep wave support and are stronger
+    const shouldPlayInWave = nAllyCreeps.length >= 1 || alliesHere.length > enemiesHere.length;
+
+    // Enemy base danger: if near enemy ancient/fountain taking tower damage with no creep cover, retreat
+    // This prevents bots from chasing enemies deep into the base and getting stuck/killed by T4s
+    const enemyFountainLoc2 = gameState.team === Team.Radiant ? DireFountainTpPoint : RadiantFountainTpPoint;
+    const distToEnemyFountain = GetLocationToLocationDistance(botLocation, enemyFountainLoc2);
+    if (distToEnemyFountain < 3000 || botState.distanceToAncient < 1500) {
+        const isBeingTowerShot = bot.WasRecentlyDamagedByTower(3.0);
+        const hasNoCover = nAllyCreeps.length < 2 && alliesHere.length < 3;
+        if (isBeingTowerShot && hasNoCover) {
+            // Fall back to lane front, away from danger
+            const retreatLoc = GetLaneFrontLocation(GetTeam(), lane, -500);
+            bot.Action_MoveToLocation(add(retreatLoc, RandomVector(100)));
+            return;
+        }
+        // Don't chase enemy heroes near their fountain — only hit buildings or retreat
+        if (distToEnemyFountain < 2000 && !bot.WasRecentlyDamagedByAnyHero(1.0)) {
+            // Only allow attacking ancient or buildings, skip hero chasing
+            hEnemyAncient = gameState.enemyAncient;
+            if (hEnemyAncient && Fu.CanBeAttacked(hEnemyAncient) && !HasBackdoorProtect(hEnemyAncient) && botState.distanceToAncient < 1000) {
+                bot.Action_AttackUnit(hEnemyAncient, true);
+                return;
+            }
+            const retreatLoc = GetLaneFrontLocation(GetTeam(), lane, -500);
+            bot.Action_MoveToLocation(add(retreatLoc, RandomVector(100)));
             return;
         }
     }
@@ -859,27 +1160,70 @@ export function PushThink(bot: Unit, lane: Lane): void {
         return;
     }
 
-    // 8) Find attackable creeps to thin out while we approach (prefer those not under tower)
+    // 8) Find attackable creeps/heroes/buildings
+    // When not safe to play in wave, move to target position but don't idle
+    if (!shouldPlayInWave) {
+        const distToTarget = GetUnitToLocationDistance(bot, targetLoc);
+        if (distToTarget > 300) {
+            bot.Action_MoveToLocation(targetLoc);
+            return;
+        }
+        // At target but no creep wave: attack-move toward lane front instead of idling
+        const laneFront = GetLaneFrontLocation(GetTeam(), lane, -300);
+        bot.Action_AttackMove(laneFront);
+        return;
+    }
+
+    // 8a) Find attackable creeps to thin out while we approach (prefer those not under tower)
     let nRange = Math.min(700 + botAttackRange, 1600);
     if (hEnemyAncient && botState.distanceToAncient < 2600) {
         // bump the search radius when we're near high ground / base
         nRange = 1600;
     }
 
-    // Use cached creeps with global cache
+    // Use cached creeps with numeric key
     let nCreeps = botState.nearbyCreeps;
-    const creepCacheKey = `specialCreeps_${bot.GetPlayerID()}_${Math.floor(now * 5)}`;
-    nCreeps = getCachedData(creepCacheKey, 0.2, () => GetSpecialUnitsNearby(bot, nCreeps, nRange));
+    const creepCacheKey = CK.PUSH_SPECIAL_CREEPS + bot.GetPlayerID();
+    const cachedCreeps = Fu.Utils.GetCachedVars(creepCacheKey, 0.2);
+    if (cachedCreeps) {
+        nCreeps = cachedCreeps;
+    } else {
+        nCreeps = GetSpecialUnitsNearby(bot, nCreeps, nRange);
+        Fu.Utils.SetCachedVars(creepCacheKey, nCreeps);
+    }
 
     const vTeamFountain = locationState.teamFountain;
     const bTowerNearby = Fu.IsValidBuilding(nEnemyTowers[0]); // only consider creeps "in front" of tower
     const towerDistanceToFountain = bTowerNearby ? GetUnitToLocationDistance(nEnemyTowers[0], vTeamFountain) : 0;
 
+    // Attack enemy heroes first if in range and we're stronger
+    {
+        const nearbyEnemies = bot.GetNearbyHeroes(1200, true, BotMode.None) || [];
+        if (nearbyEnemies.length > 0 && alliesHere.length >= nearbyEnemies.length) {
+            let weakestEnemy: Unit | null = null;
+            let weakestHP = 999999;
+            for (const enemy of nearbyEnemies) {
+                if (Fu.IsValidHero(enemy) && Fu.CanBeAttacked(enemy) && !Fu.IsSuspiciousIllusion(enemy)) {
+                    const hp = enemy.GetHealth();
+                    if (hp < weakestHP) {
+                        weakestHP = hp;
+                        weakestEnemy = enemy;
+                    }
+                }
+            }
+            if (weakestEnemy) {
+                bot.Action_AttackUnit(weakestEnemy, true);
+                return;
+            }
+        }
+    }
+
     for (const creep of nCreeps) {
         if (!Fu.IsValid(creep) || !Fu.CanBeAttacked(creep)) continue;
         if (Fu.IsTormentor(creep) || Fu.IsRoshan(creep)) continue;
 
-        if (bTowerNearby && GetUnitToLocationDistance(creep, vTeamFountain) >= towerDistanceToFountain) continue;
+        // Skip creeps that are deep past the tower — but allow creeps near/under tower
+        if (bTowerNearby && GetUnitToLocationDistance(creep, vTeamFountain) >= towerDistanceToFountain + 500) continue;
 
         bot.Action_AttackUnit(creep, true);
         return;
@@ -887,29 +1231,70 @@ export function PushThink(bot: Unit, lane: Lane): void {
 
     // 9) High-ground building priorities: barracks → towers → fillers
     // Unified high-ground objective selection with stickiness (prevents thrash)
+    // Don't approach towers without ally creeps to tank
+    const hasCreepTank = nAllyCreeps.length >= 3;
     const hgTarget = SelectOrStickHGTarget(bot, lane, targetLoc);
-    if (hgTarget) {
+    if (hgTarget && Fu.IsValidBuilding(hgTarget) && Fu.CanBeAttacked(hgTarget) && !HasBackdoorProtect(hgTarget)) {
+        const isTargetTower = Fu.Utils.IsValidTower(hgTarget);
         if (Fu.IsInRange(bot, hgTarget, botAttackRange + 150)) {
             bot.Action_AttackUnit(hgTarget, true);
-        } else {
-            bot.Action_MoveToLocation(hgTarget.GetLocation());
+        } else if (!isTargetTower || hasCreepTank) {
+            // Walk to attack range, not into melee range of the building
+            const approachLoc = Fu.AdjustLocationWithOffsetTowardsFountain(hgTarget.GetLocation(), botAttackRange);
+            bot.Action_MoveToLocation(add(approachLoc, RandomVector(50)));
         }
+        // else: tower but no creeps — don't approach, fall through to wait
         return;
     }
 
-    // 10) Movement fallback: path to approach point, then do small attack-move jitter to hold space
-    if (botState.distanceToTargetLoc > 500) {
-        bot.Action_MoveToLocation(targetLoc);
-        return;
-    } else {
-        if (DotaTime() >= fNextMovementTime) {
-            const attackMoveLoc = Fu.GetRandomLocationWithinDist(targetLoc, 0, 400);
-            bot.Action_AttackMove(attackMoveLoc);
-            fNextMovementTime = DotaTime() + RandomFloat(0.05, 0.3);
+    // 10) Movement: find the next building, or walk toward push front
+    const nextBuilding = GetNextEnemyBuildingOnLane(lane);
+    if (nextBuilding !== null && Fu.IsValidBuilding(nextBuilding) && Fu.CanBeAttacked(nextBuilding) && !HasBackdoorProtect(nextBuilding)) {
+        const distToBuilding = GetUnitToUnitDistance(bot, nextBuilding);
+        const isNextTower = Fu.Utils.IsValidTower(nextBuilding);
+        if (distToBuilding <= botAttackRange + 150) {
+            bot.Action_AttackUnit(nextBuilding, true);
             return;
+        } else if (!isNextTower || hasCreepTank) {
+            // Walk to attack range, not into melee range of the building
+            const approachLoc = Fu.AdjustLocationWithOffsetTowardsFountain(nextBuilding.GetLocation(), botAttackRange);
+            bot.Action_MoveToLocation(approachLoc);
+            return;
+        }
+        // Tower but no creeps: wait nearby, don't walk up
+    }
+
+    // No building in range or waiting for creeps: try attacking enemy heroes
+    // But don't chase heroes deep into enemy base — that's how bots die to T4s
+    if (distToEnemyFountain > 2500) {
+        const nearbyEnemyHeroes = bot.GetNearbyHeroes(botAttackRange + 300, true, BotMode.None) || [];
+        for (const enemy of nearbyEnemyHeroes) {
+            if (Fu.IsValidHero(enemy) && Fu.CanBeAttacked(enemy) && !Fu.IsSuspiciousIllusion(enemy)) {
+                bot.Action_AttackUnit(enemy, true);
+                return;
+            }
+        }
+    }
+
+    // Nothing to attack: walk toward lane front (not current position)
+    // If deep in enemy base, always retreat to lane front
+    if (distToEnemyFountain < 2500 && nAllyCreeps.length < 2) {
+        const retreatLoc = GetLaneFrontLocation(GetTeam(), lane, -500);
+        bot.Action_MoveToLocation(add(retreatLoc, RandomVector(100)));
+    } else {
+        const distToTarget = GetUnitToLocationDistance(bot, targetLoc);
+        if (distToTarget > 300) {
+            bot.Action_MoveToLocation(targetLoc);
+        } else {
+            // Already at target: attack-move toward enemy side of the lane
+            const laneFront = GetLaneFrontLocation(gameState.team, lane, 200);
+            bot.Action_AttackMove(laneFront);
         }
     }
 }
+
+// Ensure no idle: if PushThink somehow exits without action, this is called externally
+// (not needed — all paths above issue actions, but kept as documentation)
 
 /* -----------------------------------------------------------------------------
  * High-ground cross-lane clearing
@@ -1079,12 +1464,8 @@ export function GetLaneBuildingTier(nLane: Lane): number {
     return 1;
 }
 
-export function ShouldWaitForImportantItemsSpells(vLocation: Vector): boolean {
-    const gameState = updateGameStateCache();
-    if (gameState.isMidGame || gameState.isLateGame) {
-        if (Fu.Utils.HasTeamMemberWithCriticalItemInCooldown(vLocation)) return true;
-        if (Fu.Utils.HasTeamMemberWithCriticalSpellInCooldown(vLocation)) return true;
-    }
+// Unused — available for future use
+export function ShouldWaitForImportantItemsSpells(_vLocation: Vector): boolean {
     return false;
 }
 

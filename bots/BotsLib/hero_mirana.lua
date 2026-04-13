@@ -137,11 +137,11 @@ modifier_mirana_moonlight_shadow_killtracker
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local CelestialQuiver = bot:GetAbilityByName('mirana_celestial_quiver')
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'mirana')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'mirana')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'mirana')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'mirana')
+local CelestialQuiver = SafeAbility(bot:GetAbilityByName('mirana_celestial_quiver'), 'mirana_celestial_quiver', 'mirana')
 
 
 local castQDesire, castQTarget

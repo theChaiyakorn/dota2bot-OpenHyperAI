@@ -151,21 +151,21 @@ npc_dota_hero_kez
 
 --]]
 
-local SwitchWeapons = bot:GetAbilityByName( 'kez_switch_weapons' )
+local SwitchWeapons = SafeAbility(bot:GetAbilityByName('kez_switch_weapons'), 'kez_switch_weapons', 'kez')
 
-local EchoSlash = bot:GetAbilityByName( 'kez_echo_slash' )
-local GrapplingClaw = bot:GetAbilityByName( 'kez_grappling_claw' )
-local KazuraiKatana = bot:GetAbilityByName( 'kez_kazurai_katana' )
-local RaptorDance = bot:GetAbilityByName( 'kez_raptor_dance' )
+local EchoSlash = SafeAbility(bot:GetAbilityByName('kez_echo_slash'), 'kez_echo_slash', 'kez')
+local GrapplingClaw = SafeAbility(bot:GetAbilityByName('kez_grappling_claw'), 'kez_grappling_claw', 'kez')
+local KazuraiKatana = SafeAbility(bot:GetAbilityByName('kez_kazurai_katana'), 'kez_kazurai_katana', 'kez')
+local RaptorDance = SafeAbility(bot:GetAbilityByName('kez_raptor_dance'), 'kez_raptor_dance', 'kez')
 
-local FalconRush = bot:GetAbilityByName( 'kez_falcon_rush' )
-local TalonToss = bot:GetAbilityByName( 'kez_talon_toss' )
-local ShodoSai = bot:GetAbilityByName( 'kez_shodo_sai' )
-local ShodoSaiParryCancel = bot:GetAbilityByName( 'kez_shodo_sai_parry_cancel' )
-local RavensVeil = bot:GetAbilityByName( 'kez_ravens_veil' )
+local FalconRush = SafeAbility(bot:GetAbilityByName('kez_falcon_rush'), 'kez_falcon_rush', 'kez')
+local TalonToss = SafeAbility(bot:GetAbilityByName('kez_talon_toss'), 'kez_talon_toss', 'kez')
+local ShodoSai = SafeAbility(bot:GetAbilityByName('kez_shodo_sai'), 'kez_shodo_sai', 'kez')
+local ShodoSaiCancel = SafeAbility(bot:GetAbilityByName('kez_shodo_sai_parry_cancel'), 'kez_shodo_sai_parry_cancel', 'kez')
+local RavensVeil = SafeAbility(bot:GetAbilityByName('kez_ravens_veil'), 'kez_ravens_veil', 'kez')
 
 local nKeepMana = 220
-castEchoSlashDesire, castGrapplingClawDesire, castGrapplingClawTarget, castRaptorDanceDesire
+local castEchoSlashDesire, castGrapplingClawDesire, castGrapplingClawTarget, castGrapplingClawType, castRaptorDanceDesire
 
 local FalconRushDesire
 local TalonTossDesire, TalonTossTarget
@@ -175,8 +175,6 @@ local RavensVeilDesire
 local hNearbyTowers
 
 local SwitchDisciplineDesire
-
-local nKezMode = 1
 
 local bGoingOnSomeone
 local bRetreating
@@ -197,11 +195,15 @@ function X.SkillsComplement()
 	hAllyList = ctx.allies
 	hNearbyTowers = bot:GetNearbyTowers(800, true);
 
-	if nKezMode % 2 == 0 then
-        bot.kez_mode = 'sai' -- 双叉
-    else
-        bot.kez_mode = 'katana' -- 长刀
-    end
+	-- Detect mode from slot 0 ability name (reliable, no desync)
+	local hSlot0 = bot:GetAbilityInSlot(0)
+	if hSlot0 ~= nil then
+		if hSlot0:GetName() == 'kez_echo_slash' then
+			bot.kez_mode = 'katana'
+		elseif hSlot0:GetName() == 'kez_falcon_rush' then
+			bot.kez_mode = 'sai'
+		end
+	end
 
     if Fu.IsInLaningPhase()
     and not bRetreating
@@ -217,82 +219,89 @@ function X.SkillsComplement()
 
 	X.DoCombo()
 
-	if castEchoSlashDesire > 0
-	then
-
-		Fu.SetQueuePtToINT( bot, true )
-
-		bot:ActionQueue_UseAbility( EchoSlash )
-		return
-	end
-
-	local sType = nil
-	if ( castGrapplingClawDesire > 0 )
-	then
-
-		Fu.SetQueuePtToINT( bot, true )
-		if sType == 'unit' then
-            bot:Action_UseAbilityOnEntity(GrapplingClaw, castGrapplingClawTarget)
-            return
-        elseif sType == 'tree' then
-            bot:Action_UseAbilityOnTree(GrapplingClaw, castGrapplingClawTarget)
-            return
-        end
-		return
-	end
-
+	-- Always check SwitchDiscipline first (mode-agnostic)
     SwitchDisciplineDesire = X.ConsiderSwitchDiscipline()
     if SwitchDisciplineDesire > 0 then
         bot:Action_UseAbility(SwitchWeapons)
-        nKezMode = nKezMode + 1
         return
     end
 
-	if castRaptorDanceDesire > 0
-	then
+	-- Only check abilities for the CURRENT active discipline.
+	-- Hidden abilities (wrong mode) fail CanCastAbility, wasting cycles and
+	-- blocking the bot from reaching the correct mode's abilities.
+	if bot.kez_mode == 'sai' then
+		-- Sai discipline: FalconRush > TalonToss > RavensVeil > ShodoSai > ShodoSaiCancel
 
-		Fu.SetQueuePtToINT( bot, true )
+		FalconRushDesire = X.ConsiderFalconRush()
+		if FalconRushDesire > 0 then
+			Fu.SetQueuePtToINT(bot, false)
+			bot:ActionQueue_UseAbility(FalconRush)
+			Fu.SetQueuePtBack(bot)
+			return
+		end
 
-		bot:ActionQueue_UseAbility( RaptorDance )
-		return
+		TalonTossDesire, TalonTossTarget = X.ConsiderTalonToss()
+		if TalonTossDesire > 0 then
+			Fu.SetQueuePtToINT(bot, false)
+			bot:ActionQueue_UseAbilityOnEntity(TalonToss, TalonTossTarget)
+			Fu.SetQueuePtBack(bot)
+			return
+		end
+
+		RavensVeilDesire = X.ConsiderRavensVeil()
+		if RavensVeilDesire > 0 then
+			bot:Action_UseAbility(RavensVeil)
+			return
+		end
+
+		ShodoSaiCancelDesire = X.ConsiderShodoSaiCancel()
+		if ShodoSaiCancelDesire > 0 then
+			bot:Action_UseAbility(ShodoSaiCancel)
+			return
+		end
+
+		ShodoSaiDesire, ShodoSaiLocation = X.ConsiderShodoSai()
+		if ShodoSaiDesire > 0 then
+			bot:Action_UseAbilityOnLocation(ShodoSai, ShodoSaiLocation)
+			return
+		end
+	else
+		-- Katana discipline: GrapplingClaw > EchoSlash > KazuraiKatana > RaptorDance
+
+		castGrapplingClawDesire, castGrapplingClawTarget, castGrapplingClawType = X.ConsiderGrapplingClaw()
+		if ( castGrapplingClawDesire > 0 ) then
+			Fu.SetQueuePtToINT( bot, false )
+			if castGrapplingClawTarget ~= nil and (type(castGrapplingClawTarget) == "number" or castGrapplingClawType == 'tree') then
+				bot:Action_UseAbilityOnTree(GrapplingClaw, castGrapplingClawTarget)
+			elseif castGrapplingClawTarget ~= nil then
+				bot:Action_UseAbilityOnEntity(GrapplingClaw, castGrapplingClawTarget)
+			end
+			Fu.SetQueuePtBack(bot)
+			return
+		end
+
+		castEchoSlashDesire = X.ConsiderEchoSlash()
+		if castEchoSlashDesire > 0 then
+			Fu.SetQueuePtToINT( bot, false )
+			bot:ActionQueue_UseAbility( EchoSlash )
+			Fu.SetQueuePtBack(bot)
+			return
+		end
+
+		KazuraiKatanaDesire, KazuraiKatanaTarget = X.ConsiderKazuraiKatana()
+		if KazuraiKatanaDesire > 0 then
+			bot:Action_UseAbilityOnEntity(KazuraiKatana, KazuraiKatanaTarget)
+			return
+		end
+
+		castRaptorDanceDesire = X.ConsiderRaptorDance()
+		if castRaptorDanceDesire > 0 then
+			Fu.SetQueuePtToINT( bot, false )
+			bot:ActionQueue_UseAbility( RaptorDance )
+			Fu.SetQueuePtBack(bot)
+			return
+		end
 	end
-
-	FalconRushDesire = X.ConsiderFalconRush()
-    if FalconRushDesire > 0 then
-        bot:Action_UseAbility(FalconRush)
-        return
-    end
-
-	RavensVeilDesire = X.ConsiderRavensVeil()
-    if RavensVeilDesire > 0 then
-        bot:Action_UseAbility(RavensVeil)
-        return
-    end
-
-    KazuraiKatanaDesire, KazuraiKatanaTarget = X.ConsiderKazuraiKatana()
-    if KazuraiKatanaDesire > 0 then
-        bot:Action_UseAbilityOnEntity(KazuraiKatana, KazuraiKatanaTarget)
-        return
-    end
-
-    TalonTossDesire, TalonTossTarget = X.ConsiderTalonToss()
-    if TalonTossDesire > 0 then
-        Fu.SetQueuePtToINT(bot, false)
-        bot:ActionQueue_UseAbilityOnEntity(TalonToss, TalonTossTarget)
-        return
-    end
-
-    ShodoSaiCancelDesire = X.ConsiderShodoSaiCancel()
-    if ShodoSaiCancelDesire > 0 then
-        bot:Action_UseAbility(ShodoSaiCancel)
-        return
-    end
-
-    ShodoSaiDesire, ShodoSaiLocation = X.ConsiderShodoSai()
-    if ShodoSaiDesire > 0 then
-        bot:Action_UseAbilityOnLocation(ShodoSai, ShodoSaiLocation)
-        return
-    end
 end
 
 function X.ConsiderEchoSlash()
@@ -330,28 +339,39 @@ function X.ConsiderEchoSlash()
         if Fu.IsValidHero(botTarget)
         and Fu.IsInRange(bot, botTarget, nDistance)
         and bot:IsFacingLocation(botTarget:GetLocation(), 15)
-        and not Fu.IsChasingTarget(bot, botTarget)
         and Fu.CanBeAttacked(botTarget)
         and not Fu.IsSuspiciousIllusion(botTarget)
+        and not botTarget:HasModifier('modifier_abaddon_borrowed_time')
         and not botTarget:HasModifier('modifier_necrolyte_reapers_scythe')
         and not botTarget:HasModifier('modifier_troll_warlord_battle_trance')
+        and not botTarget:HasModifier('modifier_oracle_false_promise_timer')
         then
-            return BOT_ACTION_DESIRE_HIGH
+            -- Use when not chasing (standing and fighting), or when target is disabled/slowed
+            if not Fu.IsChasingTarget(bot, botTarget)
+            or Fu.IsDisabled(botTarget)
+            or botTarget:GetCurrentMovementSpeed() <= 200
+            then
+                return BOT_ACTION_DESIRE_HIGH
+            end
         end
     end
 
     if bRetreating
     and not Fu.IsRealInvisible(bot)
     and bot:WasRecentlyDamagedByAnyHero(3.0)
+    and Fu.CanBeAttacked(bot)
     then
-        if Fu.IsValidHero(hEnemyList[1])
-        and Fu.IsInRange(bot, hEnemyList[1], 400)
-        and bot:IsFacingLocation(Fu.GetTeamFountain(), 20)
-        and Fu.CanBeAttacked(hEnemyList[1])
-        and not hEnemyList[1]:HasModifier('modifier_abaddon_borrowed_time')
-        and not hEnemyList[1]:HasModifier('modifier_necrolyte_reapers_scythe')
-        then
-            return BOT_ACTION_DESIRE_HIGH, hEnemyList[1]
+        for _, enemyHero in pairs(hEnemyList) do
+            if Fu.IsValidHero(enemyHero)
+            and Fu.IsInRange(bot, enemyHero, 1200)
+            then
+                if Fu.IsChasingTarget(enemyHero, bot) or (hAllyList ~= nil and #hEnemyList > #hAllyList) then
+                    local vAwayLocation = Fu.VectorAway and Fu.VectorAway(bot:GetLocation(), enemyHero:GetLocation(), 800) or Fu.GetTeamFountain()
+                    if bot:IsFacingLocation(Fu.GetTeamFountain(), 45) or bot:IsFacingLocation(vAwayLocation, 45) then
+                        return BOT_ACTION_DESIRE_HIGH
+                    end
+                end
+            end
         end
     end
 
@@ -440,40 +460,129 @@ function X.ConsiderEchoSlash()
 end
 
 function X.ConsiderGrapplingClaw()
-	if not Fu.CanCastAbility(GrapplingClaw) then return BOT_ACTION_DESIRE_NONE end
+	if not Fu.CanCastAbility(GrapplingClaw) or bot:IsRooted() then return BOT_ACTION_DESIRE_NONE end
 
 	local nCastRange = GrapplingClaw:GetCastRange()
+	local nManaAfter = Fu.GetManaAfter(GrapplingClaw:GetManaCost())
 
-	--撤退
+	-- Retreat: grapple away from enemies
 	if bRetreating
+	and not Fu.IsRealInvisible(bot)
 	and bot:DistanceFromFountain() > 600
+	and not bot:HasModifier('modifier_fountain_aura_buff')
 	then
-		if hAllyList ~= nil and hEnemyList ~= nil
-		and ((#hEnemyList > #hAllyList)
-			or (nBotHP and bot:WasRecentlyDamagedByAnyHero(3)))
-		and Fu.IsValidHero(hEnemyList[1])
-		and Fu.IsInRange(bot, hEnemyList[1], 500)
-		and not Fu.IsSuspiciousIllusion(hEnemyList[1])
-		and not Fu.IsDisabled(hEnemyList[1])
-		then
-			local hTarget, sType = X.GetBestRetreatGrapplingTarget(nCastRange)
-			if hTarget ~= nil then
-				return BOT_ACTION_DESIRE_HIGH, hTarget, sType, "w撤退"
+		local hTarget, sType = X.GetBestRetreatGrapplingTarget(nCastRange)
+		if hTarget ~= nil then
+			if hAllyList ~= nil and hEnemyList ~= nil then
+				for _, enemy in pairs(hEnemyList) do
+					if Fu.IsValidHero(enemy)
+					and Fu.IsInRange(bot, enemy, 1600)
+					then
+						if Fu.IsChasingTarget(enemy, bot)
+						or (#hEnemyList > #hAllyList)
+						then
+							return BOT_ACTION_DESIRE_HIGH, hTarget, sType
+						end
+					end
+				end
+			end
+
+			-- Outnumbered retreat
+			if not Fu.IsInLaningPhase() and (nManaAfter > 0.4 or nBotHP < 0.2) then
+				local nInRangeAlly = Fu.GetAlliesNearLoc(bot:GetLocation(), 1200)
+				if hEnemyList ~= nil and #hEnemyList >= #nInRangeAlly + 2 then
+					return BOT_ACTION_DESIRE_HIGH, hTarget, sType
+				end
 			end
 		end
 	end
 
 	if Fu.IsInLaningPhase() and nMP < 0.3 then return BOT_ACTION_DESIRE_NONE end
 
-	--打架
-	if bGoingOnSomeone
-	then
-		if Fu.IsValidHero( botTarget )
-		and Fu.IsInRange( botTarget, bot, nCastRange + 100 )
-		and not Fu.IsInRange( botTarget, bot, 250 )
+	-- Going on someone: gap close
+	if bGoingOnSomeone then
+		if Fu.IsValidHero(botTarget)
+		and Fu.CanBeAttacked(botTarget)
+		and Fu.IsInRange(bot, botTarget, nCastRange)
+		and not Fu.IsInRange(bot, botTarget, bot:GetAttackRange() + 200)
 		and Fu.IsChasingTarget(bot, botTarget)
+		and Fu.CanCastOnTargetAdvanced(botTarget)
+		and not botTarget:HasModifier('modifier_enigma_black_hole_pull')
+		and not botTarget:HasModifier('modifier_faceless_void_chronosphere_freeze')
 		then
-			return BOT_ACTION_DESIRE_HIGH, botTarget, 'unit', "w打架"..Fu.Chat.GetNormName( botTarget )
+			return BOT_ACTION_DESIRE_HIGH, botTarget, 'unit'
+		end
+	end
+
+	-- Stuck escape
+	if bot.stuckTime ~= nil and (DotaTime() - bot.stuckTime) > 2 then
+		local hTarget, sType = X.GetBestRetreatGrapplingTarget(nCastRange)
+		if hTarget ~= nil then
+			return BOT_ACTION_DESIRE_HIGH, hTarget, sType
+		end
+	end
+
+	-- Laning: grapple to lane front when far away
+	if Fu.IsLaning(bot) and Fu.IsInLaningPhase() and nManaAfter > 0.8 and DotaTime() > 0 then
+		local vLaneFrontLocation = GetLaneFrontLocation(GetTeam(), bot:GetAssignedLane(), 0)
+		if GetUnitToLocationDistance(bot, vLaneFrontLocation) > 2000 and hEnemyList ~= nil and #hEnemyList <= 1 then
+			local hTarget, sType = X.GetBestGrapplingTargetTowardsLocation(nCastRange, vLaneFrontLocation)
+			if hTarget ~= nil then
+				return BOT_ACTION_DESIRE_HIGH, hTarget, sType
+			end
+		end
+	end
+
+	-- Push: grapple towards lane front for faster travel
+	if Fu.IsPushing(bot) and nManaAfter > 0.5 then
+		local nLane = LANE_MID
+		if bot:GetActiveMode() == BOT_MODE_PUSH_TOWER_TOP then nLane = LANE_TOP end
+		if bot:GetActiveMode() == BOT_MODE_PUSH_TOWER_BOT then nLane = LANE_BOT end
+		local vLaneFrontLocation = GetLaneFrontLocation(GetTeam(), nLane, 0)
+		if (GetUnitToLocationDistance(bot, vLaneFrontLocation) / bot:GetCurrentMovementSpeed()) > 3.5 then
+			local hTarget, sType = X.GetBestGrapplingTargetTowardsLocation(nCastRange, vLaneFrontLocation)
+			if hTarget ~= nil then
+				return BOT_ACTION_DESIRE_HIGH, hTarget, sType
+			end
+		end
+	end
+
+	-- Defend: grapple towards defense target
+	if Fu.IsDefending(bot) and nManaAfter > 0.5 and hEnemyList ~= nil and #hEnemyList <= 1 then
+		local nLane = LANE_MID
+		if bot:GetActiveMode() == BOT_MODE_DEFEND_TOWER_TOP then nLane = LANE_TOP end
+		if bot:GetActiveMode() == BOT_MODE_DEFEND_TOWER_BOT then nLane = LANE_BOT end
+		local vLaneFrontLocation = GetLaneFrontLocation(GetTeam(), nLane, 0)
+		if (GetUnitToLocationDistance(bot, vLaneFrontLocation) / bot:GetCurrentMovementSpeed()) > 3.5 then
+			local hTarget, sType = X.GetBestGrapplingTargetTowardsLocation(nCastRange, vLaneFrontLocation)
+			if hTarget ~= nil then
+				return BOT_ACTION_DESIRE_HIGH, hTarget, sType
+			end
+		end
+	end
+
+	-- Farm: grapple to farm location
+	if Fu.IsFarming(bot) and nManaAfter > 0.5 and hEnemyList ~= nil and #hEnemyList == 0 then
+		if bot.farm and bot.farm.location then
+			local hTarget, sType = X.GetBestGrapplingTargetTowardsLocation(nCastRange, bot.farm.location)
+			if hTarget ~= nil and Fu.IsRunning(bot) then
+				return BOT_ACTION_DESIRE_HIGH, hTarget, sType
+			end
+		end
+	end
+
+	-- Roshan: grapple to rosh pit
+	if Fu.IsDoingRoshan(bot) then
+		local vRoshLoc = Fu.GetCurrentRoshanLocation and Fu.GetCurrentRoshanLocation() or nil
+		if vRoshLoc ~= nil
+		and GetUnitToLocationDistance(bot, vRoshLoc) > 2000
+		and hEnemyList ~= nil and #hEnemyList <= 1
+		and nManaAfter > 0.4
+		then
+			local hTarget, sType = X.GetBestGrapplingTargetTowardsLocation(nCastRange, vRoshLoc)
+			if hTarget ~= nil then
+				return BOT_ACTION_DESIRE_HIGH, hTarget, sType
+			end
 		end
 	end
 
@@ -486,35 +595,81 @@ function X.ConsiderRaptorDance()
 	local nRadius = RaptorDance:GetSpecialValueInt( "radius" ) - 150
 	local nBaseDamage = RaptorDance:GetSpecialValueInt( "base_damage" )
 	local nStrikes = RaptorDance:GetSpecialValueInt( "strikes" )
+	local nStrikeInterval = RaptorDance:GetSpecialValueFloat( "strike_interval" ) or 0.2
 	local nMaxHealthDamagePct = RaptorDance:GetSpecialValueInt( "max_health_damage_pct" )
+	local nCastPoint = RaptorDance:GetCastPoint()
 
-	--kill
-	for _, npcEnemy in pairs( hEnemyList )
-	do
+	-- Avoid using during stun projectile if not magic immune
+	if not bot:IsMagicImmune() then
+		if Fu.IsStunProjectileIncoming and Fu.IsStunProjectileIncoming(bot, 800) then
+			return BOT_ACTION_DESIRE_NONE
+		end
+	end
+
+	-- Kill confirmation
+	for _, npcEnemy in pairs( hEnemyList ) do
 		if Fu.IsValidHero( npcEnemy )
-		and Fu.IsInRange(bot, botTarget, nRadius)
+		and Fu.IsInRange(bot, npcEnemy, nRadius)
+		and Fu.CanBeAttacked(npcEnemy)
 		then
-			local nDamage = (nBaseDamage + bot:GetAttackDamage() + nMaxHealthDamagePct * botTarget:GetMaxHealth()) * nStrikes
+			local nDamage = (nBaseDamage + bot:GetAttackDamage() + nMaxHealthDamagePct / 100 * npcEnemy:GetMaxHealth()) * nStrikes
 			if Fu.CanKillTarget( npcEnemy, nDamage, DAMAGE_TYPE_PURE )
+			and not npcEnemy:HasModifier('modifier_abaddon_borrowed_time')
+			and not npcEnemy:HasModifier('modifier_dazzle_shallow_grave')
+			and not npcEnemy:HasModifier('modifier_oracle_false_promise_timer')
 			then
-				return BOT_ACTION_DESIRE_HIGH, 'r击杀'..Fu.Chat.GetNormName( npcEnemy )
+				return BOT_ACTION_DESIRE_HIGH
 			end
 		end
 	end
 
-	if bRetreating
-	then
-		if hAllyList ~= nil and hEnemyList
+	-- Invulnerability exploitation: when BKB/shallow grave/false promise, go all in
+	if Fu.IsInTeamFight(bot, 1200) and nBotHP < 0.75 then
+		if bot:IsMagicImmune()
+		or bot:IsInvulnerable()
+		or bot:HasModifier('modifier_dazzle_shallow_grave')
+		or bot:HasModifier('modifier_oracle_false_promise_timer')
+		then
+			local nInRangeEnemy = Fu.GetEnemiesNearLoc(bot:GetLocation(), nRadius * 0.8)
+			if nInRangeEnemy ~= nil and #nInRangeEnemy >= 1 then
+				return BOT_ACTION_DESIRE_HIGH
+			end
+		end
+	end
+
+	-- Going on someone: use when estimated damage is high or outnumbered
+	if bGoingOnSomeone and nBotHP < 0.75 then
+		if Fu.IsValidTarget(botTarget)
+		and Fu.IsInRange(bot, botTarget, nRadius * 0.75)
+		and Fu.CanBeAttacked(botTarget)
+		and not Fu.IsChasingTarget(bot, botTarget)
+		and not botTarget:HasModifier('modifier_abaddon_borrowed_time')
+		and not botTarget:HasModifier('modifier_dazzle_shallow_grave')
+		and not botTarget:HasModifier('modifier_oracle_false_promise_timer')
+		and not botTarget:HasModifier('modifier_ursa_enrage')
+		then
+			local nInRangeEnemy = Fu.GetEnemiesNearLoc(bot:GetLocation(), nRadius * 0.8)
+			local nEstDamage = bot:GetEstimatedDamageToTarget(true, botTarget, nCastPoint + (nStrikes * nStrikeInterval), DAMAGE_TYPE_ALL)
+			if nInRangeEnemy ~= nil then
+				if (nEstDamage / botTarget:GetHealth() > 0.5)
+				or (nBotHP < 0.65 and #nInRangeEnemy >= 2)
+				or (#nInRangeEnemy >= 3)
+				then
+					return BOT_ACTION_DESIRE_HIGH
+				end
+			end
+		end
+	end
+
+	-- Retreat: dodge damage when outnumbered
+	if bRetreating then
+		if hAllyList ~= nil and hEnemyList ~= nil
 		and #hEnemyList >= #hAllyList
 		and nBotHP < 0.5 and nBotHP > 0.15 and bot:WasRecentlyDamagedByAnyHero(3)
 		and Fu.IsValidHero(hEnemyList[1])
 		and Fu.IsInRange(bot, hEnemyList[1], nRadius)
 		and not Fu.IsSuspiciousIllusion(hEnemyList[1])
-		and not hEnemyList[1]:HasModifier('modifier_abaddon_aphotic_shield')
 		and not hEnemyList[1]:HasModifier('modifier_abaddon_borrowed_time')
-		and not hEnemyList[1]:HasModifier('modifier_dazzle_shallow_grave')
-		and not hEnemyList[1]:HasModifier('modifier_oracle_false_promise_timer')
-		and not hEnemyList[1]:HasModifier('modifier_templar_assassin_refraction_absorb')
 		then
 			return BOT_ACTION_DESIRE_HIGH
 		end
@@ -522,31 +677,27 @@ function X.ConsiderRaptorDance()
 
 	if Fu.IsInLaningPhase() and nMP < 0.3 then return BOT_ACTION_DESIRE_NONE end
 
-	if bGoingOnSomeone
-    and nBotHP < 0.6
-	then
-		if Fu.IsValidTarget(botTarget)
-		and Fu.IsInRange(bot, botTarget, nRadius)
-		and not Fu.IsSuspiciousIllusion(botTarget)
-		and not botTarget:HasModifier('modifier_abaddon_aphotic_shield')
-		and not botTarget:HasModifier('modifier_dazzle_shallow_grave')
-		and not botTarget:HasModifier('modifier_templar_assassin_refraction_absorb')
-		and hAllyList ~= nil and hEnemyList ~= nil
-		and #hAllyList >= #hEnemyList
-		then
-			return BOT_ACTION_DESIRE_HIGH, "q打架"
+	-- Teamfight AoE
+	if Fu.IsInTeamFight( bot, 1200 ) and nBotHP < 0.6 then
+		local nAoeLoc = Fu.GetAoeEnemyHeroLocation( bot, 0, nRadius, 2)
+		if nAoeLoc ~= nil then
+			return BOT_ACTION_DESIRE_HIGH
 		end
 	end
 
-	if Fu.IsInTeamFight( bot, 1200 )
-    and nBotHP < 0.6
-	then
-		local nAoeLoc = Fu.GetAoeEnemyHeroLocation( bot, 0, nRadius, 2)
-		if nAoeLoc ~= nil
+	-- Roshan survival
+	if Fu.IsDoingRoshan(bot) then
+		if Fu.IsRoshan(botTarget)
+		and Fu.CanBeAttacked(botTarget)
+		and Fu.IsInRange(bot, botTarget, nRadius)
+		and nBotHP < 0.55
+		and bAttacking
+		and hEnemyList ~= nil and #hEnemyList == 0
 		then
-			return BOT_ACTION_DESIRE_HIGH, "q团战"
+			return BOT_ACTION_DESIRE_HIGH
 		end
 	end
+
 	return BOT_ACTION_DESIRE_NONE
 end
 
@@ -645,12 +796,11 @@ function X.ConsiderFalconRush()
         end
     end
 
-    if Fu.IsPushing(bot) then
+    if Fu.IsPushing(bot) and nManaAfter > 0.3 then
         if Fu.IsValidBuilding(botTarget)
         and Fu.CanBeAttacked(botTarget)
-        and Fu.IsInRange(bot, botTarget, nRushRange)
-        and Fu.IsAttacking(botTarget)
-        and nManaAfter > 0.3
+        and Fu.IsInRange(bot, botTarget, bot:GetAttackRange() + 300)
+        and bAttacking
         then
             return BOT_ACTION_DESIRE_HIGH
         end
@@ -659,8 +809,7 @@ function X.ConsiderFalconRush()
     if Fu.IsDoingRoshan(bot) then
         if Fu.IsRoshan(botTarget)
         and Fu.CanBeAttacked(botTarget)
-        and bot:IsFacingLocation(botTarget:GetLocation(), 15)
-        and Fu.IsInRange(bot, botTarget, nRushRange)
+        and Fu.IsInRange(bot, botTarget, 500)
         and bAttacking
         and nManaAfter > 0.25
         then
@@ -670,9 +819,7 @@ function X.ConsiderFalconRush()
 
     if Fu.IsDoingTormentor(bot) then
         if Fu.IsTormentor(botTarget)
-        and Fu.CanBeAttacked(botTarget)
-        and bot:IsFacingLocation(botTarget:GetLocation(), 15)
-        and Fu.IsInRange(bot, botTarget, nRushRange)
+        and Fu.IsInRange(bot, botTarget, 500)
         and bAttacking
         and nManaAfter > 0.25
         then
@@ -848,40 +995,46 @@ function X.ConsiderSwitchDiscipline()
     if not Fu.CanCastAbility(SwitchWeapons) then
         return BOT_ACTION_DESIRE_NONE
     end
+    -- Don't switch while we have ability points to spend (leveling depends on current mode)
     if bot:GetAbilityPoints() > 0 then
         return BOT_ACTION_DESIRE_NONE
     end
 
+    -- Going on someone: switch to sai for FalconRush engage + TalonToss disable
     if bGoingOnSomeone then
         if Fu.IsValidHero(botTarget)
-        and Fu.IsInRange(bot, botTarget, 600)
-        and (Fu.GetHP(botTarget) < 0.6 or (bot:GetNetWorth() > 18000 and FalconRush:IsFullyCastable()))
-		and bot.kez_mode == 'katana'
+        and Fu.IsInRange(bot, botTarget, 1200)
+        and Fu.GetMP(bot) > 0.25
+        and bot.kez_mode == 'katana'
         then
             return BOT_ACTION_DESIRE_HIGH
         end
     end
 
+    -- Retreating: switch to katana (EchoSlash dash away, GrapplingClaw escape)
     if bRetreating and not Fu.IsRealInvisible(bot) then
         if bot.kez_mode == 'sai' then
-			return BOT_ACTION_DESIRE_HIGH
+            -- Only if we have TalonToss available (disable chaser before switching)
+            if Fu.CanCastAbility(TalonToss) or not bot:WasRecentlyDamagedByAnyHero(2) then
+                return BOT_ACTION_DESIRE_HIGH
+            end
         end
     end
 
-    -- if Fu.IsLaning(bot) or Fu.IsPushing(bot) then
-    --     if bot.kez_mode == 'katana' then
-    --         return BOT_ACTION_DESIRE_HIGH
-    --     end
-    -- end
+    -- Laning/Pushing: stay in katana (better for last hitting and wave clear with EchoSlash)
+    if Fu.IsLaning(bot) or Fu.IsPushing(bot) then
+        if bot.kez_mode == 'sai' then
+            return BOT_ACTION_DESIRE_HIGH
+        end
+    end
 
+    -- Farming/Roshan/Tormentor: switch to sai (FalconRush attack speed buff)
     if Fu.IsFarming(bot)
     or Fu.IsDoingRoshan(bot)
     or Fu.IsDoingTormentor(bot)
     then
-        if bot.kez_mode == 'sai' then
-            if bot:GetNetWorth() < 18000 or not Fu.CanCastAbility(FalconRush) then
-                return BOT_ACTION_DESIRE_HIGH
-            end
+        if bot.kez_mode == 'katana' then
+            return BOT_ACTION_DESIRE_HIGH
         end
     end
 
@@ -949,6 +1102,75 @@ function X.DoCombo()
             end
         end
     end
+end
+
+-- Find best grappling target (tree or creep) towards a destination for mobility.
+-- Searches trees first, then creeps, prioritizing furthest target in the right direction.
+function X.GetBestGrapplingTargetTowardsLocation(nCastRange, vTargetLocation)
+	local nTrees = bot:GetNearbyTrees(math.min(nCastRange, 1600))
+	local botLocation = bot:GetLocation()
+	local targetDir = (vTargetLocation - botLocation):Normalized()
+	local nMinDistance = nCastRange * 0.5
+	local nConeAngle = 45
+
+	local bestTarget = nil
+	local bestTargetDistance = 0
+
+	-- Trees
+	for i = #nTrees, 1, -1 do
+		if nTrees[i] then
+			local vTreeLocation = GetTreeLocation(nTrees[i])
+			local treeDir = (vTreeLocation - botLocation):Normalized()
+			local fDot = Fu.DotProduct(targetDir, treeDir)
+
+			if fDot >= math.cos(math.rad(nConeAngle)) then
+				local nBotTreeDist = GetUnitToLocationDistance(bot, vTreeLocation)
+				if nBotTreeDist > nMinDistance then
+					local nBotTargetDist = GetUnitToLocationDistance(bot, vTargetLocation)
+					local nTreeTargetDist = Fu.GetDistance(vTreeLocation, vTargetLocation)
+					if nTreeTargetDist < nBotTargetDist and nBotTreeDist > bestTargetDistance then
+						bestTarget = nTrees[i]
+						bestTargetDistance = nBotTreeDist
+					end
+				end
+			end
+		end
+	end
+
+	if bestTarget ~= nil then
+		return bestTarget, 'tree'
+	end
+
+	-- Enemy creeps
+	local nEnemyCreeps = bot:GetNearbyCreeps(math.min(nCastRange, 1600), true)
+	bestTarget = nil
+	bestTargetDistance = 0
+
+	for i = #nEnemyCreeps, 1, -1 do
+		if Fu.IsValid(nEnemyCreeps[i]) and Fu.CanCastOnTargetAdvanced(nEnemyCreeps[i]) then
+			local vCreepLocation = nEnemyCreeps[i]:GetLocation()
+			local creepDir = (vCreepLocation - botLocation):Normalized()
+			local fDot = Fu.DotProduct(targetDir, creepDir)
+
+			if fDot >= math.cos(math.rad(nConeAngle)) then
+				local nBotCreepDist = GetUnitToUnitDistance(bot, nEnemyCreeps[i])
+				if nBotCreepDist > nMinDistance then
+					local nBotTargetDist = GetUnitToLocationDistance(bot, vTargetLocation)
+					local nCreepTargetDist = GetUnitToLocationDistance(nEnemyCreeps[i], vTargetLocation)
+					if nCreepTargetDist < nBotTargetDist and nBotCreepDist > bestTargetDistance then
+						bestTarget = nEnemyCreeps[i]
+						bestTargetDistance = nBotCreepDist
+					end
+				end
+			end
+		end
+	end
+
+	if bestTarget ~= nil then
+		return bestTarget, 'unit'
+	end
+
+	return nil, ''
 end
 
 function X.GetBestRetreatGrapplingTarget(nCastRange)

@@ -1,120 +1,176 @@
-// matchups.ts
+// matchups.ts — Fetch hero counter data from Stratz API
+// Replaces Dotabuff scraping (blocked by Cloudflare) with Stratz GraphQL API.
 import fs from "node:fs";
 import path from "node:path";
-import puppeteer, { Browser } from "puppeteer";
-import * as cheerio from "cheerio";
-import { hero_name_table } from "./names";
 
-const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36";
-
-type Counters = Record<string, number>;
-
-const visibleToInternal: Record<string, string> = Object.fromEntries(
-    Object.entries(hero_name_table).map(([internal, data]) => [data.visibleName.toLowerCase(), internal])
-);
-
-async function withBrowser<T>(fn: (browser: Browser) => Promise<T>): Promise<T> {
-    const browser = await puppeteer.launch({
-        headless: true, // cross-version safe
-        args: ["--no-sandbox", "--disable-gpu"],
-    });
-    try {
-        return await fn(browser);
-    } finally {
-        await browser.close();
+// Load .env
+const envPath = path.resolve(__dirname, "../../.env");
+if (fs.existsSync(envPath)) {
+    for (const line of fs.readFileSync(envPath, "utf-8").split("\n")) {
+        const m = line.match(/^([^#=]+)=(.*)$/);
+        if (m && !process.env[m[1].trim()]) process.env[m[1].trim()] = m[2].trim();
     }
 }
 
-async function fetchHtml(url: string, browser: Browser): Promise<string> {
-    const page = await browser.newPage();
-    await page.setUserAgent(USER_AGENT);
-    await page.goto(url, { waitUntil: "domcontentloaded" });
-    try {
-        // Dotabuff pages render a sortable table we parse
-        await page.waitForSelector("table.sortable", { timeout: 1000 });
-    } catch {
-        // ignore if it never appears—parsers already handle "no table" gracefully
-    }
-    const html = await page.content();
-    await page.close();
-    return html;
+const API_ENDPOINT = "https://api.stratz.com/graphql";
+const STRATZ_API_KEY = process.env.STRATZ_API_KEY;
+if (!STRATZ_API_KEY) throw new Error("No STRATZ_API_KEY. Set in .env or export.");
+
+const HEADERS = {
+    "User-Agent": "STRATZ_API",
+    Authorization: `Bearer ${STRATZ_API_KEY}`,
+    "Content-Type": "application/json",
+};
+const DELAY = 400; // ms between API calls — avoid throttling
+const OUT_PATH = path.resolve(__dirname, "../../bots/FretBots/matchups_data.lua");
+
+function sleep(ms: number): Promise<void> {
+    return new Promise(r => setTimeout(r, ms));
 }
 
-function parseCounterTable(html: string): Counters | null {
-    const $ = cheerio.load(html);
-    const table = $("table.sortable").first();
-    if (!table.length) return null;
-
-    const counters: Counters = {};
-    const rows = table.find("tr").toArray().slice(1);
-
-    for (const row of rows) {
-        const cols = $(row).find("td");
-        if (cols.length >= 3) {
-            const heroVisible = $(cols[1]).text().trim().toLowerCase();
-            const advantageTxt = $(cols[2]).text().trim().replace("%", "");
-            const advantage = Number(advantageTxt);
-            if (!Number.isFinite(advantage)) continue;
-
-            const internal = visibleToInternal[heroVisible];
-            if (internal) counters[internal] = advantage;
-        }
-    }
-
-    return counters;
+async function gql(query: string): Promise<any> {
+    const res = await fetch(API_ENDPOINT, { method: "POST", headers: HEADERS, body: JSON.stringify({ query }) });
+    if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+    return res.json();
 }
 
-async function getHeroCounters(heroUrlName: string, browser: Browser): Promise<Counters | null> {
-    // past 12 months
-    const url = `https://www.dotabuff.com/heroes/${heroUrlName}/counters?date=year`;
-    const html = await fetchHtml(url, browser);
-    return parseCounterTable(html);
+interface HeroDef {
+    id: number;
+    name: string;
 }
 
-async function main() {
-    const matchupDict: Record<string, Counters> = {};
+async function getAllHeroes(): Promise<HeroDef[]> {
+    const res = await gql(`{ constants { heroes { id name } } }`);
+    return res.data.constants.heroes || [];
+}
 
-    await withBrowser(async browser => {
-        for (const [internalName, data] of Object.entries(hero_name_table)) {
-            console.log(`Fetching counters for ${internalName}...`);
-            try {
-                const counters = await getHeroCounters(data.urlName, browser);
-                if (counters) {
-                    matchupDict[internalName] = counters;
-                } else {
-                    console.warn(`No counters found for ${internalName}.`);
-                }
-            } catch (e) {
-                console.error(`Error on ${internalName}:`, e);
+async function getMatchups(heroId: number): Promise<Array<{ heroId2: number; matchCount: number; winCount: number }>> {
+    const res = await gql(`{
+        heroStats {
+            matchUp(heroId: ${heroId}, bracketBasicIds: [DIVINE_IMMORTAL], take: 200) {
+                heroId
+                vs { heroId2 matchCount winCount }
             }
         }
-    });
+    }`);
+    const matchUp = res.data?.heroStats?.matchUp;
+    if (!matchUp || matchUp.length === 0) return [];
+    // Flatten all vs entries across matchUp results
+    const all: Array<{ heroId2: number; matchCount: number; winCount: number }> = [];
+    for (const entry of matchUp) {
+        if (entry.vs) all.push(...entry.vs);
+    }
+    return all;
+}
 
-    // Write Lua (mirrors Python)
-    //   const outPath = path.resolve(process.cwd(), "matchups_data.lua");
-    const outPath = path.resolve(__dirname, "../../bots/FretBots/matchups_data.lua");
+const TS_OUT_PATH = path.resolve(__dirname, "../bots/FuncLib/data/matchups.ts");
 
+function writeLua(matchupDict: Record<string, Record<string, number>>): void {
+    // 1. Write flat Lua table (matchups_data.lua)
     const lines: string[] = [];
     lines.push("-----");
-    lines.push("-- This file is generated by typescript/post-process/matchups.ts");
+    lines.push("-- Generated by typescript/post-process/matchups.ts (Stratz API)");
     lines.push("-----\n");
     lines.push("local heroList = {");
-    for (const [hero, counterDict] of Object.entries(matchupDict)) {
+    for (const [hero, counters] of Object.entries(matchupDict)) {
         lines.push(`    ['${hero}'] = {`);
-        for (const [counterHero, advantage] of Object.entries(counterDict)) {
-            lines.push(`        ['${counterHero}'] = ${advantage},`);
+        for (const [enemy, advantage] of Object.entries(counters)) {
+            lines.push(`        ['${enemy}'] = ${advantage},`);
         }
         lines.push("    },");
     }
-    lines.push("}\n\nreturn heroList\n");
+    // Add helper functions so hero_selection can use one file for everything
+    lines.push("}\n");
+    lines.push("-- Helper functions (derived from advantage data)");
+    lines.push("-- Synergy: if we have NEGATIVE advantage vs enemy when ally is on our team,");
+    lines.push("-- that ally helps us. We approximate: heroes that counter our counters are synergies.");
+    lines.push("function heroList.GetAdvantage(hero, enemy)");
+    lines.push("    if heroList[hero] and heroList[hero][enemy] then return heroList[hero][enemy] end");
+    lines.push("    return 0");
+    lines.push("end\n");
+    lines.push("-- IsSynergy: hero2 counters heroes that counter hero1 (covers each other's weakness)");
+    lines.push("function heroList.IsSynergy(hero1, hero2)");
+    lines.push("    if not heroList[hero1] or not heroList[hero2] then return false end");
+    lines.push("    -- If hero2 is good against heroes that counter hero1, they synergize");
+    lines.push("    local synergyScore = 0");
+    lines.push("    for enemy, adv in pairs(heroList[hero1]) do");
+    lines.push("        if adv > 1.5 then -- enemy counters hero1");
+    lines.push("            local hero2Adv = heroList.GetAdvantage(enemy, hero2)");
+    lines.push("            if hero2Adv > 1.5 then synergyScore = synergyScore + 1 end -- hero2 counters that enemy");
+    lines.push("        end");
+    lines.push("    end");
+    lines.push("    return synergyScore >= 2");
+    lines.push("end\n");
+    lines.push("-- IsCounter: enemy has significant advantage over hero");
+    lines.push("function heroList.IsCounter(hero, enemy)");
+    lines.push("    return heroList.GetAdvantage(hero, enemy) > 2.0");
+    lines.push("end\n");
+    lines.push("return heroList\n");
+    fs.writeFileSync(OUT_PATH, lines.join("\n"), "utf-8");
+}
 
-    fs.writeFileSync(outPath, lines.join("\n"), "utf-8");
-    console.log("matchups_data.lua has been generated!");
+async function main() {
+    console.log("Fetching hero list...");
+    const heroes = await getAllHeroes();
+    console.log(`Found ${heroes.length} heroes.`);
+
+    // Build id→name map
+    const idToName: Record<number, string> = {};
+    for (const h of heroes) idToName[h.id] = h.name;
+
+    const matchupDict: Record<string, Record<string, number>> = {};
+    let successCount = 0;
+
+    for (let i = 0; i < heroes.length; i++) {
+        const hero = heroes[i];
+        console.log(`[${i + 1}/${heroes.length}] ${hero.name}...`);
+
+        try {
+            const vs = await getMatchups(hero.id);
+            if (vs.length > 0) {
+                const allCounters: Array<[string, number]> = [];
+                for (const entry of vs) {
+                    if (entry.matchCount < 10) continue;
+                    const enemyName = idToName[entry.heroId2];
+                    if (!enemyName) continue;
+                    const enemyWinrate = (entry.winCount / entry.matchCount) * 100;
+                    const advantage = Math.round((enemyWinrate - 50) * 100) / 100;
+                    allCounters.push([enemyName, advantage]);
+                }
+                // Keep only top 20 (biggest counters) and bottom 20 (who we counter)
+                allCounters.sort((a, b) => b[1] - a[1]);
+                /**
+                 * Top 20 = "who counters me" (avoid picking into these)
+                 * Bottom 20 = "who I counter" (pick me against these)
+                 */
+                const top20 = allCounters.slice(0, 20);
+                const bot20 = allCounters.slice(-20);
+                const kept = new Map<string, number>();
+                for (const [name, adv] of top20) kept.set(name, adv);
+                for (const [name, adv] of bot20) kept.set(name, adv);
+                const counters: Record<string, number> = {};
+                for (const [name, adv] of kept) counters[name] = adv;
+                matchupDict[hero.name] = counters;
+                console.log(`  ✓ ${kept.size} matchups (top/bottom 20 from ${allCounters.length})`);
+                successCount++;
+            } else {
+                console.warn(`  ✗ No matchup data`);
+            }
+        } catch (e) {
+            console.error(`  ✗ Error: ${e}`);
+        }
+
+        // Save incrementally
+        writeLua(matchupDict);
+        await sleep(DELAY);
+    }
+
+    console.log(`\nDone! ${successCount}/${heroes.length} heroes. Output: ${OUT_PATH}`);
 }
 
 if (require.main === module) {
     main().catch(e => {
-        console.error("Fatal error:", e);
+        console.error("Fatal:", e);
         process.exit(1);
     });
 }

@@ -103,11 +103,11 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local IllusoryOrb   = bot:GetAbilityByName('puck_illusory_orb')
-local WaningRift    = bot:GetAbilityByName('puck_waning_rift')
-local PhaseShift    = bot:GetAbilityByName('puck_phase_shift')
-local EtherealJaunt = bot:GetAbilityByName('puck_ethereal_jaunt')
-local DreamCoil     = bot:GetAbilityByName('puck_dream_coil')
+local IllusoryOrb   = SafeAbility(bot:GetAbilityByName('puck_illusory_orb'), 'puck_illusory_orb', 'puck')
+local WaningRift    = SafeAbility(bot:GetAbilityByName('puck_waning_rift'), 'puck_waning_rift', 'puck')
+local PhaseShift    = SafeAbility(bot:GetAbilityByName('puck_phase_shift'), 'puck_phase_shift', 'puck')
+local EtherealJaunt = SafeAbility(bot:GetAbilityByName('puck_ethereal_jaunt'), 'puck_ethereal_jaunt', 'puck')
+local DreamCoil     = SafeAbility(bot:GetAbilityByName('puck_dream_coil'), 'puck_dream_coil', 'puck')
 
 local IllusoryOrbDesire, IllusoryOrbLocation
 local WaningRiftDesire, WaningRiftLocation

@@ -124,6 +124,7 @@ local Localization = {
             "You proofed that this game's matchmaking has no standards, another bot tier player again."
         },
         say_assemble = {"On my way!", "Coming!", "I'm coming, hold on!", "Heading there now!"},
+        say_assemble_attack = {"Going for {target}!", "Targeting {target}!", "Let's kill {target}!", "On {target}!"},
         say_roshan = {"Let's do Roshan!", "Roshan time!", "Going for Rosh!"},
         say_push_top = {"Let's push top!", "Pushing top!", "Push top lane!"},
         say_push_mid = {"Let's push mid!", "Pushing mid!", "Push mid lane!"},
@@ -131,6 +132,19 @@ local Localization = {
         say_defend_top = {"Defend top!", "They're pushing top!", "Help top lane!"},
         say_defend_mid = {"Defend mid!", "They're pushing mid!", "Help mid lane!"},
         say_defend_bot = {"Defend bot!", "They're pushing bot!", "Help bot lane!"},
+        mode_laning = "laning",
+        mode_farming = "farming",
+        mode_pushing = "pushing",
+        mode_defending = "defending",
+        mode_retreating = "retreating",
+        mode_roshan = "doing Roshan",
+        mode_tormentor = "doing Tormentor",
+        mode_fighting = "fighting",
+        mode_roaming = "roaming",
+        mode_other = "busy",
+        say_not_defending = "I'm %s, not defending.",
+        say_gg_lose = {"gg", "ggwp", "GG", "gg wp", "GG WP"},
+        say_gg_win = {"ez", "gg ez", "ezzzz", "EZ", "gl next", "gg gl next", "too ez", "GG EZ", "close game", "gg close"},
     },
     zh = {
         welcome_msgs = {
@@ -257,6 +271,7 @@ local Localization = {
             "你证明了这个游戏的匹配没有标准，又一个机器人级别的玩家。"
         },
         say_assemble = {"我来了！", "马上到！", "等等我，正在赶来！", "正在前往！"},
+        say_assemble_attack = {"去抓{target}！", "锁定{target}！", "杀{target}！", "冲{target}！"},
         say_roshan = {"打肉山！", "去肉山！", "该打肉山了！"},
         say_push_top = {"推上路！", "上路推塔！", "一起推上路！"},
         say_push_mid = {"推中路！", "中路推塔！", "一起推中路！"},
@@ -264,6 +279,19 @@ local Localization = {
         say_defend_top = {"防守上路！", "上路有人推！", "支援上路！"},
         say_defend_mid = {"防守中路！", "中路有人推！", "支援中路！"},
         say_defend_bot = {"防守下路！", "下路有人推！", "支援下路！"},
+        mode_laning = "在对线",
+        mode_farming = "在打钱",
+        mode_pushing = "在推塔",
+        mode_defending = "在防守",
+        mode_retreating = "在撤退",
+        mode_roshan = "在打肉山",
+        mode_tormentor = "在打魔方",
+        mode_fighting = "在打架",
+        mode_roaming = "在游走",
+        mode_other = "正忙",
+        say_not_defending = "我%s，不去防守。",
+        say_gg_lose = {"gg", "ggwp", "GG", "打得好", "好游戏"},
+        say_gg_win = {"ez", "简单", "太简单了", "下把加油", "gg ez", "轻松", "不过如此"},
     },
     ru = {
         welcome_msgs = {
@@ -383,6 +411,7 @@ local Localization = {
             "Ты доказал, что матчмейкинг без стандартов, бот-уровень игрока."
         },
         say_assemble = {"Иду!", "Уже бегу!", "Держитесь, я иду!", "Направляюсь туда!"},
+        say_assemble_attack = {"Иду на {target}!", "Цель — {target}!", "Убьём {target}!", "На {target}!"},
         say_roshan = {"Идём на Рошана!", "Рошан!", "Берём Роша!"},
         say_push_top = {"Пушим топ!", "Давайте пушить топ!", "Пуш верхней!"},
         say_push_mid = {"Пушим мид!", "Давайте пушить мид!", "Пуш центра!"},
@@ -509,6 +538,7 @@ local Localization = {
             "君はこのゲームのマッチングに基準がない証拠だよ、ボットプレイヤー。"
         },
         say_assemble = {"向かってるよ！", "今行く！", "待って、向かってる！", "そっちに行くよ！"},
+        say_assemble_attack = {"{target}を狙う！", "{target}をやる！", "{target}を倒そう！", "{target}に行く！"},
         say_roshan = {"ロシャンやろう！", "ロシャンの時間だ！", "ロシャン行くぞ！"},
         say_push_top = {"トップ押そう！", "トッププッシュ！", "トップレーン押すぞ！"},
         say_push_mid = {"ミッド押そう！", "ミッドプッシュ！", "ミッドレーン押すぞ！"},

@@ -169,11 +169,11 @@ modifier_dragon_knight_frost_breath
 modifier_dragon_knight_frost_breath_slow
 
 --]]
-local BreatheFire = bot:GetAbilityByName('dragon_knight_breathe_fire')
-local DragonTail = bot:GetAbilityByName('dragon_knight_dragon_tail')
+local BreatheFire = SafeAbility(bot:GetAbilityByName('dragon_knight_breathe_fire'), 'dragon_knight_breathe_fire', 'dragon_knight')
+local DragonTail = SafeAbility(bot:GetAbilityByName('dragon_knight_dragon_tail'), 'dragon_knight_dragon_tail', 'dragon_knight')
 -- local WrymsWrath = bot:GetAbilityByName('dragon_knight_dragon_blood')
-local Fireball = bot:GetAbilityByName('dragon_knight_fireball')
-local ElderDragonForm = bot:GetAbilityByName('dragon_knight_elder_dragon_form')
+local Fireball = SafeAbility(bot:GetAbilityByName('dragon_knight_fireball'), 'dragon_knight_fireball', 'dragon_knight')
+local ElderDragonForm = SafeAbility(bot:GetAbilityByName('dragon_knight_elder_dragon_form'), 'dragon_knight_elder_dragon_form', 'dragon_knight')
 
 local BreatheFireDesire, BreatheFireLocation
 local DragonTailDesire, DragonTailTarget
@@ -198,10 +198,10 @@ function X.SkillsComplement()
 	bRetreating = ctx.isRetreating
 	bInTeamFight = ctx.isTeamFight
 
-	BreatheFire = bot:GetAbilityByName('dragon_knight_breathe_fire')
-	DragonTail = bot:GetAbilityByName('dragon_knight_dragon_tail')
-	Fireball = bot:GetAbilityByName('dragon_knight_fireball')
-	ElderDragonForm = bot:GetAbilityByName('dragon_knight_elder_dragon_form')
+	BreatheFire = SafeAbility(bot:GetAbilityByName('dragon_knight_breathe_fire'), 'dragon_knight_breathe_fire', 'dragon_knight')
+	DragonTail = SafeAbility(bot:GetAbilityByName('dragon_knight_dragon_tail'), 'dragon_knight_dragon_tail', 'dragon_knight')
+	Fireball = SafeAbility(bot:GetAbilityByName('dragon_knight_fireball'), 'dragon_knight_fireball', 'dragon_knight')
+	ElderDragonForm = SafeAbility(bot:GetAbilityByName('dragon_knight_elder_dragon_form'), 'dragon_knight_elder_dragon_form', 'dragon_knight')
 
 	bInDragonForm = bot:HasModifier('modifier_dragon_knight_dragon_form')
 	bAttacking = Fu.IsAttacking(bot)

@@ -77,10 +77,10 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local RocketBarrage = bot:GetAbilityByName('gyrocopter_rocket_barrage')
-local HomingMissile = bot:GetAbilityByName('gyrocopter_homing_missile')
-local FlakCannon    = bot:GetAbilityByName('gyrocopter_flak_cannon')
-local CallDown      = bot:GetAbilityByName('gyrocopter_call_down')
+local RocketBarrage = SafeAbility(bot:GetAbilityByName('gyrocopter_rocket_barrage'), 'gyrocopter_rocket_barrage', 'gyrocopter')
+local HomingMissile = SafeAbility(bot:GetAbilityByName('gyrocopter_homing_missile'), 'gyrocopter_homing_missile', 'gyrocopter')
+local FlakCannon    = SafeAbility(bot:GetAbilityByName('gyrocopter_flak_cannon'), 'gyrocopter_flak_cannon', 'gyrocopter')
+local CallDown      = SafeAbility(bot:GetAbilityByName('gyrocopter_call_down'), 'gyrocopter_call_down', 'gyrocopter')
 
 local RocketBarrageDesire
 local HomingMissileDesire, HomingMissileTarget

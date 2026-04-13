@@ -89,9 +89,9 @@ function X.MinionThink(hMinionUnit)
 
 end
 
-local Earthshock    = bot:GetAbilityByName( "ursa_earthshock" )
-local Overpower     = bot:GetAbilityByName( "ursa_overpower" )
-local Enrage        = bot:GetAbilityByName( "ursa_enrage" )
+local Earthshock    = SafeAbility(bot:GetAbilityByName("ursa_earthshock"), 'ursa_earthshock', 'ursa')
+local Overpower     = SafeAbility(bot:GetAbilityByName("ursa_overpower"), 'ursa_overpower', 'ursa')
+local Enrage        = SafeAbility(bot:GetAbilityByName("ursa_enrage"), 'ursa_enrage', 'ursa')
 
 local EarthshockDesire
 local OverpowerDesire

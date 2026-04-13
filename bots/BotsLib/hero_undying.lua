@@ -122,10 +122,10 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local Decay         = bot:GetAbilityByName('undying_decay')
-local SoulRip       = bot:GetAbilityByName('undying_soul_rip')
-local Tombstone     = bot:GetAbilityByName('undying_tombstone')
-local FleshGolem    = bot:GetAbilityByName('undying_flesh_golem')
+local Decay         = SafeAbility(bot:GetAbilityByName('undying_decay'), 'undying_decay', 'undying')
+local SoulRip       = SafeAbility(bot:GetAbilityByName('undying_soul_rip'), 'undying_soul_rip', 'undying')
+local Tombstone     = SafeAbility(bot:GetAbilityByName('undying_tombstone'), 'undying_tombstone', 'undying')
+local FleshGolem    = SafeAbility(bot:GetAbilityByName('undying_flesh_golem'), 'undying_flesh_golem', 'undying')
 
 local DecayDesire, DecayLocation
 local SoulRipDesire, SoulRipTarget

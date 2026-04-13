@@ -9,6 +9,8 @@ local bot = GetBot()
 local botName = bot:GetUnitName()
 if bot == nil or bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
 
+if bot.isInLanePhase == nil then bot.isInLanePhase = false end
+
 local local_mode_laning_generic = nil
 local nAllyCreeps = nil
 local nEnemyCreeps = nil
@@ -31,14 +33,15 @@ if Utils.BuggyHeroesDueToValveTooLazy[botName] then local_mode_laning_generic = 
 
 function GetDesire()
 	if ShouldSkipBotThink(GetBot()) then return 0 end
-	return GetAdjustedDesireValue(GetDesireRaw())
+	return GetDesireRaw()
 end
 
 function GetDesireRaw()
 	PickOneAnnouncer()
 	AnnounceMessages()
 
-	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return BOT_MODE_DESIRE_NONE end
+	-- Default to not laning; set true below only when actively in lane
+	bot.isInLanePhase = false
 	local botLV = bot:GetLevel()
 	local currentTime = DotaTime()
 
@@ -61,7 +64,6 @@ function GetDesireRaw()
 		end
 	end
 
-	if GetGameMode() == 23 then currentTime = currentTime * 1.65 end
 	if currentTime < 0 then return BOT_ACTION_DESIRE_NONE end
 
 	-- if DotaTime() > 20 and DotaTime() - skipLaningState.lastCheckTime < skipLaningState.checkGap then
@@ -82,12 +84,24 @@ function GetDesireRaw()
 	-- 	return BOT_MODE_DESIRE_NONE
 	-- end
 
-	if bot:WasRecentlyDamagedByAnyHero(5)
+	-- If being pressured AND low HP, reduce laning so retreat can take over
+	-- Don't zero laning desire — that leaves the bot with no mode and it dies idle
+	if bot:WasRecentlyDamagedByAnyHero(3)
 	and #Fu.Utils.GetLastSeenEnemyIdsNearLocation(bot:GetLocation(), 800) > 0 then
-		local nLaneFrontLocation = GetLaneFrontLocation(GetTeam(), bot:GetAssignedLane(), 0)
-		local nDistFromLane = GetUnitToLocationDistance(bot, nLaneFrontLocation)
-		if not Fu.WeAreStronger(bot, 1200) or (nDistFromLane > 700 and Fu.GetHP(bot) < 0.7) then
-			return BOT_MODE_DESIRE_NONE
+		if Fu.GetHP(bot) < 0.4 and not Fu.WeAreStronger(bot, 1200) then
+			return BOT_MODE_DESIRE_VERYLOW -- let retreat win
+		end
+	end
+
+	-- Fighting enemy heroes: only drop laning if committed to a fight
+	-- (enemy far from lane / low HP chase), not during normal lane trading
+	if nInRangeEnemy ~= nil and #nInRangeEnemy >= 1
+	and (bot:WasRecentlyDamagedByAnyHero(2.0) or Fu.IsGoingOnSomeone(bot))
+	then
+		local closestEnemy = nInRangeEnemy[1]
+		local closestDist = Fu.IsValidHero(closestEnemy) and GetUnitToUnitDistance(bot, closestEnemy) or -1
+		if closestDist >= 0 and closestDist < 1000 and Fu.GetHP(closestEnemy) < 0.6 then
+			return 0.1
 		end
 	end
 
@@ -100,8 +114,8 @@ function GetDesireRaw()
 	-- end
 
 	if local_mode_laning_generic or (Fu.GetPosition(bot) == 1 and Fu.IsPosxHuman(5)) then
-		-- last hit
-		if Fu.IsInLaningPhase() then
+		-- last hit priority during early laning
+		if currentTime <= 9 * 60 then
 			local hitCreep, _ = GetBestLastHitCreep(nEnemyCreeps)
 			if Fu.IsValid(hitCreep) then
 				if Fu.GetPosition(bot) <= 2 or not Fu.IsThereNonSelfCoreNearby(700) -- this is for e.g lone druid bear as pos1-2 with core LD nearby to do last hit.
@@ -117,12 +131,47 @@ function GetDesireRaw()
 		return 1
 	end
 
-	if currentTime <= 10 then return 0.268 end
-	if currentTime <= 9 * 60 and botLV <= 7 then return 0.446 end
-	if currentTime <= 12 * 60 and botLV <= 11 then return 0.369 end
-	if botLV <= 14 and Fu.GetCoresAverageNetworth() < 7000 then return 0.2 end
+	-- No point laning if enemy T2 is dead in this lane — push/farm instead
+	local t2Map = { [LANE_TOP] = TOWER_TOP_2, [LANE_MID] = TOWER_MID_2, [LANE_BOT] = TOWER_BOT_2 }
+	local t2Tower = t2Map[botAssignedLane] and GetTower(GetOpposingTeam(), t2Map[botAssignedLane])
+	if t2Tower == nil or not t2Tower:IsAlive() then
+		return 0
+	end
 
-	Fu.Utils.GameStates.passiveLaningTime = true
+	-- Scale laning desire by HP when enemies are nearby (unsafe lane)
+	-- Safe lane (no enemies): full desire so bot stays to farm/regen
+	local botHP = Fu.GetHP(bot)
+	local bSafeLane = #nInRangeEnemy == 0 or bot:HasModifier('modifier_tower_aura_bonus')
+	local hpScale = bSafeLane and 1 or RemapValClamped(botHP, 0, 0.7, 0, 1)
+
+	if currentTime <= 10 then
+		bot.isInLanePhase = true
+		return 0.268 * hpScale
+	end
+	if currentTime <= 10 * 60 then
+		bot.isInLanePhase = true
+
+		-- At fountain after respawn: high desire to get back to assigned lane
+		if bot:HasModifier('modifier_fountain_aura_buff') and botHP > 0.8 then
+			return BOT_MODE_DESIRE_VERYHIGH + 0.04
+		end
+
+		if Fu.IsCore(bot)
+			and bSafeLane
+			and not bot:WasRecentlyDamagedByAnyHero(5.0)
+			and not Fu.IsRetreating(bot)
+		then
+			return BOT_MODE_DESIRE_VERYHIGH + 0.04
+		end
+		return (BOT_MODE_DESIRE_MODERATE - 0.05) * hpScale
+	end
+
+	-- Past early laning: unblock farm/push modes
+	bot.isInLanePhase = false
+
+	if currentTime <= 12 * 60 and botLV <= 11 then return 0.2 * hpScale end
+	if currentTime <= 20 * 60 then return 0.1 * hpScale end
+
 	return 0.01
 end
 
@@ -201,24 +250,87 @@ function GetBestDenyCreep(hCreepList)
 	return bestDeny
 end
 
+local fNextMovementTime = 0
+
+-- Drop tower aggro by attacking a nearby ally creep
+local function DropTowerAggro(nAllyCreepList)
+	local nEnemyTowers = bot:GetNearbyTowers(900, true)
+	if Fu.IsValidBuilding(nEnemyTowers[1]) and nEnemyTowers[1]:GetAttackTarget() == bot then
+		for _, creep in pairs(nAllyCreepList) do
+			if Fu.IsValid(creep) and Fu.IsInRange(bot, creep, botAttackRange + 100) then
+				bot:Action_AttackUnit(creep, true)
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- Get lane partner (another hero assigned to same lane)
+local function GetLanePartner()
+	for i = 1, #GetTeamPlayers(GetTeam()) do
+		local member = GetTeamMember(i)
+		if member ~= nil and member ~= bot and Fu.IsValidHero(member)
+		and member:GetAssignedLane() == botAssignedLane then
+			return member
+		end
+	end
+	return nil
+end
+
 if local_mode_laning_generic or (Fu.GetPosition(bot) == 1 and Fu.IsPosxHuman(5)) then
 	function Think()
-		local hitCreep, moveToCreep = GetBestLastHitCreep(nEnemyCreeps)
-		if Fu.IsValid(hitCreep) then
-			if Fu.GetPosition(bot) <= 2 or not Fu.IsThereNonSelfCoreNearby(700)
-			then
-				if GetUnitToUnitDistance(bot, hitCreep) > botAttackRange
-				or (moveToCreep and GetUnitToUnitDistance(bot, hitCreep) > botAttackRange * 0.8) then
-					bot:Action_MoveToUnit(hitCreep)
-					return
-				else
-					bot:SetTarget(hitCreep)
-					bot:Action_AttackUnit(hitCreep, true)
+		local nEnemyTowers = bot:GetNearbyTowers(1200, true)
+
+		-- Drop tower aggro first
+		if DropTowerAggro(nAllyCreeps) then return end
+
+		-- Back off from enemy tower if too close without enough creeps tanking
+		if Fu.IsValidBuilding(nEnemyTowers[1]) then
+			local distFromTower = GetUnitToUnitDistance(bot, nEnemyTowers[1])
+			if distFromTower < 800 and #nEnemyCreeps < 3 then
+				if DotaTime() >= fNextMovementTime then
+					bot:Action_MoveToLocation(Fu.VectorAway(bot:GetLocation(), nEnemyTowers[1]:GetLocation(), 950) + RandomVector(75))
+					fNextMovementTime = DotaTime() + RandomFloat(1, 3)
 					return
 				end
 			end
 		end
 
+		-- Last hit
+		local hitCreep, moveToCreep = GetBestLastHitCreep(nEnemyCreeps)
+		if Fu.IsValid(hitCreep) then
+			-- Skip last-hits when creeps are under enemy tower and out of range
+			if Fu.IsValidBuilding(nEnemyTowers[1])
+			and Fu.IsValid(nEnemyCreeps[1])
+			and GetUnitToUnitDistance(nEnemyCreeps[1], nEnemyTowers[1]) < 700
+			and GetUnitToUnitDistance(nEnemyCreeps[1], bot) > botAttackRange then
+				-- Creeps under tower, don't walk into tower range
+				goto skipLastHit
+			end
+
+			-- Lane partner awareness: supports yield last hits to cores
+			local partner = GetLanePartner()
+			if partner == nil
+			or Fu.IsCore(bot)
+			or (not Fu.IsCore(bot) and Fu.IsCore(partner)
+				and (not partner:IsAlive() or GetUnitToUnitDistance(partner, hitCreep) > partner:GetAttackRange() + 400))
+			then
+				if GetUnitToUnitDistance(bot, hitCreep) > botAttackRange
+				or (moveToCreep and GetUnitToUnitDistance(bot, hitCreep) > botAttackRange * 0.8) then
+					bot:Action_MoveDirectly(hitCreep:GetLocation())
+					return
+				else
+					bot:SetTarget(hitCreep)
+					bot:Action_AttackUnit(hitCreep, false)
+					return
+				end
+			end
+
+			::skipLastHit::
+		end
+
+		-- Deny
 		local denyCreep = GetBestDenyCreep(nAllyCreeps)
 		if Fu.IsValid(denyCreep) then
 			bot:SetTarget(denyCreep)
@@ -228,11 +340,58 @@ if local_mode_laning_generic or (Fu.GetPosition(bot) == 1 and Fu.IsPosxHuman(5))
 
 		if local_mode_laning_generic then
 			local_mode_laning_generic.Think()
+			return
 		end
 
+		-- Opportunistic tower hit when siege creep is tanking
+		if Fu.IsValidBuilding(nEnemyTowers[1]) and Fu.CanBeAttacked(nEnemyTowers[1])
+		and Fu.IsValid(nEnemyTowers[1]:GetAttackTarget()) and nEnemyTowers[1]:GetAttackTarget():IsCreep() then
+			if #nAllyCreeps >= 3 then
+				bot:Action_AttackUnit(nEnemyTowers[1], true)
+				return
+			end
+		end
+
+		-- Support harass: only when few enemy creeps (avoid drawing aggro)
+		local nNearbyEnemyCreeps = bot:GetNearbyLaneCreeps(600, true)
+		if #nNearbyEnemyCreeps <= 1 and not Fu.IsCore(bot) and Fu.GetHP(bot) > 0.5 then
+			for _, enemy in pairs(nInRangeEnemy) do
+				if Fu.IsValidHero(enemy)
+				and Fu.CanBeAttacked(enemy)
+				and not Fu.IsSuspiciousIllusion(enemy)
+				and Fu.IsInRange(bot, enemy, botAttackRange + 150)
+				then
+					bot:Action_AttackUnit(enemy, true)
+					return
+				end
+			end
+		end
+
+		-- Core harass: when HP is good and not too many creeps targeting us
+		if Fu.IsCore(bot) and Fu.GetHP(bot) > 0.6 then
+			for _, enemy in pairs(nInRangeEnemy) do
+				if Fu.IsValidHero(enemy)
+				and Fu.CanBeAttacked(enemy)
+				and not Fu.IsSuspiciousIllusion(enemy)
+				and Fu.IsInRange(bot, enemy, botAttackRange + 50)
+				then
+					local creepsOnMe = 0
+					for _, c in pairs(nEnemyCreeps) do
+						if Fu.IsValid(c) and c:GetAttackTarget() == bot then
+							creepsOnMe = creepsOnMe + 1
+						end
+					end
+					if creepsOnMe <= 2 then
+						bot:Action_AttackUnit(enemy, true)
+						return
+					end
+				end
+			end
+		end
+
+		-- Move to lane front position with throttled timing
 		local fLaneFrontAmount = GetLaneFrontAmount(GetTeam(), botAssignedLane, false)
 		local fLaneFrontAmount_enemy = GetLaneFrontAmount(GetOpposingTeam(), botAssignedLane, false)
-
 		local nLongestAttackRange = math.max(botAttackRange, 250, nFurthestEnemyAttackRange)
 
 		local target_loc = GetLaneFrontLocation(GetTeam(), botAssignedLane, -nLongestAttackRange)
@@ -240,7 +399,10 @@ if local_mode_laning_generic or (Fu.GetPosition(bot) == 1 and Fu.IsPosxHuman(5))
 			target_loc = GetLaneFrontLocation(GetOpposingTeam(), botAssignedLane, -nLongestAttackRange)
 		end
 
-		bot:Action_MoveToLocation(target_loc + RandomVector(50))
+		if DotaTime() >= fNextMovementTime then
+			bot:Action_MoveToLocation(target_loc + RandomVector(100))
+			fNextMovementTime = DotaTime() + RandomFloat(0.3, 0.9)
+		end
 	end
 end
 
@@ -297,4 +459,12 @@ function AnnounceMessages()
 			isChangePosMessageDone = true
 		end
 	end
+end
+
+-- SafeCall wrapping for error protection
+if SafeCall then
+  local _origGetDesire = GetDesire
+  local _origThink = Think
+  if _origGetDesire then GetDesire = SafeCall(_origGetDesire, 0, 'LANING_GetDesire') end
+  if _origThink then Think = SafeCall(_origThink, nil, 'LANING_Think') end
 end

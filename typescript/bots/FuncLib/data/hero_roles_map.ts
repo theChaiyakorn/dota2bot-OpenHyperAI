@@ -102,9 +102,9 @@ export const HeroRolesMap: RolesMap = {
     [HeroName.Pugna]: { carry: 1, disabler: 0, durable: 0, escape: 0, initiator: 0, jungler: 0, nuker: 2, support: 0, pusher: 2, ranged: 1, healer: 1 },
     [HeroName.QueenOfPain]: { carry: 1, disabler: 0, durable: 0, escape: 3, initiator: 0, jungler: 0, nuker: 3, support: 0, pusher: 0, ranged: 1, healer: 0 },
     [HeroName.Razor]: { carry: 2, disabler: 0, durable: 2, escape: 0, initiator: 0, jungler: 0, nuker: 1, support: 0, pusher: 0, ranged: 1, healer: 0 },
+    [HeroName.Ringmaster]: { carry: 0, disabler: 2, durable: 0, escape: 1, initiator: 2, jungler: 0, nuker: 2, support: 2, pusher: 0, ranged: 1, healer: 0 },
     [HeroName.Clockwerk]: { carry: 1, disabler: 2, durable: 1, escape: 0, initiator: 3, jungler: 0, nuker: 1, support: 0, pusher: 0, ranged: 0, healer: 0 },
     [HeroName.Riki]: { carry: 2, disabler: 1, durable: 0, escape: 2, initiator: 0, jungler: 0, nuker: 1, support: 0, pusher: 0, ranged: 0, healer: 0 },
-    [HeroName.Ringmaster]: { carry: 0, disabler: 2, durable: 1, escape: 1, initiator: 0, jungler: 0, nuker: 0, support: 2, pusher: 0, ranged: 0, healer: 0 },
     [HeroName.Rubick]: { carry: 1, disabler: 1, durable: 0, escape: 0, initiator: 0, jungler: 0, nuker: 1, support: 2, pusher: 0, ranged: 1, healer: 0 },
     [HeroName.SandKing]: { carry: 1, disabler: 2, durable: 0, escape: 2, initiator: 3, jungler: 1, nuker: 2, support: 0, pusher: 0, ranged: 0, healer: 0 },
     [HeroName.ShadowDeamon]: { carry: 0, disabler: 2, durable: 0, escape: 0, initiator: 1, jungler: 0, nuker: 1, support: 2, pusher: 0, ranged: 1, healer: 0 },
@@ -144,7 +144,7 @@ export const HeroRolesMap: RolesMap = {
     [HeroName.IO]: { carry: 0, disabler: 0, durable: 0, escape: 2, initiator: 0, jungler: 0, nuker: 0, support: 1, pusher: 0, ranged: 0, healer: 1 },
     [HeroName.WitchDoctor]: { carry: 0, disabler: 1, durable: 0, escape: 0, initiator: 0, jungler: 0, nuker: 2, support: 3, pusher: 0, ranged: 1, healer: 1 },
     [HeroName.Zeus]: { carry: 1, disabler: 0, durable: 0, escape: 0, initiator: 0, jungler: 0, nuker: 3, support: 1, pusher: 0, ranged: 1, healer: 0 },
-    [HeroName.Kez]: { carry: 1, disabler: 0, durable: 0, escape: 0, initiator: 0, jungler: 0, nuker: 1, support: 1, pusher: 0, ranged: 0, healer: 0 },
+    [HeroName.Kez]: { carry: 3, disabler: 1, durable: 1, escape: 2, initiator: 1, jungler: 0, nuker: 1, support: 0, pusher: 0, ranged: 0, healer: 0 },
 };
 
 export const InvisHeroes: { [key: string]: number } = {

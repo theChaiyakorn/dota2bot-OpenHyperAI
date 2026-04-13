@@ -26,18 +26,21 @@ local tTalentTreeList = {
 local tAllAbilityBuildList = {
 						{2,3,3,1,3,6,3,2,2,2,6,1,1,1,6},--pos1
 						{1,3,1,2,1,6,1,2,2,2,6,3,3,3,6},--pos2
+						{2,1,1,2,1,6,1,2,2,3,6,3,3,3,6},--pos4
 }
 
 local nAbilityBuildList
 local nTalentBuildList
 
-if sRole == "pos_2"
-then
+if sRole == "pos_1" then
+    nAbilityBuildList   = tAllAbilityBuildList[1]
+    nTalentBuildList    = Fu.Skill.GetTalentBuild(tTalentTreeList[1])
+elseif sRole == "pos_2" then
     nAbilityBuildList   = tAllAbilityBuildList[2]
     nTalentBuildList    = Fu.Skill.GetTalentBuild(tTalentTreeList[2])
 else
-    nAbilityBuildList   = tAllAbilityBuildList[1]
-    nTalentBuildList    = Fu.Skill.GetTalentBuild(tTalentTreeList[1])
+    nAbilityBuildList   = tAllAbilityBuildList[3]
+    nTalentBuildList    = Fu.Skill.GetTalentBuild(tTalentTreeList[2])
 end
 
 local sRoleItemsBuyList = {}
@@ -192,14 +195,14 @@ modifier_lina_laguna_blade
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local FlameCloak = bot:GetAbilityByName( 'lina_flame_cloak' )
-local talent2 = bot:GetAbilityByName( sTalentList[2] )
-local talent4 = bot:GetAbilityByName( sTalentList[4] )
-local talent7 = bot:GetAbilityByName( sTalentList[7] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'lina')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'lina')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'lina')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'lina')
+local FlameCloak = SafeAbility(bot:GetAbilityByName('lina_flame_cloak'), 'lina_flame_cloak', 'lina')
+local talent2 = SafeAbility(bot:GetAbilityByName(sTalentList[2]), 'sTalentList[2]', 'lina')
+local talent4 = SafeAbility(bot:GetAbilityByName(sTalentList[4]), 'sTalentList[4]', 'lina')
+local talent7 = SafeAbility(bot:GetAbilityByName(sTalentList[7]), 'sTalentList[7]', 'lina')
 
 local castQDesire, castQLocation
 local castWDesire, castWLocation
@@ -238,31 +241,26 @@ function X.SkillsComplement()
 		return
 	end
 
+	castRDesire, castRTarget = X.ConsiderR()
 	if ( castRDesire > 0 )
 	then
-
 		Fu.SetQueuePtToINT( bot, true )
-
 		bot:ActionQueue_UseAbilityOnEntity( abilityR, castRTarget )
 		return
-
 	end
 
-
+	castQDesire, castQLocation = X.ConsiderQ()
 	if ( castQDesire > 0 )
 	then
-
 		Fu.SetQueuePtToINT( bot, true )
-
 		bot:ActionQueue_UseAbilityOnLocation( abilityQ, castQLocation )
 		return
 	end
 
+	castWDesire, castWLocation = X.ConsiderW()
 	if ( castWDesire > 0 )
 	then
-
 		Fu.SetQueuePtToINT( bot, true )
-
 		bot:ActionQueue_UseAbilityOnLocation( abilityW, castWLocation )
 		return
 	end
@@ -311,22 +309,37 @@ function X.ConsiderQ()
 	--对线消耗或补刀
 	if Fu.IsLaning( bot )
 	then
-		--对线消耗
-		local nAoeLoc = Fu.GetAoeEnemyHeroLocation( bot, nCastRange -80, nRadius, 2 )
-		if nAoeLoc ~= nil and nMP > 0.58
-		then
-			nTargetLocation = nAoeLoc
-			return BOT_ACTION_DESIRE_HIGH, nTargetLocation, 'Q对线消耗'
-		end
-
-		--对线补刀
-		if #hAllyList == 1 and nMP > 0.38
-		then
+		-- Best case: hit enemy hero AND last-hit creeps with one spell
+		if nMP > 0.3 then
 			local locationAoEKill = bot:FindAoELocation( true, false, bot:GetLocation(), nCastRange, nRadius + 50, 0, nDamage )
-			if locationAoEKill.count >= 3
-			then
+			if locationAoEKill.count >= 2 then
+				-- Check if any enemy hero is also in the line
+				for _, npcEnemy in pairs( nInRangeEnemyList ) do
+					if Fu.IsValidHero( npcEnemy )
+					and Fu.CanCastOnNonMagicImmune( npcEnemy )
+					and GetUnitToLocationDistance( npcEnemy, locationAoEKill.targetloc ) < nRadius + 100
+					then
+						nTargetLocation = locationAoEKill.targetloc
+						return BOT_ACTION_DESIRE_HIGH, nTargetLocation, 'Q补刀+消耗'
+					end
+				end
+				-- No hero in line — still last-hit if enough creeps
 				nTargetLocation = locationAoEKill.targetloc
 				return BOT_ACTION_DESIRE_HIGH, nTargetLocation, "Q对线补刀"..locationAoEKill.count
+			end
+		end
+
+		-- Harass: hit enemy hero (even just 1) when have mana
+		if nMP > 0.35 then
+			for _, npcEnemy in pairs( nInRangeEnemyList ) do
+				if Fu.IsValidHero( npcEnemy )
+				and Fu.CanCastOnNonMagicImmune( npcEnemy )
+				and not Fu.IsRetreating( bot )
+				and Fu.GetHP( npcEnemy ) < 0.7
+				then
+					nTargetLocation = npcEnemy:GetExtrapolatedLocation( nCastPoint )
+					return BOT_ACTION_DESIRE_HIGH, nTargetLocation, 'Q对线消耗'
+				end
 			end
 		end
 	end

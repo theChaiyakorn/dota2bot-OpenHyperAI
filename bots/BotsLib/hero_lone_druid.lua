@@ -54,48 +54,42 @@ sRoleItemsBuyList['pos_1'] = {
 	"item_travel_boots_2",--
 }
 
-sRoleItemsBuyList['pos_1_w_bear'] = {
-    "item_tango",
-    "item_phase_boots",
-    -- "item_quelling_blade",
-    "item_magic_wand",
-    "item_mask_of_madness",--1
-    -- "item_maelstrom",
-    'item_boots',
-    nUtility,--1
-    'item_boots',
-    -- "item_basher",
-    "item_abyssal_blade",--1
-    "item_ultimate_scepter",
-    "item_black_king_bar",--1
-    "item_assault",--1
-    "item_black_king_bar",--2
-    "item_monkey_king_bar",--1
-	"item_moon_shard",
-    "item_moon_shard",
-    "item_ultimate_scepter_2",
-    "item_aghanims_shard",
-
-
-    "item_travel_boots",
-    "item_skadi",--2
-    "item_monkey_king_bar",--2
-    "item_satanic",--2
-    "item_greater_crit",--2
-    "item_ultimate_scepter",
-    "item_ultimate_scepter_2",
-    "item_travel_boots_2",--2
-}
-
 sRoleItemsBuyList['pos_2'] = sRoleItemsBuyList['pos_1']
-
 sRoleItemsBuyList['pos_3'] = sRoleItemsBuyList['pos_1']
-
 sRoleItemsBuyList['pos_4'] = sRoleItemsBuyList['pos_1']
-
 sRoleItemsBuyList['pos_5'] = sRoleItemsBuyList['pos_1']
 
-X['sBuyList'] = sRoleItemsBuyList[sRole]
+-- Hero buys ALL items (hero + bear) since courier only delivers to hero.
+-- Bear items get transferred via drop/pickup in item_purchase_generic.lua.
+-- WARNING: after dropping an item to bear, hero no longer "has" it.
+-- The purchase system will try to rebuy it. So bear items should be
+-- interleaved with hero items — buy bear item, drop it, buy hero item.
+-- Cheap consumable bear items (OoV) should NOT be in the list because
+-- they get rebought infinitely after being dropped.
+local hasBear = SafeAbility(bot:GetAbilityByName('lone_druid_spirit_bear'), 'lone_druid_spirit_bear', 'lone_druid') ~= nil
+if hasBear then
+	X['sBuyList'] = {
+		"item_tango",
+		"item_magic_wand",
+		"item_phase_boots",            --bear (dropped to bear)
+		"item_boots",           --hero (kept)
+		"item_diffusal_blade",         --bear
+		"item_desolator",              --bear
+		"item_black_king_bar",         --hero
+		"item_assault",                --bear
+		"item_ultimate_scepter",       --bear
+		"item_monkey_king_bar",        --bear
+		"item_ultimate_scepter_2",     --bear
+		"item_butterfly",              --hero
+		-- "item_abyssal_blade",       --bear (basher upgrade)
+		"item_moon_shard",             --bear
+		"item_satanic",                --hero
+		"item_ultimate_scepter_2",     --hero
+		"item_travel_boots",           --hero
+	}
+else
+	X['sBuyList'] = sRoleItemsBuyList[sRole]
+end
 
 X['sSellList'] = {
 
@@ -111,7 +105,6 @@ if Utils.GetLoneDruid(bot).roleType == nil then
     end
 else
     if Utils.GetLoneDruid(bot).roleType == 'pos_1_w_bear' then
-        X['sBuyList'] = sRoleItemsBuyList['pos_1_w_bear']
         nAbilityBuildList = nAbilityBuildListWithBear
     end
 end
@@ -130,10 +123,10 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local SummonSpiritBear  = bot:GetAbilityByName('lone_druid_spirit_bear')
+local SummonSpiritBear  = SafeAbility(bot:GetAbilityByName('lone_druid_spirit_bear'), 'lone_druid_spirit_bear', 'lone_druid')
 -- local SpiritLink        = bot:GetAbilityByName('lone_druid_spirit_link')
-local SavageRoar        = bot:GetAbilityByName('lone_druid_savage_roar')
-local TrueForm          = bot:GetAbilityByName('lone_druid_true_form')
+local SavageRoar        = SafeAbility(bot:GetAbilityByName('lone_druid_savage_roar'), 'lone_druid_savage_roar', 'lone_druid')
+local TrueForm          = SafeAbility(bot:GetAbilityByName('lone_druid_true_form'), 'lone_druid_true_form', 'lone_druid')
 
 local SummonSpiritBearDesire
 local SavageRoarDesire
@@ -147,27 +140,24 @@ function X.SkillsComplement()
 
     local ctx = AbilityCtx.Build(bot)
 	nBotHP = ctx.hp
-
     botTarget = ctx.target
 
+    -- Bear summon is HIGHEST priority — always have bear out
+    SummonSpiritBearDesire = X.ConsiderSummonSpiritBear()
+    if SummonSpiritBearDesire > 0 then
+        bot:Action_UseAbility(SummonSpiritBear)
+        return
+    end
+
     TrueFormDesire = X.ConsiderTrueForm()
-    if TrueFormDesire > 0
-    then
+    if TrueFormDesire > 0 then
         bot:Action_UseAbility(TrueForm)
         return
     end
 
     SavageRoarDesire = X.ConsiderSavageRoar()
-    if SavageRoarDesire > 0
-    then
+    if SavageRoarDesire > 0 then
         bot:Action_UseAbility(SavageRoar)
-        return
-    end
-
-    SummonSpiritBearDesire = X.ConsiderSummonSpiritBear()
-    if SummonSpiritBearDesire > 0
-    then
-        bot:Action_UseAbility(SummonSpiritBear)
         return
     end
 end

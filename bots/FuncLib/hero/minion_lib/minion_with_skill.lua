@@ -85,7 +85,7 @@ end
 -- Cast Spells
 
 X.ConsiderSpellUsage['default'] = function (hMinionUnit, ability)
-    print("[WARN] No function for the usage of ability: " .. ability:GetName() .. ', for unit owned by: ' .. bot:GetUnitName())
+    log("[WARN] No function for the usage of ability: " .. ability:GetName() .. ', for unit owned by: ' .. bot:GetUnitName())
     return 0, nil, nil
 end
 

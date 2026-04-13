@@ -95,14 +95,14 @@ function X.GetAbilityList( bot )
 					--print('[WARN] The ability '..name..' on slot '..slot..' cannot be accessed for hero: '..unitName)
 					table.insert(sAbilityList, generic_hidden)
 				else
-					print('[WARN] The ability '..name..' on slot '..slot..' does not make sense. Check if there is anything wrong with this hero: '..unitName)
+					log('[WARN] The ability '..name..' on slot '..slot..' does not make sense. Check if there is anything wrong with this hero: '..unitName)
 				end
 			elseif Utils.AbilityBehaviorHasFlag(ability:GetBehavior(), DOTA_ABILITY_BEHAVIOR_NOT_LEARNABLE) and ability:IsHidden() then
 				--print('[WARN] The ability '..name..' on slot '..slot..' is not learnable (e.g. innate like) for hero: '..unitName)
 			elseif ability:IsUltimate() and slot >= 4 then
-				-- print('[INFO] The ability '..name..' on slot '..slot..' is the ultimate for hero: '..unitName)
+				-- log('[INFO] The ability '..name..' on slot '..slot..' is the ultimate for hero: '..unitName)
 				if Utils.AbilityBehaviorHasFlag(ability:GetBehavior(), DOTA_ABILITY_BEHAVIOR_NOT_LEARNABLE) or ability:IsHidden() then
-					print('[WARN] The ability '..name..' on slot '..slot..' seems to be an ultimate for hero: '..unitName..'. But it is not learnable OR hidden. Check if there is anything wrong with this hero.')
+					log('[WARN] The ability '..name..' on slot '..slot..' seems to be an ultimate for hero: '..unitName..'. But it is not learnable OR hidden. Check if there is anything wrong with this hero.')
 				else
 					sAbilityList[6] = name
 					--print(unitName..' loaded ultimate ability with name= '..name..', at idx= '..slot)
@@ -114,10 +114,10 @@ function X.GetAbilityList( bot )
 				table.insert(sAbilityList, name)
 				--print(unitName..' loaded ability with name= '..name..', at idx= '..slot)
 			else
-				print(unitName..' failed to load ability with name= '..name..', at idx= '..slot)
+				log(unitName..' failed to load ability with name= '..name..', at idx= '..slot)
 			end
 		else
-			print('[WARN] It seems there is no ability on slot '..slot..' for '..unitName)
+			log('[WARN] It seems there is no ability on slot '..slot..' for '..unitName)
 		end
 	end
 
@@ -242,7 +242,7 @@ function X.GetSkillList( sAbilityList, nAbilityBuildList, sTalentList, nTalentBu
 					}
 	end
 
-	-- print("Aba list for: "..botName)
+	-- log("Aba list for: "..botName)
     -- Utils.PrintTable(sSkillList)
 	return sSkillList
 end

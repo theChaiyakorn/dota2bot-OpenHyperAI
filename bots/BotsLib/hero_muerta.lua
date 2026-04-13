@@ -108,12 +108,12 @@ Modifier or ability names not supported as of 5.5.2024
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local abilityAS = bot:GetAbilityByName( sAbilityList[4] )
-local SpectralSlug = bot:GetAbilityByName('muerta_spectral_slug')
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'muerta')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'muerta')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'muerta')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'muerta')
+local abilityAS = SafeAbility(bot:GetAbilityByName(sAbilityList[4]), 'sAbilityList[4]', 'muerta')
+local SpectralSlug = SafeAbility(bot:GetAbilityByName('muerta_spectral_slug'), 'muerta_spectral_slug', 'muerta')
 
 local castQDesire, castQTarget
 local castWDesire, castWLocation
@@ -161,11 +161,11 @@ function X.SkillsComplement()
 	if Fu.CanNotUseAbility( bot ) or bot:IsInvisible() then return end
 
 	-- Re-fetch ability handles each tick for safety against Aghs upgrades
-	abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-	abilityW = bot:GetAbilityByName( sAbilityList[2] )
-	abilityE = bot:GetAbilityByName( sAbilityList[3] )
-	abilityR = bot:GetAbilityByName( sAbilityList[6] )
-	abilityAS = bot:GetAbilityByName( sAbilityList[4] )
+	abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'muerta')
+	abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'muerta')
+	abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'muerta')
+	abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'muerta')
+	abilityAS = SafeAbility(bot:GetAbilityByName(sAbilityList[4]), 'sAbilityList[4]', 'muerta')
 
 	-- Cache per-tick variables
 	botTarget = Fu.GetProperTarget(bot)

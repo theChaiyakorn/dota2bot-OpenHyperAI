@@ -160,13 +160,13 @@ end
 
 
 
-local CatchyLick        = bot:GetAbilityByName('largo_catchy_lick')
-local Frogstomp         = bot:GetAbilityByName('largo_frogstomp')
-local CroakOfGenius     = bot:GetAbilityByName('largo_croak_of_genius')
-local AmphibianRhapsody = bot:GetAbilityByName('largo_amphibian_rhapsody')
-local BullbellyBlitz    = bot:GetAbilityByName('largo_song_fight_song')
-local HotfeetHustle     = bot:GetAbilityByName('largo_song_double_time')
-local IslandElixir      = bot:GetAbilityByName('largo_song_good_vibrations')
+local CatchyLick        = SafeAbility(bot:GetAbilityByName('largo_catchy_lick'), 'largo_catchy_lick', 'largo')
+local Frogstomp         = SafeAbility(bot:GetAbilityByName('largo_frogstomp'), 'largo_frogstomp', 'largo')
+local CroakOfGenius     = SafeAbility(bot:GetAbilityByName('largo_croak_of_genius'), 'largo_croak_of_genius', 'largo')
+local AmphibianRhapsody = SafeAbility(bot:GetAbilityByName('largo_amphibian_rhapsody'), 'largo_amphibian_rhapsody', 'largo')
+local BullbellyBlitz    = SafeAbility(bot:GetAbilityByName('largo_song_fight_song'), 'largo_song_fight_song', 'largo')
+local HotfeetHustle     = SafeAbility(bot:GetAbilityByName('largo_song_double_time'), 'largo_song_double_time', 'largo')
+local IslandElixir      = SafeAbility(bot:GetAbilityByName('largo_song_good_vibrations'), 'largo_song_good_vibrations', 'largo')
 
 local CatchyLickDesire, CatchyLickTarget
 local FrogstompDesire, FrogstompLocation

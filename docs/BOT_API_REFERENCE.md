@@ -1,7 +1,12 @@
 # Dota 2 Bot Scripting API Reference
 
 > Comprehensive reference for the Valve bot scripting API used in custom lobby bot scripts. Detailed parameter descriptions, return value semantics, usage examples, and important caveats.
-> Ref: https://developer.valvesoftware.com/wiki/Dota_2_Workshop_Tools/Scripting/API
+>
+> **Source of truth:** https://docs.moddota.com/lua_bots/ — machine-extracted from the game engine, most complete and up-to-date API listing.
+>
+> Other references:
+> - https://developer.valvesoftware.com/wiki/Dota_Bot_Scripting
+> - https://developer.valvesoftware.com/wiki/Dota_2_Workshop_Tools/Scripting/API
 ---
 
 ## Table of Contents
@@ -664,6 +669,37 @@ for _, tp in ipairs(tps) do
 end
 ```
 
+### `GeneratePath(vStart, vEnd, hUnitsToAvoid, hResult)`
+
+**Parameters:**
+- `vStart` (vector): Path start position.
+- `vEnd` (vector): Path destination.
+- `hUnitsToAvoid` (handle): Table of units to path around, or nil.
+- `hResult` (handle): Table that will be filled with waypoint vectors.
+
+**Returns:** `int` -- Number of waypoints generated.
+
+### `GetUnitPotentialValue(hUnit, vLoc, fTime)`
+
+**Parameters:**
+- `hUnit` (handle): The unit to evaluate.
+- `vLoc` (vector): Location to evaluate at.
+- `fTime` (float): Time horizon for prediction.
+
+**Returns:** `int` -- Estimated threat/value of the unit at the given location and time.
+
+### `GetBotByHandle(nHandle)`
+
+**Parameters:** `nHandle` (uint) -- Raw handle ID of a bot unit.
+
+**Returns:** `handle` -- Bot unit handle, or nil.
+
+### `GetBotAbilityByHandle(nHandle)`
+
+**Parameters:** `nHandle` (uint) -- Raw handle ID of an ability.
+
+**Returns:** `handle` -- Ability handle, or nil.
+
 ---
 
 ## Projectiles and Avoidance
@@ -678,6 +714,12 @@ end
 - `velocity` (vector): Direction and speed.
 - `radius` (float): Projectile collision radius.
 - `handle` (int): Unique projectile handle.
+
+### `GetLinearProjectileByHandle(nHandle)`
+
+**Parameters:** `nHandle` (int) -- Projectile handle from `GetLinearProjectiles()`.
+
+**Returns:** `table` -- Same fields as entries from `GetLinearProjectiles()`, or nil if not found.
 
 ### `GetAvoidanceZones()`
 
@@ -696,10 +738,18 @@ end
 
 **Returns:** `int` -- Handle for later removal.
 
+### `AddConditionalAvoidanceZone(vLoc, hFunc)`
+
+**Parameters:**
+- `vLoc` (vector): Position of the zone.
+- `hFunc` (handle): Callback function that returns whether the zone is still active.
+
+**Returns:** `int` -- Handle for later removal.
+
 ### `RemoveAvoidanceZone(hZone)`
 
 **Parameters:**
-- `hZone` (int): Handle returned by `AddAvoidanceZone`.
+- `hZone` (int): Handle returned by `AddAvoidanceZone` or `AddConditionalAvoidanceZone`.
 
 ---
 
@@ -982,6 +1032,8 @@ All functions in this section are called on a unit handle: `bot:FunctionName(...
 | `GetMaxMana()` | `int` | Maximum mana |
 | `GetManaRegen()` | `float` | Total mana regeneration per second |
 | `GetBaseManaRegen()` | `float` | Base mana regen before bonuses |
+| `GetHealthRegenPerStr()` | `float` | HP regen gained per point of Strength |
+| `GetManaRegenPerInt()` | `float` | Mana regen gained per point of Intelligence |
 
 ### `IsAlive()`
 
@@ -1212,6 +1264,11 @@ end
 | `WasRecentlyDamagedByHero(hUnit, fInterval)` | `bool` | Damaged by a specific hero? |
 | `WasRecentlyDamagedByCreep(fInterval)` | `bool` | Damaged by a creep? |
 | `WasRecentlyDamagedByTower(fInterval)` | `bool` | Damaged by a tower? |
+| `WasRecentlyDamagedByPlayer(nPlayerID, fInterval)` | `bool` | Damaged by a specific player (by ID)? |
+| `TimeSinceDamagedByHero(hHero)` | `float` | Seconds since damaged by a specific hero handle |
+| `TimeSinceDamagedByCreep()` | `float` | Seconds since last creep damage |
+| `TimeSinceDamagedByTower()` | `float` | Seconds since last tower damage |
+| `TimeSinceDamagedByPlayer(nPlayerID)` | `float` | Seconds since damaged by a specific player (by ID) |
 
 ```lua
 -- Flee if recently damaged by an enemy hero
@@ -1269,6 +1326,14 @@ end
 ### `GetNearbyTowers(nRadius, bEnemies)` / `GetNearbyBarracks(nRadius, bEnemies)`
 
 **Returns:** `{hUnit...}` -- Towers or barracks within range.
+
+### `GetNearbyShrines(nRadius, bEnemies)`
+
+**Returns:** `{hUnit...}` -- Shrines within range.
+
+### `GetNearbyFillers(nRadius, bEnemies)`
+
+**Returns:** `{hUnit...}` -- Filler buildings (the small destructible buildings in base) within range.
 
 ### `GetNearbyTrees(nRadius)`
 
@@ -1507,6 +1572,10 @@ end
 **Returns:** `float` -- Seconds of cooldown remaining.
 
 > **Enemy abilities always return 0.** You cannot see enemy cooldowns through the API. This function only works reliably for your own abilities and allied abilities.
+
+### `GetCooldown()`
+
+**Returns:** `float` -- Base cooldown of the ability at its current level (not the remaining time, but the full cooldown duration).
 
 | Function | Returns | Description |
 |---|---|---|

@@ -132,11 +132,11 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local PoisonAttack = bot:GetAbilityByName('viper_poison_attack')
-local NetherToxin = bot:GetAbilityByName('viper_nethertoxin')
+local PoisonAttack = SafeAbility(bot:GetAbilityByName('viper_poison_attack'), 'viper_poison_attack', 'viper')
+local NetherToxin = SafeAbility(bot:GetAbilityByName('viper_nethertoxin'), 'viper_nethertoxin', 'viper')
 -- local CorrosiveSkin = bot:GetAbilityByName('viper_corrosive_skin')
-local Nosedive = bot:GetAbilityByName( 'viper_nose_dive' )
-local ViperStrike = bot:GetAbilityByName('viper_viper_strike')
+local Nosedive = SafeAbility(bot:GetAbilityByName('viper_nose_dive'), 'viper_nose_dive', 'viper')
+local ViperStrike = SafeAbility(bot:GetAbilityByName('viper_viper_strike'), 'viper_viper_strike', 'viper')
 
 local PoisonAttackDesire, PoisonAttackTarget
 local NetherToxinDesire, NetherToxinLocation

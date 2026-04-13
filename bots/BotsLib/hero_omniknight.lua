@@ -9,10 +9,16 @@ local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
 
 local tTalentTreeList = {
-						{-- Core (pos 1/2/3)
+						{-- Core (pos 1/2)
                             ['t25'] = {10, 0},
                             ['t20'] = {10, 0},
                             ['t15'] = {0, 10},
+                            ['t10'] = {10, 0},
+                        },
+                        {-- Offlane (pos 3)
+                            ['t25'] = {10, 0},
+                            ['t20'] = {0, 10},
+                            ['t15'] = {10, 0},
                             ['t10'] = {10, 0},
                         },
                         {-- Support (pos 4/5)
@@ -35,12 +41,14 @@ if sRole == 'pos_3' then nAbilityBuildList = tAllAbilityBuildList[1] end
 if sRole == 'pos_4' then nAbilityBuildList = tAllAbilityBuildList[2] end
 if sRole == 'pos_5' then nAbilityBuildList = tAllAbilityBuildList[2] end
 
-local nTalentBuildList = Fu.Skill.GetTalentBuild(tTalentTreeList[1])
-if sRole == 'pos_1' then nTalentBuildList = Fu.Skill.GetTalentBuild(tTalentTreeList[1]) end
-if sRole == 'pos_2' then nTalentBuildList = Fu.Skill.GetTalentBuild(tTalentTreeList[1]) end
-if sRole == 'pos_3' then nTalentBuildList = Fu.Skill.GetTalentBuild(tTalentTreeList[1]) end
-if sRole == 'pos_4' then nTalentBuildList = Fu.Skill.GetTalentBuild(tTalentTreeList[2]) end
-if sRole == 'pos_5' then nTalentBuildList = Fu.Skill.GetTalentBuild(tTalentTreeList[2]) end
+local nTalentBuildList
+if sRole == 'pos_3' then
+    nTalentBuildList = Fu.Skill.GetTalentBuild(tTalentTreeList[2])
+elseif sRole == 'pos_4' or sRole == 'pos_5' then
+    nTalentBuildList = Fu.Skill.GetTalentBuild(tTalentTreeList[3])
+else
+    nTalentBuildList = Fu.Skill.GetTalentBuild(tTalentTreeList[1])
+end
 
 local utilityItems = {"item_crimson_guard", "item_pipe", "item_heavens_halberd"}
 local sCrimsonPipeHalberd = utilityItems[RandomInt(1, #utilityItems)]
@@ -136,40 +144,24 @@ end
 
 npc_dota_hero_omniknight
 
-"Ability1"		"omniknight_purification"
-"Ability2"		"omniknight_repel"
-"Ability3"		"omniknight_degen_aura"
-"Ability4"		"generic_hidden"
-"Ability5"		"generic_hidden"
-"Ability6"		"omniknight_guardian_angel"
-"Ability10"		"special_bonus_unique_omniknight_5"
-"Ability11"		"special_bonus_movement_speed_20"
-"Ability12"		"special_bonus_unique_omniknight_6"
-"Ability13"		"special_bonus_attack_damage_70"
-"Ability14"		"special_bonus_unique_omniknight_2"
-"Ability15"		"special_bonus_mp_regen_3"
-"Ability16"		"special_bonus_unique_omniknight_1"
-"Ability17"		"special_bonus_unique_omniknight_3"
-
-modifier_omniknight_pacify
-modifier_omniknight_repel
-modifier_omniknight_degen_aura
-modifier_omniknight_degen_aura_effect
-
+"Ability1"		"omniknight_purification"       -- Q: Purification (heal + pure dmg AoE)
+"Ability2"		"omniknight_martyr"              -- W: Martyr (magic immunity + heal)
+"Ability3"		"omniknight_hammer_of_purity"    -- E: Hammer of Purity (bonus pure dmg)
+"Ability6"		"omniknight_guardian_angel"       -- R: Guardian Angel (physical immunity AoE)
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local abilityAS = bot:GetAbilityByName( sAbilityList[4] )
-local talent7 = bot:GetAbilityByName( sTalentList[7] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'omniknight')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'omniknight')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'omniknight')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'omniknight')
+local abilityAS = SafeAbility(bot:GetAbilityByName(sAbilityList[4]), 'sAbilityList[4]', 'omniknight')
+local talent7 = SafeAbility(bot:GetAbilityByName(sTalentList[7]), 'sTalentList[7]', 'omniknight')
 
 local castQDesire, castQTarget
 local castWDesire, castWTarget
 local castEDesire, castETarget
-local castRDesire, castRTarget
+local castRDesire
 local castASDesire, castASTarget
 
 local aetherRange = 0
@@ -177,13 +169,37 @@ local aetherRange = 0
 
 function X.SkillsComplement()
 
-	if Fu.CanNotUseAbility( bot ) or bot:IsInvisible() then return end
-
 	-- Re-fetch ability handles each tick for safety
-	abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-	abilityW = bot:GetAbilityByName( sAbilityList[2] )
-	abilityE = bot:GetAbilityByName( sAbilityList[3] )
-	abilityR = bot:GetAbilityByName( sAbilityList[6] )
+	abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'omniknight')
+	abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'omniknight')
+	abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'omniknight')
+	abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'omniknight')
+
+	-- Hammer of Purity autocast toggle — runs BEFORE the CanNotUseAbility gate
+	-- so it stays toggled on even during stuns/silences.
+	if abilityE ~= nil and abilityE:IsTrained() then
+		local bShouldAutocast = false
+		local nEnemyHeroesNearby = bot:GetNearbyHeroes(900, true, BOT_MODE_NONE)
+		if nEnemyHeroesNearby ~= nil and #nEnemyHeroesNearby >= 1 then
+			-- Enemy heroes nearby: autocast on for bonus damage
+			bShouldAutocast = true
+		elseif Fu.IsFarming(bot) or Fu.IsPushing(bot) or Fu.IsDefending(bot) then
+			-- Farming/pushing: autocast on if enough mana
+			if Fu.GetMP(bot) > 0.4 then
+				bShouldAutocast = true
+			end
+		elseif Fu.IsDoingRoshan(bot) or Fu.IsDoingTormentor(bot) then
+			bShouldAutocast = true
+		end
+
+		if bShouldAutocast and not abilityE:GetAutoCastState() then
+			abilityE:ToggleAutoCast()
+		elseif not bShouldAutocast and abilityE:GetAutoCastState() then
+			abilityE:ToggleAutoCast()
+		end
+	end
+
+	if Fu.CanNotUseAbility( bot ) or bot:IsInvisible() then return end
 
 	-- Cache per-tick variables
 	local ctx = AbilityCtx.Build(bot)
@@ -197,13 +213,13 @@ function X.SkillsComplement()
 	hAllyList = ctx.allies
 
 
-	castRDesire, castRTarget = X.ConsiderR()
+	castRDesire = X.ConsiderR()
 	if castRDesire > 0
 	then
 
 		Fu.SetQueuePtToINT( bot, true )
 
-		bot:ActionQueue_UseAbilityOnLocation( abilityR, castRTarget )
+		bot:ActionQueue_UseAbility( abilityR )
 		return
 	end
 
@@ -228,12 +244,10 @@ function X.SkillsComplement()
 		return
 	end
 
+	-- Hammer of Purity: manual cast for kill confirmation or specific targets
 	castEDesire, castETarget = X.ConsiderE()
 	if castEDesire > 0
 	then
-
-		Fu.SetQueuePtToINT( bot, true )
-
 		bot:Action_UseAbilityOnEntity( abilityE, castETarget )
 		return
 	end
@@ -265,6 +279,18 @@ function X.ConsiderQ()
 	local hCastTarget = nil
 	local sCastMotive = nil
 
+
+	-- Self-heal when incoming projectile or heavy damage would kill
+	if Fu.GetHP(bot) < 0.3 and bot:WasRecentlyDamagedByAnyHero(2.0) then
+		local nIncomingDmg = Fu.GetAttackProjectileDamageByRange(bot, 1200) * 2
+		if bot:GetHealth() < bot:GetActualIncomingDamage(nIncomingDmg, DAMAGE_TYPE_PHYSICAL) + 100
+		or Fu.IsStunProjectileIncoming(bot, 1200)
+		then
+			hCastTarget = bot
+			sCastMotive = 'Q-self-save'
+			return BOT_ACTION_DESIRE_HIGH, hCastTarget, sCastMotive
+		end
+	end
 
 	--击杀低血量敌人
 	for _, npcEnemy in pairs( nInBonusEnemyList )
@@ -792,48 +818,40 @@ function X.ConsiderR()
 	if not abilityR:IsFullyCastable() then return 0 end
 
 	local nRadius = abilityR:GetSpecialValueInt( 'radius' )
-	local nCastRange = nRadius
-
-	if bot:HasScepter() then nCastRange = 1600 end
-
-	local hCastTarget = nil
-	local sCastMotive = nil
 
 
 	-- Teamfight check FIRST (highest priority -- save multiple allies)
 	for i = 1, #GetTeamPlayers( GetTeam() )
 	do
 		local npcAlly = GetTeamMember( i )
-		if npcAlly ~= nil
-			and npcAlly:IsAlive()
-			and ( bot:HasScepter() or Fu.IsInRange( bot, npcAlly, 700 ) )
+		if Fu.IsValidHero( npcAlly )
+			and Fu.CanBeAttacked( npcAlly )
+			and ( bot:HasScepter() or Fu.IsInRange( bot, npcAlly, nRadius ) )
+			and not npcAlly:HasModifier( 'modifier_necrolyte_reapers_scythe' )
 		then
-			if Fu.IsInTeamFight( npcAlly, 1300 )
+			if Fu.IsInTeamFight( npcAlly, 1600 )
 			then
-				local allyList = Fu.GetAlliesNearLoc( npcAlly:GetLocation(), nCastRange )
-				local enemyList = Fu.GetNearbyHeroes(npcAlly,  1400, true, BOT_MODE_NONE )
+				local allyList = Fu.GetAlliesNearLoc( npcAlly:GetLocation(), nRadius )
+				local enemyList = Fu.GetEnemiesNearLoc( npcAlly:GetLocation(), 1200 )
 				if #enemyList >= 2
 					and ( #enemyList >= #allyList or #enemyList >= 3 )
 				then
 					local guardianCount = 0
 					for _, allyHero in pairs(allyList)
 					do
-						if allyHero:WasRecentlyDamagedByAnyHero(3.0)
-							and Fu.GetHP( allyHero ) < 0.8
+						if Fu.IsValidHero( allyHero )
+							and Fu.CanBeAttacked( allyHero )
+							and allyHero:WasRecentlyDamagedByAnyHero(4.0)
+							and not allyHero:HasModifier( 'modifier_necrolyte_reapers_scythe' )
 						then
-
 							guardianCount = guardianCount + 1
-
 							if Fu.GetHP( allyHero ) < 0.4 then guardianCount = guardianCount + 1 end
-
 						end
 					end
 
 					if guardianCount >= 2
 					then
-						hCastTarget = npcAlly
-						sCastMotive = 'R-团战辅助防御:'..Fu.Chat.GetNormName( hCastTarget )
-						return BOT_ACTION_DESIRE_HIGH, hCastTarget:GetLocation(), sCastMotive
+						return BOT_ACTION_DESIRE_HIGH
 					end
 				end
 			end
@@ -844,20 +862,20 @@ function X.ConsiderR()
 	for i = 1, #GetTeamPlayers( GetTeam() )
 	do
 		local npcAlly = GetTeamMember( i )
-		if npcAlly ~= nil
-			and npcAlly:IsAlive()
-			and ( bot:HasScepter() or Fu.IsInRange( bot, npcAlly, 700 ) )
+		if Fu.IsValidHero( npcAlly )
+			and Fu.CanBeAttacked( npcAlly )
+			and ( bot:HasScepter() or Fu.IsInRange( bot, npcAlly, nRadius ) )
+			and not npcAlly:HasModifier( 'modifier_necrolyte_reapers_scythe' )
 		then
 			if Fu.IsRetreating( npcAlly )
-				and npcAlly:WasRecentlyDamagedByAnyHero( 5.0 )
+				and not Fu.IsRealInvisible( npcAlly )
+				and npcAlly:WasRecentlyDamagedByAnyHero( 2.0 )
 			then
 				local attackModeAlly = Fu.GetNearbyHeroes(npcAlly,  nRadius, false, BOT_MODE_ATTACK )
 				local retreatModeAlly = Fu.GetNearbyHeroes(npcAlly,  nRadius, false, BOT_MODE_RETREAT )
 				if ( #attackModeAlly >= 2 or ( #attackModeAlly >= 1 and #retreatModeAlly >= 2 ) )
 				then
-					hCastTarget = npcAlly
-					sCastMotive = 'R-逃跑时辅助:'..Fu.Chat.GetNormName( hCastTarget )
-					return BOT_ACTION_DESIRE_HIGH, hCastTarget:GetLocation(), sCastMotive
+					return BOT_ACTION_DESIRE_HIGH
 				end
 			end
 		end
@@ -866,19 +884,18 @@ function X.ConsiderR()
 	-- Self-defense while attacking LAST (lowest priority)
 	if Fu.IsGoingOnSomeone( bot )
 		and nHP < ( #hEnemyList >= 3 and 0.65 or 0.45 )
-		and bot:WasRecentlyDamagedByAnyHero( 4.0 )
+		and bot:WasRecentlyDamagedByAnyHero( 2.0 )
 	then
 		if Fu.IsValidHero( botTarget )
-			and Fu.IsInRange( bot, botTarget, 500 )
-			and Fu.CanCastOnMagicImmune( botTarget )
+			and Fu.IsInRange( bot, botTarget, 800 )
 			and not Fu.IsSuspiciousIllusion( botTarget )
-			and not Fu.IsDisabled( botTarget )
 			and not botTarget:IsDisarmed()
-			and botTarget:GetAttackTarget() == bot
+			and botTarget:IsFacingLocation( bot:GetLocation(), 60 )
+			and not Fu.IsChasingTarget( bot, botTarget )
 		then
-			hCastTarget = bot
-			sCastMotive = 'R-辅助攻击:'..Fu.Chat.GetNormName( botTarget )
-			return BOT_ACTION_DESIRE_HIGH, hCastTarget:GetLocation(), sCastMotive
+			if nHP < 0.55 then
+				return BOT_ACTION_DESIRE_HIGH
+			end
 		end
 	end
 

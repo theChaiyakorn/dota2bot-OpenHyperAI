@@ -46,10 +46,9 @@ local function IsHumanClaimingRune(nRune)
 	return false
 end
 
--- GetDesire  (reference structure, with local additions)
 function GetDesire()
 	if ShouldSkipBotThink(GetBot()) then return 0 end
-	return GetAdjustedDesireValue(GetDesireRaw())
+	return GetDesireRaw()
 end
 
 function GetDesireRaw()
@@ -73,22 +72,24 @@ function GetDesireRaw()
 		return BOT_MODE_DESIRE_ABSOLUTE
 	end
 
-	-- Drop rune desire when outnumbered or taking damage so attack/retreat can take over.
-	-- This prevents bots from walking into 5-man ambushes at rune spots.
-	if #nEnemyHeroes > 0 then
+	-- Drop rune desire when outnumbered so attack/retreat can take over.
+	-- This prevents bots from walking into ambushes at rune spots.
+	-- During laning 1v1 mid, don't suppress — runes are part of the lane.
+	if DotaTime() > 0 and #nEnemyHeroes > 0 then
 		if #nEnemyHeroes > #nAllyHeroes then
 			return BOT_MODE_DESIRE_NONE
 		end
-		if bot:WasRecentlyDamagedByAnyHero(2.0) and botHP < 0.7 then
+		if bot:WasRecentlyDamagedByAnyHero(2.0) and botHP < 0.4 then
 			return BOT_MODE_DESIRE_NONE
 		end
 	end
 
-	if (DotaTime() > -10 and bot:GetCurrentActionType() == BOT_ACTION_TYPE_IDLE) then
-		return BOT_MODE_DESIRE_NONE
-	end
+	-- Removed: idle check was preventing rune pickup when bot had no other action
+	-- if (DotaTime() > -10 and bot:GetCurrentActionType() == BOT_ACTION_TYPE_IDLE) then
+	-- 	return BOT_MODE_DESIRE_NONE
+	-- end
 
-	-- Don't leave high ground push or ancient defense for runes (local addition)
+	-- Don't leave team when pushing or defending together
 	if Fu.Utils.IsTeamPushingSecondTierOrHighGround(bot) then
 		return BOT_MODE_DESIRE_NONE
 	end
@@ -97,16 +98,57 @@ function GetDesireRaw()
 		return BOT_MODE_DESIRE_NONE
 	end
 
-	-- Core rune logic using bot.rune state (reference pattern)
+	-- Mid/late game: never walk far for runes, only grab if nearby
+	if not Fu.IsInLaningPhase() then
+		-- If pushing or defending, no rune desire at all
+		if Fu.IsPushing(bot) or Fu.IsDefending(bot) then
+			return BOT_MODE_DESIRE_NONE
+		end
+		-- Suppress if any ally is pushing with the team
+		local mode = bot:GetActiveMode()
+		if mode == BOT_MODE_PUSH_TOWER_TOP or mode == BOT_MODE_PUSH_TOWER_MID or mode == BOT_MODE_PUSH_TOWER_BOT then
+			return BOT_MODE_DESIRE_NONE
+		end
+	end
+	-- 1-7 min: laning rune logic (water runes + role-based bounty)
+	-- If already in rune mode walking to a rune, commit — don't oscillate with laning
+	if DotaTime() >= 60 and DotaTime() < 7 * 60 then
+		local nCheckDist = 2500
+		if botActiveMode == BOT_MODE_RUNE
+		and bot.rune and bot.rune.normal
+		and bot.rune.normal.location ~= nil and bot.rune.normal.location ~= -1
+		and GetUnitToLocationDistance(bot, GetRuneSpawnLocation(bot.rune.normal.location)) < nCheckDist
+		then
+			local commitStatus = GetRuneStatus(bot.rune.normal.location)
+			if commitStatus == RUNE_STATUS_AVAILABLE or commitStatus == RUNE_STATUS_UNKNOWN then
+				return BOT_MODE_DESIRE_HIGH
+			end
+		end
+
+		local laningDesire = X.GetLaningRuneDesire(nCheckDist)
+		if laningDesire > 0 then return laningDesire end
+	end
+
+	-- Core rune logic using bot.rune state
 	if bot.rune and bot.rune.normal then
-		local nProximityRadius = 1600
+		local nProximityRadius = Fu.IsInLaningPhase() and 1600 or 1200
 		local rune = bot.rune.normal
 
 		rune.location, rune.distance = X.GetBestRune()
 
+		-- Hard distance cap: never walk far for runes
+		if rune.distance > 4000 and DotaTime() >= 60 * 2 then
+			return BOT_MODE_DESIRE_NONE
+		end
+
 		-- Pre-game: move toward rune with moderate desire
 		if DotaTime() < 0 and not bot:WasRecentlyDamagedByAnyHero(10.0) then
 			return BOT_MODE_DESIRE_MODERATE
+		end
+
+		-- Mid/late: only grab runes if very close
+		if not Fu.IsInLaningPhase() and rune.distance > 2000 then
+			return BOT_MODE_DESIRE_NONE
 		end
 
 		if rune.location ~= -1 then
@@ -161,8 +203,11 @@ function GetDesireRaw()
 						return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius)
 					end
 
+					-- Mid laner with bottle: high priority for river runes
+					local bMidLaner = botAssignedLane == LANE_MID and Fu.IsInLaningPhase()
 					if bBottle or (not Fu.IsEarlyGame() and botPos <= 3) then
-						return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, nProximityRadius * 2.5)
+						local baseDesire = bMidLaner and BOT_MODE_DESIRE_VERYHIGH or BOT_MODE_DESIRE_HIGH
+						return X.GetScaledDesire(baseDesire, rune.distance, nProximityRadius * 2.5)
 					else
 						return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius * 2.5)
 					end
@@ -197,7 +242,6 @@ function OnEnd()
 	Bottle = nil
 end
 
--- Think  (reference structure)
 local fNextMovementTime = -math.huge
 function Think()
 	if bot:IsInvulnerable() and bot:DistanceFromFountain() < 500 then
@@ -260,7 +304,7 @@ function Think()
 		end
 	end
 
-	-- Post-horn rune pickup (reference pattern using bot.rune state)
+	-- Post-horn rune pickup
 	if bot.rune and bot.rune.normal then
 		local botAttackRange = math.min(bot:GetAttackRange() + 150, 1200)
 		local nInRangeEnemy = Fu.GetEnemiesNearLoc(bot:GetLocation(), botAttackRange)
@@ -268,6 +312,18 @@ function Think()
 		local rune = bot.rune.normal
 
 		local vRuneLocation = GetRuneSpawnLocation(rune.location)
+
+		-- River runes during 1-7 min: keep walking even without vision
+		local bIsRiverRune = (rune.location == RUNE_POWERUP_1 or rune.location == RUNE_POWERUP_2)
+		if bIsRiverRune and DotaTime() >= 60 and DotaTime() < 7 * 60
+		and rune.status ~= RUNE_STATUS_AVAILABLE
+		and not IsLocationVisible(vRuneLocation)
+		then
+			if GetUnitToLocationDistance(bot, vRuneLocation) > 50 then
+				bot:Action_MoveToLocation(vRuneLocation)
+				return
+			end
+		end
 
 		if rune.status == RUNE_STATUS_AVAILABLE then
 			if Bottle and Fu.CanCastAbility(Bottle) and rune.distance < 1200 then
@@ -330,7 +386,6 @@ function Think()
 	end
 end
 
--- InitRune  (from reference — stores rune state on bot handle)
 function X.InitRune()
 	if bot.rune == nil then
 		bot.rune = {
@@ -346,7 +401,6 @@ function X.InitRune()
 	end
 end
 
--- IsSuitableToPickRune  (reference version — no last-seen check)
 function X.IsSuitableToPickRune()
 	if X.IsNearRune(bot, 550) then return true end
 
@@ -376,7 +430,6 @@ function X.IsNearRune(hUnit, nRadius)
 	return false
 end
 
--- GetBestRune  (reference version — simple closest ally check)
 function X.GetBestRune()
 	minute = math.floor(DotaTime() / 60)
 	second = DotaTime() % 60
@@ -406,7 +459,6 @@ function X.GetBestRune()
 	return targetRune, targetRuneDistance
 end
 
--- IsTheClosestAlly  (reference version — pure distance)
 function X.IsTheClosestAlly(hUnit, vLocation)
 	local targetAlly = hUnit
 	local targetAllyDistance = GetUnitToLocationDistance(hUnit, vLocation)
@@ -614,3 +666,139 @@ function X.IsTeamMustSaveRune(nRune)
 	end
 end
 
+
+function X.IsHumanDangerPingedRune(nRune)
+	local vRuneLoc = GetRuneSpawnLocation(nRune)
+	for i = 1, #GetTeamPlayers(GetTeam()) do
+		local member = GetTeamMember(i)
+		if member ~= nil and member:IsAlive() and not member:IsBot() then
+			local ping = member:GetMostRecentPing()
+			if ping ~= nil and not ping.normal_ping
+			and Fu.GetDistance(ping.location, vRuneLoc) <= 400
+			and GameTime() - ping.time < 30
+			then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+function X.IsAllyWithBottleCloser(nRune)
+	local vRuneLoc = GetRuneSpawnLocation(nRune)
+	local myDist = GetUnitToLocationDistance(bot, vRuneLoc)
+	for i = 1, #GetTeamPlayers(GetTeam()) do
+		local member = GetTeamMember(i)
+		if member ~= nil and member ~= bot and Fu.IsValidHero(member)
+		and member:FindItemSlot('item_bottle') >= 0
+		and GetUnitToLocationDistance(member, vRuneLoc) < myDist
+		then
+			return true
+		end
+	end
+	return false
+end
+
+function X.ShouldCheckRuneStatus(nRune)
+	local status = GetRuneStatus(nRune)
+	return status == RUNE_STATUS_AVAILABLE or status == RUNE_STATUS_UNKNOWN
+end
+
+function X.GetLaningRuneDesire(nCheckDist)
+	-- 1) River runes (before 6 min, only near spawn times: every 2 min at 2:00, 4:00)
+	-- Check 5s before spawn, stop 5s after if not found
+	local currentMinute = math.floor(DotaTime() / 60)
+	local currentSecond = DotaTime() % 60
+	local bNearRiverSpawn = DotaTime() < 6 * 60
+		and (currentMinute % 2 == 1 and currentSecond >= 55
+			or currentMinute % 2 == 0 and currentSecond <= 5)
+	if bNearRiverSpawn then
+		local waterRunes = { RUNE_POWERUP_1, RUNE_POWERUP_2 }
+		local closestWater = nil
+		local closestWaterDist = nCheckDist
+		for _, rune in pairs(waterRunes) do
+			local runeStatus = GetRuneStatus(rune)
+			if (runeStatus == RUNE_STATUS_AVAILABLE or runeStatus == RUNE_STATUS_UNKNOWN)
+			and not X.IsHumanDangerPingedRune(rune)
+			and not X.IsAllyWithBottleCloser(rune)
+			then
+				local dist = GetUnitToLocationDistance(bot, GetRuneSpawnLocation(rune))
+				if dist < closestWaterDist then
+					closestWater = rune
+					closestWaterDist = dist
+				end
+			end
+		end
+		if closestWater ~= nil then
+			if bot.rune and bot.rune.normal then
+				bot.rune.normal.location = closestWater
+				bot.rune.normal.distance = closestWaterDist
+				bot.rune.normal.status = GetRuneStatus(closestWater)
+				bot.rune.normal.type = GetRuneType(closestWater)
+			end
+			return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, closestWaterDist, 3200)
+		end
+	end
+
+	-- 2) Role-based bounty for supports
+	if botPos >= 4 then
+		local myTeam = GetTeam()
+		local targetBounty = nil
+		if (myTeam == TEAM_RADIANT and botPos == 4) or (myTeam == TEAM_DIRE and botPos == 5) then
+			targetBounty = RUNE_BOUNTY_1
+		elseif (myTeam == TEAM_RADIANT and botPos == 5) or (myTeam == TEAM_DIRE and botPos == 4) then
+			targetBounty = RUNE_BOUNTY_2
+		end
+		if targetBounty ~= nil
+		and X.ShouldCheckRuneStatus(targetBounty)
+		and not X.IsHumanDangerPingedRune(targetBounty)
+		then
+			local dist = GetUnitToLocationDistance(bot, GetRuneSpawnLocation(targetBounty))
+			if dist < nCheckDist then
+				if bot.rune and bot.rune.normal then
+					bot.rune.normal.location = targetBounty
+					bot.rune.normal.distance = dist
+					bot.rune.normal.status = GetRuneStatus(targetBounty)
+					bot.rune.normal.type = GetRuneType(targetBounty)
+				end
+				return X.GetScaledDesire(BOT_MODE_DESIRE_VERYHIGH, dist, 3500)
+			end
+		end
+	end
+
+	-- 3) General: closest available rune
+	local closestRune = nil
+	local closestDist = nCheckDist
+	local allRunes = { RUNE_BOUNTY_1, RUNE_BOUNTY_2, RUNE_POWERUP_1, RUNE_POWERUP_2 }
+	for _, rune in pairs(allRunes) do
+		if X.ShouldCheckRuneStatus(rune)
+		and not X.IsHumanDangerPingedRune(rune)
+		and not X.IsAllyWithBottleCloser(rune)
+		then
+			local dist = GetUnitToLocationDistance(bot, GetRuneSpawnLocation(rune))
+			if dist < closestDist then
+				closestRune = rune
+				closestDist = dist
+			end
+		end
+	end
+	if closestRune ~= nil then
+		if bot.rune and bot.rune.normal then
+			bot.rune.normal.location = closestRune
+			bot.rune.normal.distance = closestDist
+			bot.rune.normal.status = GetRuneStatus(closestRune)
+			bot.rune.normal.type = GetRuneType(closestRune)
+		end
+		return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, closestDist, nCheckDist)
+	end
+
+	return 0
+end
+
+-- SafeCall wrapping for error protection
+if SafeCall then
+  local _origGetDesire = GetDesire
+  local _origThink = Think
+  if _origGetDesire then GetDesire = SafeCall(_origGetDesire, 0, 'RUNE_GetDesire') end
+  if _origThink then Think = SafeCall(_origThink, nil, 'RUNE_Think') end
+end

@@ -107,13 +107,13 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local Starbreaker       = bot:GetAbilityByName('dawnbreaker_fire_wreath')
-local CelestialHammer   = bot:GetAbilityByName('dawnbreaker_celestial_hammer')
-local Converge          = bot:GetAbilityByName('dawnbreaker_converge')
+local Starbreaker       = SafeAbility(bot:GetAbilityByName('dawnbreaker_fire_wreath'), 'dawnbreaker_fire_wreath', 'dawnbreaker')
+local CelestialHammer   = SafeAbility(bot:GetAbilityByName('dawnbreaker_celestial_hammer'), 'dawnbreaker_celestial_hammer', 'dawnbreaker')
+local Converge          = SafeAbility(bot:GetAbilityByName('dawnbreaker_converge'), 'dawnbreaker_converge', 'dawnbreaker')
 -- local Luminosity        = bot:GetAbilityByName('dawnbreaker_luminosity')
-local SolarGuardian     = bot:GetAbilityByName('dawnbreaker_solar_guardian')
+local SolarGuardian     = SafeAbility(bot:GetAbilityByName('dawnbreaker_solar_guardian'), 'dawnbreaker_solar_guardian', 'dawnbreaker')
 
-local CelestialHammerCastRangeTalent = bot:GetAbilityByName('special_bonus_unique_dawnbreaker_celestial_hammer_cast_range')
+local CelestialHammerCastRangeTalent = SafeAbility(bot:GetAbilityByName('special_bonus_unique_dawnbreaker_celestial_hammer_cast_range'), 'special_bonus_unique_dawnbreaker_celestial_hammer_cast_range', 'dawnbreaker')
 
 local StarbreakerDesire, StarbreakerLocation
 local CelestialHammerDesire, CelestialHammerLocation

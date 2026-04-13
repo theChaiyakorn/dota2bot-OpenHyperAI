@@ -119,11 +119,11 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local SplitEarth        = bot:GetAbilityByName('leshrac_split_earth')
-local DiabolicEdict     = bot:GetAbilityByName('leshrac_diabolic_edict')
-local LightningStorm    = bot:GetAbilityByName('leshrac_lightning_storm')
-local Nihilism          = bot:GetAbilityByName('leshrac_greater_lightning_storm')
-local PulseNova         = bot:GetAbilityByName('leshrac_pulse_nova')
+local SplitEarth        = SafeAbility(bot:GetAbilityByName('leshrac_split_earth'), 'leshrac_split_earth', 'leshrac')
+local DiabolicEdict     = SafeAbility(bot:GetAbilityByName('leshrac_diabolic_edict'), 'leshrac_diabolic_edict', 'leshrac')
+local LightningStorm    = SafeAbility(bot:GetAbilityByName('leshrac_lightning_storm'), 'leshrac_lightning_storm', 'leshrac')
+local Nihilism          = SafeAbility(bot:GetAbilityByName('leshrac_greater_lightning_storm'), 'leshrac_greater_lightning_storm', 'leshrac')
+local PulseNova         = SafeAbility(bot:GetAbilityByName('leshrac_pulse_nova'), 'leshrac_pulse_nova', 'leshrac')
 
 local SplitEarthDesire, SplitEarthLocation
 local DiabolicEdictDesire

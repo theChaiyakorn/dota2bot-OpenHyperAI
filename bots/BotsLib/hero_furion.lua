@@ -191,11 +191,11 @@ end
 local Sprout, Teleportation, NaturesCall, CurseOfTheOldGrowth, WrathOfNature
 
 local function RefreshAbilities()
-    Sprout              = bot:GetAbilityByName('furion_sprout')
-    Teleportation       = bot:GetAbilityByName('furion_teleportation')
-    NaturesCall         = bot:GetAbilityByName('furion_force_of_nature')
-    CurseOfTheOldGrowth = bot:GetAbilityByName('furion_curse_of_the_forest')
-    WrathOfNature       = bot:GetAbilityByName('furion_wrath_of_nature')
+    Sprout              = SafeAbility(bot:GetAbilityByName('furion_sprout'), 'furion_sprout', 'furion')
+    Teleportation       = SafeAbility(bot:GetAbilityByName('furion_teleportation'), 'furion_teleportation', 'furion')
+    NaturesCall         = SafeAbility(bot:GetAbilityByName('furion_force_of_nature'), 'furion_force_of_nature', 'furion')
+    CurseOfTheOldGrowth = SafeAbility(bot:GetAbilityByName('furion_curse_of_the_forest'), 'furion_curse_of_the_forest', 'furion')
+    WrathOfNature       = SafeAbility(bot:GetAbilityByName('furion_wrath_of_nature'), 'furion_wrath_of_nature', 'furion')
 end
 
 -- Cached per-tick variables

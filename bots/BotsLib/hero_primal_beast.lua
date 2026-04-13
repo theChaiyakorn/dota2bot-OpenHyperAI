@@ -148,12 +148,12 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local Onslaught         = bot:GetAbilityByName('primal_beast_onslaught') -- Q 突
-local Trample           = bot:GetAbilityByName('primal_beast_trample') -- W 踏
-local Uproar            = bot:GetAbilityByName('primal_beast_uproar') -- E 咤
-local RockThrow         = bot:GetAbilityByName('primal_beast_rock_throw') -- D 砸
-local Pulverize         = bot:GetAbilityByName('primal_beast_pulverize') -- R 捶
-local BeginOnslaught    = bot:GetAbilityByName('primal_beast_onslaught_release')
+local Onslaught         = SafeAbility(bot:GetAbilityByName('primal_beast_onslaught'), 'primal_beast_onslaught', 'primal_beast') -- Q 突
+local Trample           = SafeAbility(bot:GetAbilityByName('primal_beast_trample'), 'primal_beast_trample', 'primal_beast') -- W 踏
+local Uproar            = SafeAbility(bot:GetAbilityByName('primal_beast_uproar'), 'primal_beast_uproar', 'primal_beast') -- E 咤
+local RockThrow         = SafeAbility(bot:GetAbilityByName('primal_beast_rock_throw'), 'primal_beast_rock_throw', 'primal_beast') -- D 砸
+local Pulverize         = SafeAbility(bot:GetAbilityByName('primal_beast_pulverize'), 'primal_beast_pulverize', 'primal_beast') -- R 捶
+local BeginOnslaught    = SafeAbility(bot:GetAbilityByName('primal_beast_onslaught_release'), 'primal_beast_onslaught_release', 'primal_beast')
 
 local botTarget, nEnemyHeroes, nInRangeAlly
 local OnslaughtDesire, OnslaughtLocation
@@ -177,12 +177,12 @@ function X.SkillsComplement()
 	bAttacking = Fu.IsAttacking(bot)
 	nBotHP = Fu.GetHP(bot)
 
-    Onslaught       = bot:GetAbilityByName('primal_beast_onslaught')
-    Trample         = bot:GetAbilityByName('primal_beast_trample')
-    Uproar          = bot:GetAbilityByName('primal_beast_uproar')
-    RockThrow       = bot:GetAbilityByName('primal_beast_rock_throw')
-    Pulverize       = bot:GetAbilityByName('primal_beast_pulverize')
-    BeginOnslaught  = bot:GetAbilityByName('primal_beast_onslaught_release')
+    Onslaught       = SafeAbility(bot:GetAbilityByName('primal_beast_onslaught'), 'primal_beast_onslaught', 'primal_beast')
+    Trample         = SafeAbility(bot:GetAbilityByName('primal_beast_trample'), 'primal_beast_trample', 'primal_beast')
+    Uproar          = SafeAbility(bot:GetAbilityByName('primal_beast_uproar'), 'primal_beast_uproar', 'primal_beast')
+    RockThrow       = SafeAbility(bot:GetAbilityByName('primal_beast_rock_throw'), 'primal_beast_rock_throw', 'primal_beast')
+    Pulverize       = SafeAbility(bot:GetAbilityByName('primal_beast_pulverize'), 'primal_beast_pulverize', 'primal_beast')
+    BeginOnslaught  = SafeAbility(bot:GetAbilityByName('primal_beast_onslaught_release'), 'primal_beast_onslaught_release', 'primal_beast')
 
     botTarget = Fu.GetProperTarget(bot)
 	nEnemyHeroes = Fu.GetNearbyHeroes(bot, 1600, true, BOT_MODE_NONE)

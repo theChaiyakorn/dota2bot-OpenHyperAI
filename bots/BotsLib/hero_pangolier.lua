@@ -125,13 +125,13 @@ function X.MinionThink(hMinionUnit)
 	end
 end
 
-local Swashbuckle       = bot:GetAbilityByName('pangolier_swashbuckle')
-local ShieldCrash       = bot:GetAbilityByName('pangolier_shield_crash')
+local Swashbuckle       = SafeAbility(bot:GetAbilityByName('pangolier_swashbuckle'), 'pangolier_swashbuckle', 'pangolier')
+local ShieldCrash       = SafeAbility(bot:GetAbilityByName('pangolier_shield_crash'), 'pangolier_shield_crash', 'pangolier')
 -- local LuckyShot         = bot:GetAbilityByName('pangolier_luckyshot')
-local RollUp            = bot:GetAbilityByName('pangolier_rollup')
-local EndRollUp         = bot:GetAbilityByName('pangolier_rollup_stop')
-local RollingThunder    = bot:GetAbilityByName('pangolier_gyroshell')
-local EndRollingThunder    = bot:GetAbilityByName('pangolier_gyroshell_stop')
+local RollUp            = SafeAbility(bot:GetAbilityByName('pangolier_rollup'), 'pangolier_rollup', 'pangolier')
+local EndRollUp         = SafeAbility(bot:GetAbilityByName('pangolier_rollup_stop'), 'pangolier_rollup_stop', 'pangolier')
+local RollingThunder    = SafeAbility(bot:GetAbilityByName('pangolier_gyroshell'), 'pangolier_gyroshell', 'pangolier')
+local EndRollingThunder    = SafeAbility(bot:GetAbilityByName('pangolier_gyroshell_stop'), 'pangolier_gyroshell_stop', 'pangolier')
 
 local SwashbuckleDesire, SwashbuckleLocation
 local ShieldCrashDesire
@@ -155,12 +155,12 @@ function X.SkillsComplement()
 	nBotMP = Fu.GetMP(bot)
 	bInTeamFight = Fu.IsInTeamFight(bot, 1200)
 
-    Swashbuckle       = bot:GetAbilityByName('pangolier_swashbuckle')
-    ShieldCrash       = bot:GetAbilityByName('pangolier_shield_crash')
-    RollUp            = bot:GetAbilityByName('pangolier_rollup')
-    EndRollUp         = bot:GetAbilityByName('pangolier_rollup_stop')
-    RollingThunder    = bot:GetAbilityByName('pangolier_gyroshell')
-    EndRollingThunder = bot:GetAbilityByName('pangolier_gyroshell_stop')
+    Swashbuckle       = SafeAbility(bot:GetAbilityByName('pangolier_swashbuckle'), 'pangolier_swashbuckle', 'pangolier')
+    ShieldCrash       = SafeAbility(bot:GetAbilityByName('pangolier_shield_crash'), 'pangolier_shield_crash', 'pangolier')
+    RollUp            = SafeAbility(bot:GetAbilityByName('pangolier_rollup'), 'pangolier_rollup', 'pangolier')
+    EndRollUp         = SafeAbility(bot:GetAbilityByName('pangolier_rollup_stop'), 'pangolier_rollup_stop', 'pangolier')
+    RollingThunder    = SafeAbility(bot:GetAbilityByName('pangolier_gyroshell'), 'pangolier_gyroshell', 'pangolier')
+    EndRollingThunder = SafeAbility(bot:GetAbilityByName('pangolier_gyroshell_stop'), 'pangolier_gyroshell_stop', 'pangolier')
 
     botTarget = Fu.GetProperTarget(bot)
     local botHP = nBotHP

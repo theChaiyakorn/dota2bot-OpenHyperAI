@@ -83,11 +83,11 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local ChargeOfDarkness  = bot:GetAbilityByName('spirit_breaker_charge_of_darkness')
-local Bulldoze          = bot:GetAbilityByName('spirit_breaker_bulldoze')
-local GreaterBash       = bot:GetAbilityByName('spirit_breaker_greater_bash')
-local PlanarPocket      = bot:GetAbilityByName('spirit_breaker_planar_pocket')
-local NetherStrike      = bot:GetAbilityByName('spirit_breaker_nether_strike')
+local ChargeOfDarkness  = SafeAbility(bot:GetAbilityByName('spirit_breaker_charge_of_darkness'), 'spirit_breaker_charge_of_darkness', 'spirit_breaker')
+local Bulldoze          = SafeAbility(bot:GetAbilityByName('spirit_breaker_bulldoze'), 'spirit_breaker_bulldoze', 'spirit_breaker')
+local GreaterBash       = SafeAbility(bot:GetAbilityByName('spirit_breaker_greater_bash'), 'spirit_breaker_greater_bash', 'spirit_breaker')
+local PlanarPocket      = SafeAbility(bot:GetAbilityByName('spirit_breaker_planar_pocket'), 'spirit_breaker_planar_pocket', 'spirit_breaker')
+local NetherStrike      = SafeAbility(bot:GetAbilityByName('spirit_breaker_nether_strike'), 'spirit_breaker_nether_strike', 'spirit_breaker')
 
 local ChargeOfDarknessDesire, ChargeOfDarknessTarget
 local BulldozeDesire

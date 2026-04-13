@@ -161,11 +161,11 @@ modifier_jakiro_macropyre_burn
 
 --]]
 
-local abilityQ = bot:GetAbilityByName('jakiro_dual_breath')
-local abilityW = bot:GetAbilityByName('jakiro_ice_path')
-local abilityE = bot:GetAbilityByName('jakiro_liquid_fire')
-local abilityAS = bot:GetAbilityByName('jakiro_liquid_frost')
-local abilityR = bot:GetAbilityByName('jakiro_macropyre')
+local abilityQ = SafeAbility(bot:GetAbilityByName('jakiro_dual_breath'), 'jakiro_dual_breath', 'jakiro')
+local abilityW = SafeAbility(bot:GetAbilityByName('jakiro_ice_path'), 'jakiro_ice_path', 'jakiro')
+local abilityE = SafeAbility(bot:GetAbilityByName('jakiro_liquid_fire'), 'jakiro_liquid_fire', 'jakiro')
+local abilityAS = SafeAbility(bot:GetAbilityByName('jakiro_liquid_frost'), 'jakiro_liquid_frost', 'jakiro')
+local abilityR = SafeAbility(bot:GetAbilityByName('jakiro_macropyre'), 'jakiro_macropyre', 'jakiro')
 
 local castQDesire, castQTarget
 local castWDesire, castWLocation

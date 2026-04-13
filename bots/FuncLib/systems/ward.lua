@@ -46,6 +46,27 @@ local nTowerList = {
 	TOWER_BOT_3,
 }
 
+-- Strategic base ward spots (post-6min, always available)
+local BaseWardSpots_Radiant = {
+	{ location = Vector(-304.583435, -1010.216370, 128.000000), plant_time_obs = 0, plant_time_sentry = 0, }, -- Mid River
+	{ location = Vector(1770.320068, -3297.484619, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, }, -- Bottom Roshan Pit
+	{ location = Vector(-2590.959717, 808.961487, 0.000000),    plant_time_obs = 0, plant_time_sentry = 0, }, -- Top Roshan Pit
+	{ location = Vector(-6879.606934, 7948.673340, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, }, -- Top Tormentor
+	{ location = Vector(-6223.481445, 5977.364258, 128.000000), plant_time_obs = 0, plant_time_sentry = 0, }, -- Top Tower
+	{ location = Vector(6618.658203, -3122.270264, 128.000000), plant_time_obs = 0, plant_time_sentry = 0, }, -- Bot Tower
+	{ location = Vector(6987.828613, -7517.367188, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, }, -- Bot Tormentor
+}
+
+local BaseWardSpots_Dire = {
+	{ location = Vector(-514.736816, 293.893494, 128.000000),   plant_time_obs = 0, plant_time_sentry = 0, }, -- Mid River
+	{ location = Vector(2472.568359, -1176.064941, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, }, -- Bottom Roshan Pit
+	{ location = Vector(-1575.356445, 2015.812500, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, }, -- Top Roshan Pit
+	{ location = Vector(-6879.606934, 7948.673340, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, }, -- Top Tormentor
+	{ location = Vector(-6633.713867, 2726.299316, 128.000000), plant_time_obs = 0, plant_time_sentry = 0, }, -- Top Tower
+	{ location = Vector(5940.784668, -6109.887695, 128.000000), plant_time_obs = 0, plant_time_sentry = 0, }, -- Bot Tower
+	{ location = Vector(6987.828613, -7517.367188, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, }, -- Bot Tormentor
+}
+
 -- #############################################################
 -- RADIANT
 -- #############################################################
@@ -54,6 +75,9 @@ local WardLocationsBeforeAllyTowerFall__Radiant = {
 		[1] = { location = Vector(-6309.000000, 5671.123535), plant_time_obs = 0, plant_time_sentry = 0, },
 		[2] = { location = Vector(-6726.650879, 3244.411621), plant_time_obs = 0, plant_time_sentry = 0, },
 		[3] = { location = Vector(-3311.859619, 4315.231445), plant_time_obs = 0, plant_time_sentry = 0, },
+		[4] = { location = Vector(-2300.783936, 6745.654297, 128.000000), plant_time_obs = 0, plant_time_sentry = 0, },
+		[5] = { location = Vector(-4330.303223, 7147.556152, 128.000000), plant_time_obs = 0, plant_time_sentry = 0, },
+		[6] = { location = Vector(-2334.944336, 4638.333008, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, },
 	},
 	[TOWER_MID_1] = {
 		[1] = { location = Vector(2255.840820, -1892.881836), plant_time_obs = 0, plant_time_sentry = 0, },
@@ -66,6 +90,8 @@ local WardLocationsBeforeAllyTowerFall__Radiant = {
 		[2] = { location = Vector(5870.312500, -7174.024414), plant_time_obs = 0, plant_time_sentry = 0, },
 		[3] = { location = Vector(3097.361328, -4069.593018), plant_time_obs = 0, plant_time_sentry = 0, },
 		[4] = { location = Vector(1824.772705, -3358.895996), plant_time_obs = 0, plant_time_sentry = 0, },
+		[5] = { location = Vector(7688.733398, -1536.282471, 527.996094), plant_time_obs = 0, plant_time_sentry = 0, },
+		[6] = { location = Vector(4541.222656, -1810.860840, 128.000000), plant_time_obs = 0, plant_time_sentry = 0, },
 	},
 
 	[TOWER_TOP_2] = {
@@ -78,6 +104,7 @@ local WardLocationsBeforeAllyTowerFall__Radiant = {
 		[7] = { location = Vector(-3380.673828, 672.909180), plant_time_obs = 0, plant_time_sentry = 0, },
 		[8] = { location = Vector(-8416.000000, 2272.000000), plant_time_obs = 0, plant_time_sentry = 0, },
 		[9] = { location = Vector(-5152.000000, 2336.000000), plant_time_obs = 0, plant_time_sentry = 0, },
+		[10] = { location = Vector(-7553.846680, -1063.322388, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, },
 	},
 	[TOWER_MID_2] = {
 		[1] = { location = Vector(-1288.532471, -4351.110352), plant_time_obs = 0, plant_time_sentry = 0, },
@@ -87,6 +114,7 @@ local WardLocationsBeforeAllyTowerFall__Radiant = {
 		[5] = { location = Vector(-3322.988037, -200.036987), plant_time_obs = 0, plant_time_sentry = 0, },
 		[6] = { location = Vector(-2458.159668, -1210.825439), plant_time_obs = 0, plant_time_sentry = 0, },
 		[7] = { location = Vector(-4245.528320, 357.413574), plant_time_obs = 0, plant_time_sentry = 0, },
+		[8] = { location = Vector(795.113586, -3576.661621, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, },
 	},
 	[TOWER_BOT_2] = {
 		[1] = { location = Vector(2258.137207, -7110.736328), plant_time_obs = 0, plant_time_sentry = 0, },
@@ -102,6 +130,7 @@ local WardLocationsBeforeAllyTowerFall__Radiant = {
 		[3] = { location = Vector(-6578.378906, -3101.990479), plant_time_obs = 0, plant_time_sentry = 0, },
 		[4] = { location = Vector(-5014.221191, -1732.490723), plant_time_obs = 0, plant_time_sentry = 0, },
 		[5] = { location = Vector(-5915.992676, -3089.985596), plant_time_obs = 0, plant_time_sentry = 0, },
+		[6] = { location = Vector(-5458.211426, -3371.772217, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, },
 	},
 	[TOWER_MID_3] = {
 		[1] = { location = Vector(-4377.171387, -3911.893555), plant_time_obs = 0, plant_time_sentry = 0, },
@@ -110,6 +139,7 @@ local WardLocationsBeforeAllyTowerFall__Radiant = {
 		[4] = { location = Vector(-4334.572266, -1036.464844), plant_time_obs = 0, plant_time_sentry = 0, },
 		[5] = { location = Vector(-2706.345459, -1664.330566), plant_time_obs = 0, plant_time_sentry = 0, },
 		[6] = { location = Vector(-1288.418091, -4359.833496), plant_time_obs = 0, plant_time_sentry = 0, },
+		[7] = { location = Vector(-3871.644043, -4988.541016, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, },
 	},
 	[TOWER_BOT_3] = {
 		[1] = { location = Vector(-3628.625244, -6110.583496), plant_time_obs = 0, plant_time_sentry = 0, },
@@ -117,6 +147,7 @@ local WardLocationsBeforeAllyTowerFall__Radiant = {
 		[3] = { location = Vector(-1978.637329, -6093.620117), plant_time_obs = 0, plant_time_sentry = 0, },
 		[4] = { location = Vector(-3128.099609, -4716.803223), plant_time_obs = 0, plant_time_sentry = 0, },
 		[5] = { location = Vector(-3532.540771, -6960.055176), plant_time_obs = 0, plant_time_sentry = 0, },
+		[6] = { location = Vector(-3871.644043, -4988.541016, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, },
 	},
 }
 
@@ -201,6 +232,8 @@ local WardLocationsBeforeAllyTowerFall__Dire = {
 		[1] = { location = Vector(-7645.819824, 4469.880371), plant_time_obs = 0, plant_time_sentry = 0, },
 		[2] = { location = Vector(-5775.200195, 2600.540527), plant_time_obs = 0, plant_time_sentry = 0, },
 		[3] = { location = Vector(-3994.346924, 3636.463135), plant_time_obs = 0, plant_time_sentry = 0, },
+		[4] = { location = Vector(-7932.318848, 1798.319336, 535.996094), plant_time_obs = 0, plant_time_sentry = 0, },
+		[5] = { location = Vector(-4765.358887, 1978.797485, 128.000000), plant_time_obs = 0, plant_time_sentry = 0, },
 	},
 	[TOWER_MID_1] = {
 		[1] = { location = Vector(-917.716919, 1233.115723), plant_time_obs = 0, plant_time_sentry = 0, },
@@ -213,6 +246,9 @@ local WardLocationsBeforeAllyTowerFall__Dire = {
 		[1] = { location = Vector(4318.670410, -3305.405518), plant_time_obs = 0, plant_time_sentry = 0, },
 		[2] = { location = Vector(4670.166504, -1949.093018), plant_time_obs = 0, plant_time_sentry = 0, },
 		[3] = { location = Vector(6391.976074, -4914.761230), plant_time_obs = 0, plant_time_sentry = 0, },
+		[4] = { location = Vector(1863.126099, -6671.102539, 128.000000), plant_time_obs = 0, plant_time_sentry = 0, },
+		[5] = { location = Vector(2048.552246, -4891.520020, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, },
+		[6] = { location = Vector(3949.502197, -7155.229492, 128.000000), plant_time_obs = 0, plant_time_sentry = 0, },
 	},
 
 	[TOWER_TOP_2] = {
@@ -221,6 +257,8 @@ local WardLocationsBeforeAllyTowerFall__Dire = {
 		[3] = { location = Vector(-4283.493164, 6410.409668), plant_time_obs = 0, plant_time_sentry = 0, },
 		[4] = { location = Vector(-2553.300049, 4773.497070), plant_time_obs = 0, plant_time_sentry = 0, },
 		[5] = { location = Vector(-2428.735596, 6744.824219), plant_time_obs = 0, plant_time_sentry = 0, },
+		[6] = { location = Vector(1559.554199, 6069.459961, 128.000000), plant_time_obs = 0, plant_time_sentry = 0, },
+		[7] = { location = Vector(206.604904, 4382.747559, 134.000000), plant_time_obs = 0, plant_time_sentry = 0, },
 	},
 	[TOWER_MID_2] = {
 		[1] = { location = Vector(3335.353760, -207.220703), plant_time_obs = 0, plant_time_sentry = 0, },
@@ -228,6 +266,8 @@ local WardLocationsBeforeAllyTowerFall__Dire = {
 		[3] = { location = Vector(-1679.397339, 3541.931396), plant_time_obs = 0, plant_time_sentry = 0, },
 		[4] = { location = Vector(279.710938, 1104.007568), plant_time_obs = 0, plant_time_sentry = 0, },
 		[5] = { location = Vector(2844.631592, -1560.403564), plant_time_obs = 0, plant_time_sentry = 0, },
+		[6] = { location = Vector(1026.262451, 3588.000977, 399.996094), plant_time_obs = 0, plant_time_sentry = 0, },
+		[7] = { location = Vector(4607.770996, 770.798767, 527.996094), plant_time_obs = 0, plant_time_sentry = 0, },
 	},
 	[TOWER_BOT_2] = {
 		[1] = { location = Vector(7695.852539, -1561.971436), plant_time_obs = 0, plant_time_sentry = 0, },
@@ -235,6 +275,7 @@ local WardLocationsBeforeAllyTowerFall__Dire = {
 		[3] = { location = Vector(8432.747070, -379.338318), plant_time_obs = 0, plant_time_sentry = 0, },
 		[4] = { location = Vector(6716.602539, -2427.237305), plant_time_obs = 0, plant_time_sentry = 0, },
 		[5] = { location = Vector(3433.443604, -733.166626), plant_time_obs = 0, plant_time_sentry = 0, },
+		[6] = { location = Vector(7761.000977, 474.206818, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, },
 	},
 
 	[TOWER_TOP_3] = {
@@ -242,19 +283,22 @@ local WardLocationsBeforeAllyTowerFall__Dire = {
 		[2] = { location = Vector(1029.402222, 3571.081055), plant_time_obs = 0, plant_time_sentry = 0, },
 		[3] = { location = Vector(450.604736, 4730.952148), plant_time_obs = 0, plant_time_sentry = 0, },
 		[4] = { location = Vector(605.637573, 6996.875977), plant_time_obs = 0, plant_time_sentry = 0, },
-		[4] = { location = Vector(2174.007812, 4253.548828), plant_time_obs = 0, plant_time_sentry = 0, },
+		[5] = { location = Vector(2174.007812, 4253.548828), plant_time_obs = 0, plant_time_sentry = 0, },
+		[6] = { location = Vector(3301.364990, 4615.956055, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, },
 	},
 	[TOWER_MID_3] = {
 		[1] = { location = Vector(4041.562256, 3465.514893), plant_time_obs = 0, plant_time_sentry = 0, },
 		[2] = { location = Vector(4613.312500, 755.917847), plant_time_obs = 0, plant_time_sentry = 0, },
 		[3] = { location = Vector(1029.402222, 3571.081055), plant_time_obs = 0, plant_time_sentry = 0, },
 		[4] = { location = Vector(2806.711182, 1943.263550), plant_time_obs = 0, plant_time_sentry = 0, },
+		[5] = { location = Vector(5131.353516, 2881.154053, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, },
 	},
 	[TOWER_BOT_3] = {
 		[1] = { location = Vector(6344.555176, 2640.419678), plant_time_obs = 0, plant_time_sentry = 0, },
 		[2] = { location = Vector(4613.312500, 755.917847), plant_time_obs = 0, plant_time_sentry = 0, },
 		[3] = { location = Vector(8107.012695, 457.608398), plant_time_obs = 0, plant_time_sentry = 0, },
 		[4] = { location = Vector(6536.082520, -1299.558472), plant_time_obs = 0, plant_time_sentry = 0, },
+		[5] = { location = Vector(5131.353516, 2881.154053, 256.000000), plant_time_obs = 0, plant_time_sentry = 0, },
 	},
 }
 
@@ -387,6 +431,19 @@ function X.GetAvailabeObserverWardSpots(bot)
 
 	if Fu.IsEarlyGame() then
 		for _, spot in pairs(X.GetEarlyGameWardSpots()) do
+			if not X.IsOtherWardClose(spot.location, 'npc_dota_observer_wards', nVisionRadius * 2, true, false)
+			and not X.IsThereEnemySentry(spot.location, 1100)
+			and (spot.plant_time_obs == 0 or (DotaTime() > spot.plant_time_obs + 360))
+			then
+				table.insert(availableSpots, spot)
+			end
+		end
+	end
+
+	-- Strategic base ward spots (post-6min): river, roshan pit, tormentor, key lanes
+	if DotaTime() > 6 * 60 then
+		local baseSpots = GetTeam() == TEAM_RADIANT and BaseWardSpots_Radiant or BaseWardSpots_Dire
+		for _, spot in pairs(baseSpots) do
 			if not X.IsOtherWardClose(spot.location, 'npc_dota_observer_wards', nVisionRadius * 2, true, false)
 			and not X.IsThereEnemySentry(spot.location, 1100)
 			and (spot.plant_time_obs == 0 or (DotaTime() > spot.plant_time_obs + 360))

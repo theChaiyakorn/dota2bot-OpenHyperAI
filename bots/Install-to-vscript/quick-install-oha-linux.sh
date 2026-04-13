@@ -76,13 +76,77 @@ fi
 # Create the parent directory if it doesn't exist
 mkdir -p "$(dirname "$dota_path")"
 
-# Create symbolic link
-echo "Creating symbolic link..."
+# Copy workshop files (not symlink) so we can patch casing for Linux
+echo "Copying bot scripts..."
 echo "  From: $workshop_path"
 echo "  To:   $dota_path"
-ln -s "$workshop_path" "$dota_path"
+cp -r "$workshop_path" "$dota_path"
 
 if [ $? -eq 0 ]; then
+  echo ""
+  echo "Applying Linux case-sensitivity patch..."
+  echo "(Linux filesystems are case-sensitive; Lua require paths must match filenames exactly)"
+
+  # Use Python to safely lowercase filenames and Lua require paths.
+  # Based on: github.com/ashoktamang/dota2bot-OpenHyperAI-linux-patcher
+  python3 - "$dota_path" <<'PYEOF'
+import os, sys, re
+
+root = sys.argv[1]
+
+# Step 1: Rename files/dirs to lowercase (bottom-up so children move first)
+for dirpath, dirnames, filenames in os.walk(root, topdown=False):
+    for name in filenames + dirnames:
+        lower = name.lower()
+        if name != lower:
+            src = os.path.join(dirpath, name)
+            dst = os.path.join(dirpath, lower)
+            if not os.path.exists(dst):
+                os.rename(src, dst)
+
+# Step 2: Lowercase quoted paths in require/dofile/LinkLuaModifier calls
+keywords = re.compile(r'\b(require|dofile|LinkLuaModifier)\b')
+path_dirs = {'bots', 'botslib', 'funclib', 'funlib', 'fretbots', 'customize', 'buff'}
+
+def lower_paths(line):
+    if not keywords.search(line):
+        return line
+    def lower_match(m):
+        s = m.group(0)
+        q = s[0]
+        inner = s[1:-1]
+        # Only lowercase if it looks like a module path
+        if '/' in inner or '\\' in inner or '.' in inner:
+            return q + inner.lower() + q
+        parts = inner.lower().split('.')
+        if any(p in path_dirs for p in parts):
+            return q + inner.lower() + q
+        return s
+    return re.sub(r'''(['"])[^'"]+\1''', lower_match, line)
+
+for dirpath, _, filenames in os.walk(root):
+    for fname in filenames:
+        if not fname.endswith('.lua'):
+            continue
+        fpath = os.path.join(dirpath, fname)
+        with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+        new_lines = [lower_paths(l) for l in lines]
+        if new_lines != lines:
+            with open(fpath, 'w', encoding='utf-8') as f:
+                f.writelines(new_lines)
+
+print("  Renamed files/dirs to lowercase")
+print("  Patched Lua require paths to lowercase")
+PYEOF
+
+  if [ $? -ne 0 ]; then
+    echo "Warning: Python3 not found or patch failed."
+    echo "Install python3 and re-run, or apply the patch manually."
+    echo "See: github.com/ashoktamang/dota2bot-OpenHyperAI-linux-patcher"
+  else
+    echo "Patch applied."
+  fi
   echo ""
   echo "============================================"
   echo "  Install Succeeded!"

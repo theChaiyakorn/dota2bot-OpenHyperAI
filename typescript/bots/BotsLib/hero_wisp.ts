@@ -169,7 +169,7 @@ function considerTether(): LuaMultiReturn<[number, Unit | null]> {
     }
 
     const castRange = abilityTether.GetCastRange();
-    const allies = bot.GetNearbyHeroes(castRange, false, BotMode.None);
+    const allies = bot.GetNearbyHeroes(castRange, false, BotMode.None) || [];
 
     for (const ally of allies) {
         if (ally == bot || !ally.IsAlive() || ally.IsMagicImmune()) continue;
@@ -239,7 +239,7 @@ function considerRelocate(): LuaMultiReturn<[number, Location | null]> {
         const botHP = Fu.GetHP(bot);
 
         if (allyHP <= RELOCATE_HP_THRESHOLD || botHP <= RELOCATE_HP_THRESHOLD) {
-            const allyNearbyEnemies = bot.stateTetheredHero.GetNearbyHeroes(1200, true, BotMode.None);
+            const allyNearbyEnemies = bot.stateTetheredHero.GetNearbyHeroes(1200, true, BotMode.None) || [];
             const allyOutmatched = allyNearbyEnemies.length >= 1 && allyHP < Fu.GetHP(allyNearbyEnemies[0]);
             const selfOutmatched = nearbyEnemies.length >= 1 && botHP < Fu.GetHP(nearbyEnemies[0]);
 
@@ -272,7 +272,7 @@ function considerRelocate(): LuaMultiReturn<[number, Location | null]> {
 function SkillsComplement(): void {
     if (Fu.CanNotUseAbility(bot) || bot.IsInvisible()) return;
 
-    nearbyEnemies = bot.GetNearbyHeroes(1600, true, BotMode.None);
+    nearbyEnemies = bot.GetNearbyHeroes(1600, true, BotMode.None) || [];
 
     // Priority 1: Tether
     const [tetherDesire, tetherTarget] = considerTether();

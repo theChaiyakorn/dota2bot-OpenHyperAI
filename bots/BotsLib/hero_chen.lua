@@ -144,12 +144,12 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local Penitence         = bot:GetAbilityByName('chen_penitence')
-local HolyPersuasion    = bot:GetAbilityByName('chen_holy_persuasion')
-local DivineFavor       = bot:GetAbilityByName('chen_divine_favor')
-local SummonConvert     = bot:GetAbilityByName('chen_summon_convert')
-local Zealot            = bot:GetAbilityByName('chen_zealot')
-local HandOfGod         = bot:GetAbilityByName('chen_hand_of_god')
+local Penitence         = SafeAbility(bot:GetAbilityByName('chen_penitence'), 'chen_penitence', 'chen')
+local HolyPersuasion    = SafeAbility(bot:GetAbilityByName('chen_holy_persuasion'), 'chen_holy_persuasion', 'chen')
+local DivineFavor       = SafeAbility(bot:GetAbilityByName('chen_divine_favor'), 'chen_divine_favor', 'chen')
+local SummonConvert     = SafeAbility(bot:GetAbilityByName('chen_summon_convert'), 'chen_summon_convert', 'chen')
+local Zealot            = SafeAbility(bot:GetAbilityByName('chen_zealot'), 'chen_zealot', 'chen')
+local HandOfGod         = SafeAbility(bot:GetAbilityByName('chen_hand_of_god'), 'chen_hand_of_god', 'chen')
 
 local PenitenceDesire, PenitenceTarget
 local HolyPersuasionDesire, HolyPersuasionTarget

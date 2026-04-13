@@ -131,12 +131,12 @@ X['bDeafaultAbility'] = false
 X['bDeafaultItem'] = true
 
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local talent2 = bot:GetAbilityByName( sTalentList[2] )
-local talent6 = bot:GetAbilityByName( sTalentList[6] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'warlock')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'warlock')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'warlock')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'warlock')
+local talent2 = SafeAbility(bot:GetAbilityByName(sTalentList[2]), 'sTalentList[2]', 'warlock')
+local talent6 = SafeAbility(bot:GetAbilityByName(sTalentList[6]), 'sTalentList[6]', 'warlock')
 
 
 local castQDesire, castQTarget
@@ -307,6 +307,7 @@ function X.WarlockShouldMove()
 	and bot:IsChanneling()
 	and not bot:HasModifier( "modifier_teleporting" )
 	and bot:GetActiveMode() ~= BOT_MODE_SIDE_SHOP
+	and bot:GetActiveMode() ~= BOT_MODE_WATCHER
 	and #Fu.GetNearbyHeroes(bot, 1000, true, BOT_MODE_NONE ) >= 1
 	and bot:WasRecentlyDamagedByAnyHero(3)
 	and Fu.GetHP(bot) < 0.5

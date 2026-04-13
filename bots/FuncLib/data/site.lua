@@ -444,7 +444,7 @@ ____exports.GetClosestNeutralSpwan = function(bot, availableCampList)
         if ____exports.IsEnemyCamp(camp) then
             dist = dist * 1.5
         end
-        if ____exports.IsTheClosestOne(bot, camp.cattr.location) and dist < minDist and (bot:GetLevel() >= 10 or not ____exports.IsAncientCamp(camp)) then
+        if ____exports.IsTheClosestOne(bot, camp.cattr.location) and dist < minDist and (not ____exports.IsAncientCamp(camp) or bot:GetLevel() >= 10 and bot.GetArmor() >= 6) then
             minDist = dist
             closestCamp = camp
         end
@@ -592,7 +592,8 @@ ____exports.IsModeSuitableToFarm = function(bot)
     return false
 end
 ____exports.IsTimeToFarm = function(bot)
-    if DotaTime() < 5 * 60 or DotaTime() > 90 * 60 then
+    local farmMinTime = IsModeTurbo() and 3 * 60 or 5 * 60
+    if DotaTime() < farmMinTime or DotaTime() > 90 * 60 then
         return false
     end
     local botName = bot:GetUnitName()

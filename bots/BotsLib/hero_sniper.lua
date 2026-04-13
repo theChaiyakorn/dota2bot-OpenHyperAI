@@ -125,10 +125,10 @@ modifier_sniper_assassinate
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityAS = bot:GetAbilityByName( sAbilityList[4] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'sniper')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'sniper')
+local abilityAS = SafeAbility(bot:GetAbilityByName(sAbilityList[4]), 'sAbilityList[4]', 'sniper')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'sniper')
 
 
 local castQDesire, castQLocation 
@@ -474,7 +474,8 @@ function X.ConsiderR()
 	local nCastPoint = abilityR:GetCastPoint()
 	local nAttackRange = bot:GetAttackRange()
 	if nAttackRange > 1550 then nAttackRange = 1550 end
-	local nDamage	 = abilityR:GetAbilityDamage()
+	local nDamage	 = abilityR:GetSpecialValueInt('damage')
+	local nSpeed     = abilityR:GetSpecialValueInt('projectile_speed')
 	local nDamageType = DAMAGE_TYPE_MAGICAL
 
 	local nEnemysHerosCanSeen = GetUnitList( UNIT_LIST_ENEMY_HEROES )
@@ -489,12 +490,33 @@ function X.ConsiderR()
 	local nChannelingEnemyHeroInCastRange = X.GetChannelingUnitInRange( nEnemysHerosCanSeen, nCastRange, bot )
 	local castRTarget = nil
 
-	if Fu.IsValid( nWeakestEnemyHeroInCastRange )
-		and ( Fu.WillMagicKillTarget( bot, nWeakestEnemyHeroInCastRange, nDamage, nCastPoint )
-			or ( X.ShouldUseR( nTempTarget, nWeakestEnemyHeroInCastRange, nDamage ) and ( bot:GetMana() > nKeepMana * 1.28 or bot:HasScepter() ) ) )
-	then
-		castRTarget = nWeakestEnemyHeroInCastRange
-		return BOT_ACTION_DESIRE_HIGH, castRTarget
+	-- Kill fleeing low HP enemy outside attack range
+	for _, enemy in pairs( nEnemysHerosCanSeen ) do
+		local eta = nCastPoint
+		if nSpeed > 0 then eta = (GetUnitToUnitDistance(bot, enemy) / nSpeed) + nCastPoint end
+		if Fu.IsValidHero( enemy )
+		and Fu.CanBeAttacked( enemy )
+		and Fu.CanCastOnNonMagicImmune( enemy )
+		and Fu.IsInRange( bot, enemy, nCastRange )
+		and not Fu.IsInRange( bot, enemy, nAttackRange )
+		and Fu.WillMagicKillTarget( bot, enemy, nDamage, eta )
+		and not enemy:HasModifier( 'modifier_abaddon_borrowed_time' )
+		and not enemy:HasModifier( 'modifier_dazzle_shallow_grave' )
+		and not enemy:HasModifier( 'modifier_oracle_false_promise_timer' )
+		then
+			return BOT_ACTION_DESIRE_HIGH, enemy
+		end
+	end
+
+	if Fu.IsValid( nWeakestEnemyHeroInCastRange ) then
+		local eta = nCastPoint
+		if nSpeed > 0 then eta = (GetUnitToUnitDistance(bot, nWeakestEnemyHeroInCastRange) / nSpeed) + nCastPoint end
+		if Fu.WillMagicKillTarget( bot, nWeakestEnemyHeroInCastRange, nDamage, eta )
+			or ( X.ShouldUseR( nTempTarget, nWeakestEnemyHeroInCastRange, nDamage ) and ( bot:GetMana() > nKeepMana * 1.28 or bot:HasScepter() ) )
+		then
+			castRTarget = nWeakestEnemyHeroInCastRange
+			return BOT_ACTION_DESIRE_HIGH, castRTarget
+		end
 	end
 
 	if Fu.IsValid( nChannelingEnemyHeroInCastRange )

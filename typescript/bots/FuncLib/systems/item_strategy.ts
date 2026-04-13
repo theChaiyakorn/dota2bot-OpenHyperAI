@@ -378,7 +378,7 @@ export function GetItemBuild(bot: any, position: Position): string[] {
     const rangeType: RangeType = isHeroRanged ? "ranged" : "melee";
 
     // Add starting items
-    if (STARTING_ITEMS[position] && STARTING_ITEMS[position][rangeType]) {
+    if (STARTING_ITEMS[position] !== undefined && STARTING_ITEMS[position][rangeType] !== undefined) {
         build.push(...STARTING_ITEMS[position][rangeType]);
     }
 
@@ -391,7 +391,7 @@ export function GetItemBuild(bot: any, position: Position): string[] {
     }
 
     // Add position-based items
-    if (ITEMS_BY_POSITION[position] && ITEMS_BY_POSITION[position][rangeType]) {
+    if (ITEMS_BY_POSITION[position] !== undefined && ITEMS_BY_POSITION[position][rangeType] !== undefined) {
         build.push(...ITEMS_BY_POSITION[position][rangeType]);
     }
 
@@ -471,7 +471,7 @@ export function GetLateGame6Slot(bot: any, position: Position): string[] {
 
     const build: string[] = [];
 
-    if (ITEMS_BY_POSITION[position] && ITEMS_BY_POSITION[position][rangeType]) {
+    if (ITEMS_BY_POSITION[position] !== undefined && ITEMS_BY_POSITION[position][rangeType] !== undefined) {
         for (const item of ITEMS_BY_POSITION[position][rangeType]) {
             // Only add items that take inventory slots
             if (!NON_SLOT_ITEMS.includes(item)) {
@@ -502,7 +502,7 @@ export function GetNonSlotItems(bot: any, position: Position): string[] {
 
     const nonSlotItems: string[] = [];
 
-    if (ITEMS_BY_POSITION[position] && ITEMS_BY_POSITION[position][rangeType]) {
+    if (ITEMS_BY_POSITION[position] !== undefined && ITEMS_BY_POSITION[position][rangeType] !== undefined) {
         for (const item of ITEMS_BY_POSITION[position][rangeType]) {
             if (NON_SLOT_ITEMS.includes(item)) {
                 nonSlotItems.push(item);

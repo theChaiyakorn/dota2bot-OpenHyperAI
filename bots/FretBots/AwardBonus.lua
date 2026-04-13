@@ -230,7 +230,7 @@ function AwardBonus:Death(bot)
 						msg = msg .. ' '..award..': '..name
 					end
 					if isDebug then
-						-- print(bot.stats.name..': Awarded '..award..': '..value)
+						-- log(bot.stats.name..': Awarded '..award..': '..value)
 					end
 					-- Clear the chance for this award (if accrued)
 					if Settings.deathBonus.accrue[award] then
@@ -411,7 +411,7 @@ function AwardBonus:GetPerMinuteBonus(bot, gpm, xpm)
 
 	if Settings.difficulty >= 1 then
 		-- 增加基础回蓝，按照难度和分钟数翻倍
-		-- print('Enabled bots with extra regens for diffculty scale = '..Settings.difficultyScale)
+		-- log('Enabled bots with extra regens for diffculty scale = '..Settings.difficultyScale)
 		if Utilities:IsTurboMode() then
 			bot:SetBaseManaRegen((0.4 + Settings.difficultyScale * 0.5) * 0.5 * Utilities:GetAbsoluteTime() / 60)
 		else

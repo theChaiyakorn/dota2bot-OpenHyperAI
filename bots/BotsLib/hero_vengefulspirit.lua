@@ -123,10 +123,10 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local MagicMissile  = bot:GetAbilityByName('vengefulspirit_magic_missile')
-local WaveOfTerror  = bot:GetAbilityByName('vengefulspirit_wave_of_terror')
+local MagicMissile  = SafeAbility(bot:GetAbilityByName('vengefulspirit_magic_missile'), 'vengefulspirit_magic_missile', 'vengefulspirit')
+local WaveOfTerror  = SafeAbility(bot:GetAbilityByName('vengefulspirit_wave_of_terror'), 'vengefulspirit_wave_of_terror', 'vengefulspirit')
 -- local VengeanceAura = bot:GetAbilityByName('vengefulspirit_command_aura')
-local NetherSwap    = bot:GetAbilityByName('vengefulspirit_nether_swap')
+local NetherSwap    = SafeAbility(bot:GetAbilityByName('vengefulspirit_nether_swap'), 'vengefulspirit_nether_swap', 'vengefulspirit')
 
 local MagicMissileDesire, MagicMissileTarget
 local WaveOfTerrorDesire, WaveOfTerrorLocation

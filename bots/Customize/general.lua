@@ -95,6 +95,14 @@ Customize.Dire_Names = {
     'Random',
 }
 
+-- Set to true to show team name tags in bot names (e.g. "LQD.miCKe.OHA"), or false to hide them (e.g. "miCKe.OHA").
+Customize.Show_Team_Names = false
+
+-- Set custom team name tags for each side. Leave as '' to use a random pro team name.
+-- Examples: "TEAM1", "OG", "NAVI", etc.
+Customize.Radiant_Team_Name = ''
+Customize.Dire_Team_Name = ''
+
 -- The desire level that the bots will group up and push the same lane. 
 -- 1 is mild meaning bots will group up only when convenient; 3 is bots will almost always try to push together.
 -- Group pushing may increase the difficulty but can reduce the game experience. 

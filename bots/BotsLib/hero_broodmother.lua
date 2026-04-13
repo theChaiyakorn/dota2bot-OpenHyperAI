@@ -112,11 +112,11 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local InsatiableHunger  = bot:GetAbilityByName('broodmother_insatiable_hunger')
-local SpinWeb           = bot:GetAbilityByName('broodmother_spin_web')
+local InsatiableHunger  = SafeAbility(bot:GetAbilityByName('broodmother_insatiable_hunger'), 'broodmother_insatiable_hunger', 'broodmother')
+local SpinWeb           = SafeAbility(bot:GetAbilityByName('broodmother_spin_web'), 'broodmother_spin_web', 'broodmother')
 -- local SilkenBola        = bot:GetAbilityByName('broodmother_silken_bola')
 -- local SpinnersSnare     = bot:GetAbilityByName('broodmother_sticky_snare')
-local SpawnSpiderlings  = bot:GetAbilityByName('broodmother_spawn_spiderlings')
+local SpawnSpiderlings  = SafeAbility(bot:GetAbilityByName('broodmother_spawn_spiderlings'), 'broodmother_spawn_spiderlings', 'broodmother')
 
 local InsatiableHungerDesire
 local SpinWebDesire, SpinWebLocation

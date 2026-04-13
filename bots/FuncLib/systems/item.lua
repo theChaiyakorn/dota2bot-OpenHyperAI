@@ -350,6 +350,23 @@ Item['tEarlyItem'] = {
 	 'item_mantle',
 }
 
+-- Extra items supports (pos 4-5) should sell when inventory is full.
+-- Does NOT include wards, dust, smoke, gem — those are core support tools to keep.
+Item['tSupportSellWhenFull'] = {
+	'item_magic_wand',
+	'item_magic_stick',
+	'item_bracer',
+	'item_wraith_band',
+	'item_null_talisman',
+	'item_infused_raindrop',
+	'item_soul_ring',
+	'item_bottle',
+	'item_orb_of_frost',
+	'item_blood_grenade',
+	'item_ring_of_basilius',
+	'item_urn_of_shadows',
+}
+
 Item['tEarlyConsumableItem'] = {
 	 'item_clarity',
 	 'item_faerie_fire',

@@ -156,11 +156,11 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local ShackleShot   = bot:GetAbilityByName('windrunner_shackleshot')
-local Powershot     = bot:GetAbilityByName('windrunner_powershot')
-local Windrun       = bot:GetAbilityByName('windrunner_windrun')
-local GaleForce     = bot:GetAbilityByName('windrunner_gale_force')
-local FocusFire     = bot:GetAbilityByName('windrunner_focusfire')
+local ShackleShot   = SafeAbility(bot:GetAbilityByName('windrunner_shackleshot'), 'windrunner_shackleshot', 'windrunner')
+local Powershot     = SafeAbility(bot:GetAbilityByName('windrunner_powershot'), 'windrunner_powershot', 'windrunner')
+local Windrun       = SafeAbility(bot:GetAbilityByName('windrunner_windrun'), 'windrunner_windrun', 'windrunner')
+local GaleForce     = SafeAbility(bot:GetAbilityByName('windrunner_gale_force'), 'windrunner_gale_force', 'windrunner')
+local FocusFire     = SafeAbility(bot:GetAbilityByName('windrunner_focusfire'), 'windrunner_focusfire', 'windrunner')
 
 local ShackleShotDesire, ShackleShotTarget
 local PowershotDesire, PowershotLocation
@@ -426,19 +426,29 @@ function X.ConsiderPowershot()
         end
 	end
 
-    if Fu.IsFarming(bot)
+    if Fu.IsFarming(bot) and botMP > 0.33
     then
-        if bAttacking
-        then
-            local tCreeps = bot:GetNearbyCreeps(1600, true)
-            if Fu.IsValid(tCreeps[1])
-            and Fu.CanBeAttacked(tCreeps[1])
-            and not Fu.IsRunning(tCreeps[1])
-            and botMP > 0.33 then
-                local nLocationAoE = bot:FindAoELocation(true, false, tCreeps[1]:GetLocation(), 0, nRadius, 0, 0)
-                if nLocationAoE.count >= 3 or nLocationAoE.count >= 1 and tCreeps[1]:IsAncientCreep() then
-                    return BOT_ACTION_DESIRE_HIGH, nLocationAoE.targetloc
-                end
+        -- Neutral creeps
+        local tCreeps = bot:GetNearbyCreeps(1600, true)
+        if Fu.IsValid(tCreeps[1])
+        and Fu.CanBeAttacked(tCreeps[1])
+        and not Fu.IsRunning(tCreeps[1]) then
+            local nLocationAoE = bot:FindAoELocation(true, false, tCreeps[1]:GetLocation(), 0, nRadius, 0, 0)
+            if nLocationAoE.count >= 3
+            or (nLocationAoE.count >= 2 and tCreeps[1]:IsAncientCreep())
+            or (nLocationAoE.count >= 1 and tCreeps[1]:GetHealth() >= 700) then
+                return BOT_ACTION_DESIRE_HIGH, nLocationAoE.targetloc
+            end
+        end
+
+        -- Lane creeps (no enemies nearby)
+        local tLaneCreeps = bot:GetNearbyLaneCreeps(nCastRange, true)
+        local tEnemyNearby = Fu.GetNearbyHeroes(bot, 1600, true, BOT_MODE_NONE)
+        if #tEnemyNearby == 0 and Fu.IsValid(tLaneCreeps[1])
+        and Fu.CanBeAttacked(tLaneCreeps[1]) then
+            local nLocationAoE = bot:FindAoELocation(true, false, tLaneCreeps[1]:GetLocation(), 0, nRadius, 0, 0)
+            if nLocationAoE.count >= 3 then
+                return BOT_ACTION_DESIRE_HIGH, nLocationAoE.targetloc
             end
         end
     end
@@ -538,11 +548,16 @@ function X.ConsiderWindrun()
         and not botTarget:HasModifier('modifier_faceless_void_chronosphere_freeze')
         and not botTarget:HasModifier('modifier_necrolyte_reapers_scythe')
 		then
-            if (Fu.IsChasingTarget(bot, botTarget)
+            -- Chase: target is faster, or target is low HP and out of range
+            if Fu.IsChasingTarget(bot, botTarget)
                 and not Fu.IsInRange(bot, botTarget, bot:GetAttackRange())
-                and (botTarget:GetCurrentMovementSpeed() > bot:GetCurrentMovementSpeed() + 10))
-            or (bot:WasRecentlyDamagedByAnyHero(1.5) and X.IsBeingAttackedByRealHero(bot))
+                and (botTarget:GetCurrentMovementSpeed() > bot:GetCurrentMovementSpeed() + 10
+                     or Fu.GetHP(botTarget) < 0.3)
             then
+                return BOT_ACTION_DESIRE_HIGH
+            end
+            -- Being hit while going on someone
+            if bot:WasRecentlyDamagedByAnyHero(1.5) and X.IsBeingAttackedByRealHero(bot) then
                 return BOT_ACTION_DESIRE_HIGH
             end
 		end
@@ -601,6 +616,22 @@ function X.ConsiderWindrun()
                 return BOT_ACTION_DESIRE_HIGH
             end
         end
+    end
+
+    -- Tower/fountain physical damage: use Windrun to tank
+    if bot:WasRecentlyDamagedByTower(1.0) then
+        return BOT_ACTION_DESIRE_HIGH
+    end
+
+    -- Being right-clicked by heroes in teamfight: use Windrun to dodge
+    if #tEnemyHeroes >= 2 and X.IsBeingAttackedByRealHero(bot) and nHP < 0.7 then
+        return BOT_ACTION_DESIRE_HIGH
+    end
+
+    -- Pushing under tower: pre-emptively Windrun if tower is targeting us
+    local nEnemyTowers = bot:GetNearbyTowers(900, true)
+    if Fu.IsValidBuilding(nEnemyTowers[1]) and nEnemyTowers[1]:GetAttackTarget() == bot then
+        return BOT_ACTION_DESIRE_HIGH
     end
 
     return BOT_ACTION_DESIRE_NONE

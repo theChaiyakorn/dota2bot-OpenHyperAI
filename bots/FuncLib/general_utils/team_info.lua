@@ -693,16 +693,18 @@ function Fu.GetNumOfTeamTotalKills( bEnemy )
 	local nTeam = GetOpposingTeam()
 	if bEnemy then nTeam = GetTeam() end
 
-	-- local cacheKey = 'GetNumOfTeamTotalKills'..tostring(nTeam)
-	-- local cache = Fu.Utils.GetCachedVars(cacheKey, 1)
-	-- if cache ~= nil then return cache end
+	local CK = Fu.CK
+	if CK then
+		local cache = Fu.Utils.GetCachedVars(CK.NUM_TEAM_TOTAL_KILLS + nTeam, 1)
+		if cache ~= nil then return cache end
+	end
 
 	for i, id in pairs( GetTeamPlayers( nTeam ) )
 	do
 		count = count + GetHeroDeaths( id )
 	end
 
-	-- Fu.Utils.SetCachedVars(cacheKey, count)
+	if CK then Fu.Utils.SetCachedVars(CK.NUM_TEAM_TOTAL_KILLS + nTeam, count) end
 	return count
 
 end

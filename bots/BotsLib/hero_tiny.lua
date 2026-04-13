@@ -139,11 +139,11 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local Avalanche     = bot:GetAbilityByName("tiny_avalanche")
-local Toss          = bot:GetAbilityByName("tiny_toss")
-local TreeGrab      = bot:GetAbilityByName("tiny_tree_grab")
-local TreeThrow     = bot:GetAbilityByName("tiny_toss_tree")
-local TreeVolley    = bot:GetAbilityByName("tiny_tree_channel")
+local Avalanche     = SafeAbility(bot:GetAbilityByName("tiny_avalanche"), 'tiny_avalanche', 'tiny')
+local Toss          = SafeAbility(bot:GetAbilityByName("tiny_toss"), 'tiny_toss', 'tiny')
+local TreeGrab      = SafeAbility(bot:GetAbilityByName("tiny_tree_grab"), 'tiny_tree_grab', 'tiny')
+local TreeThrow     = SafeAbility(bot:GetAbilityByName("tiny_toss_tree"), 'tiny_toss_tree', 'tiny')
+local TreeVolley    = SafeAbility(bot:GetAbilityByName("tiny_tree_channel"), 'tiny_tree_channel', 'tiny')
 
 local AvalancheDesire, AvalancheTarget
 local TossDesire, TossTarget

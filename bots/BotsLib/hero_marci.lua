@@ -152,12 +152,12 @@ function X.MinionThink(hMinionUnit)
 
 end
 
-local Dispose          = bot:GetAbilityByName( "marci_grapple" )
-local Rebound          = bot:GetAbilityByName( "marci_companion_run" )
-local Sidekick         = bot:GetAbilityByName( "marci_guardian" )
-local Unleash          = bot:GetAbilityByName( "marci_unleash" )
-local Bodyguard        = bot:GetAbilityByName('marci_bodyguard')
-local SpecialDelivery  = bot:GetAbilityByName('marci_special_delivery')
+local Dispose          = SafeAbility(bot:GetAbilityByName("marci_grapple"), 'marci_grapple', 'marci')
+local Rebound          = SafeAbility(bot:GetAbilityByName("marci_companion_run"), 'marci_companion_run', 'marci')
+local Sidekick         = SafeAbility(bot:GetAbilityByName("marci_guardian"), 'marci_guardian', 'marci')
+local Unleash          = SafeAbility(bot:GetAbilityByName("marci_unleash"), 'marci_unleash', 'marci')
+local Bodyguard        = SafeAbility(bot:GetAbilityByName('marci_bodyguard'), 'marci_bodyguard', 'marci')
+local SpecialDelivery  = SafeAbility(bot:GetAbilityByName('marci_special_delivery'), 'marci_special_delivery', 'marci')
 
 local DisposeDesire, DisposeTaret
 local ReboundDesire, ReboundTarget

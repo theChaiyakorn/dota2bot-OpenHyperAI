@@ -142,12 +142,12 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local ThunderClap       = bot:GetAbilityByName('brewmaster_thunder_clap')
-local CinderBrew        = bot:GetAbilityByName('brewmaster_cinder_brew')
-local DrunkenBrawler    = bot:GetAbilityByName('brewmaster_drunken_brawler')
-local PrimalCompanion   = bot:GetAbilityByName('brewmaster_primal_companion')
-local PrimalSplit       = bot:GetAbilityByName('brewmaster_primal_split')
-local LiquidCourage     = bot:GetAbilityByName('brewmaster_liquid_courage')
+local ThunderClap       = SafeAbility(bot:GetAbilityByName('brewmaster_thunder_clap'), 'brewmaster_thunder_clap', 'brewmaster')
+local CinderBrew        = SafeAbility(bot:GetAbilityByName('brewmaster_cinder_brew'), 'brewmaster_cinder_brew', 'brewmaster')
+local DrunkenBrawler    = SafeAbility(bot:GetAbilityByName('brewmaster_drunken_brawler'), 'brewmaster_drunken_brawler', 'brewmaster')
+local PrimalCompanion   = SafeAbility(bot:GetAbilityByName('brewmaster_primal_companion'), 'brewmaster_primal_companion', 'brewmaster')
+local PrimalSplit       = SafeAbility(bot:GetAbilityByName('brewmaster_primal_split'), 'brewmaster_primal_split', 'brewmaster')
+local LiquidCourage     = SafeAbility(bot:GetAbilityByName('brewmaster_liquid_courage'), 'brewmaster_liquid_courage', 'brewmaster')
 
 local ThunderClapDesire
 local CinderBrewDesire, CinderBrewLocation

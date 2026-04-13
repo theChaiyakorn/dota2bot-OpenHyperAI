@@ -185,13 +185,13 @@ modifier_nevermore_necromastery
 
 --]]
 
-local abilityZ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityX = bot:GetAbilityByName( sAbilityList[2] )
-local abilityC = bot:GetAbilityByName( sAbilityList[3] )
-local abilityN = bot:GetAbilityByName( sAbilityList[4] )
-local FeastOfSouls = bot:GetAbilityByName('nevermore_frenzy')
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local talent4 = bot:GetAbilityByName( sTalentList[4] )
+local abilityZ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'nevermore')
+local abilityX = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'nevermore')
+local abilityC = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'nevermore')
+local abilityN = SafeAbility(bot:GetAbilityByName(sAbilityList[4]), 'sAbilityList[4]', 'nevermore')
+local FeastOfSouls = SafeAbility(bot:GetAbilityByName('nevermore_frenzy'), 'nevermore_frenzy', 'nevermore')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'nevermore')
+local talent4 = SafeAbility(bot:GetAbilityByName(sTalentList[4]), 'sTalentList[4]', 'nevermore')
 
 local castZDesire
 local castXDesire

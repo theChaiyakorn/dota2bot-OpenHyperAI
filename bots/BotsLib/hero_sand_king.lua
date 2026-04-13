@@ -143,11 +143,11 @@ modifier_sand_king_epicenter_slow
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local Stinger  = bot:GetAbilityByName('sandking_scorpion_strike')
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'sand_king')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'sand_king')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'sand_king')
+local Stinger  = SafeAbility(bot:GetAbilityByName('sandking_scorpion_strike'), 'sandking_scorpion_strike', 'sand_king')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'sand_king')
 
 
 local castQDesire, castQTarget
@@ -175,6 +175,7 @@ function X.SkillsComplement()
 	hEnemyList = ctx.enemies
 	hAllyList = ctx.allies
 
+	castQDesire, castQTarget = X.ConsiderQ()
 	if ( castQDesire > 0 )
 	then
 
@@ -184,6 +185,7 @@ function X.SkillsComplement()
 		return
 	end
 
+	castWDesire = X.ConsiderW()
 	if ( castWDesire > 0 )
 	then
 
@@ -193,6 +195,7 @@ function X.SkillsComplement()
 		return
 	end
 
+	castRDesire = X.ConsiderR()
 	if ( castRDesire > 0 )
 	then
 

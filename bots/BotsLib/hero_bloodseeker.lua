@@ -147,11 +147,11 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local BloodMist = bot:GetAbilityByName( 'bloodseeker_blood_mist' )
-local Thirst = bot:GetAbilityByName("bloodseeker_thirst")
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'bloodseeker')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'bloodseeker')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'bloodseeker')
+local BloodMist = SafeAbility(bot:GetAbilityByName('bloodseeker_blood_mist'), 'bloodseeker_blood_mist', 'bloodseeker')
+local Thirst = SafeAbility(bot:GetAbilityByName("bloodseeker_thirst"), 'bloodseeker_thirst', 'bloodseeker')
 
 local castQDesire = 0
 local castWDesire, castWLocation = 0

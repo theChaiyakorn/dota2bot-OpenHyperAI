@@ -58,7 +58,7 @@ function EntityKilled:OnEntityKilled(event)
 	-- Do Table Update
 	DataTables:DoDeathUpdate(victim, killer);
 	if Settings.difficulty >= 1 then
-		-- print('Enabled bots with bonus on death for diffculty scale = '..Settings.difficultyScale)
+		-- log('Enabled bots with bonus on death for diffculty scale = '..Settings.difficultyScale)
 		-- Dynamic Adjustment (maybe)
 		DynamicDifficulty:Adjust(victim)
 		-- Give Awards (maybe)
@@ -76,7 +76,7 @@ end
 
 -- Event Listener
 function EntityKilled:OnCombatlog(event)
-	-- print("[BAREBONES] dota_combatlog")
+	-- log("[BAREBONES] dota_combatlog")
 	-- DeepPrintTable(event)
 end
 
@@ -166,7 +166,7 @@ function EntityKilled:GoldTracking()
 	local canClearRadiantTracking = false
 	local canClearDireTracking = false
 	local killerAwardAnnounce = KillerAwardAnnounce
-	-- print("player count" .. tostring(#AllHumanPlayers))
+	-- log("player count" .. tostring(#AllHumanPlayers))
 	for i, player in pairs(AllHumanPlayers) do
 		local teamKills = TeamKillsTrackingTable[player.stats.team]
 		local netWorth = player:GetGold() -- PlayerResource:GetNetWorth(player.stats.id)

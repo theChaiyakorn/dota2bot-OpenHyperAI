@@ -77,12 +77,12 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local SpectralDagger    = bot:GetAbilityByName('spectre_spectral_dagger')
+local SpectralDagger    = SafeAbility(bot:GetAbilityByName('spectre_spectral_dagger'), 'spectre_spectral_dagger', 'spectre')
 -- local Desolate          = bot:GetAbilityByName('spectre_desolate')
-local Dispersion        = bot:GetAbilityByName('spectre_dispersion')
-local ShadowStep        = bot:GetAbilityByName('spectre_shadow_step')
-local Haunt             = bot:GetAbilityByName('spectre_haunt')
-local Reality           = bot:GetAbilityByName('spectre_reality')
+local Dispersion        = SafeAbility(bot:GetAbilityByName('spectre_dispersion'), 'spectre_dispersion', 'spectre')
+local ShadowStep        = SafeAbility(bot:GetAbilityByName('spectre_shadow_step'), 'spectre_shadow_step', 'spectre')
+local Haunt             = SafeAbility(bot:GetAbilityByName('spectre_haunt'), 'spectre_haunt', 'spectre')
+local Reality           = SafeAbility(bot:GetAbilityByName('spectre_reality'), 'spectre_reality', 'spectre')
 
 local SpectralDaggerDesire, SpectralDaggerTarget, DaggerType
 local DispersionDesire

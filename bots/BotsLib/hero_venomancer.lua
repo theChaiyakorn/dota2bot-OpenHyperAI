@@ -150,13 +150,13 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local VenomousGale      = bot:GetAbilityByName('venomancer_venomous_gale')
-local Snakebite         = bot:GetAbilityByName('venomancer_snakebite')
+local VenomousGale      = SafeAbility(bot:GetAbilityByName('venomancer_venomous_gale'), 'venomancer_venomous_gale', 'venomancer')
+local Snakebite         = SafeAbility(bot:GetAbilityByName('venomancer_snakebite'), 'venomancer_snakebite', 'venomancer')
 -- local PoisonSting       = bot:GetAbilityByName('venomancer_poison_sting')
-local PlagueWard        = bot:GetAbilityByName('venomancer_plague_ward')
+local PlagueWard        = SafeAbility(bot:GetAbilityByName('venomancer_plague_ward'), 'venomancer_plague_ward', 'venomancer')
 -- local LatentToxicity    = bot:GetAbilityByName('venomancer_latent_poison')
 -- local PoisonNova        = bot:GetAbilityByName('venomancer_poison_nova')
-local NoxiousPlague     = bot:GetAbilityByName('venomancer_noxious_plague')
+local NoxiousPlague     = SafeAbility(bot:GetAbilityByName('venomancer_noxious_plague'), 'venomancer_noxious_plague', 'venomancer')
 
 local VenomousGaleDesire, VenomousGaleLocation
 local SnakebiteDesire, SnakebiteTarget
@@ -480,81 +480,81 @@ function X.ConsiderPlagueWard()
         end
 	end
 
-    for _, allyHero in pairs(nAllyHeroes) do
-        if Fu.IsValidHero(allyHero)
-        and allyHero ~= bot
-        and Fu.IsInRange(bot, allyHero, nCastRange)
-        and not allyHero:IsIllusion()
-        then
-            local allyStack = Fu.GetModifierCount(allyHero, 'modifier_venomancer_ward_counter')
-            if Fu.IsPushing(allyHero) or Fu.IsFarming(allyHero) then
-                if #nAllyHeroes <= 2 or ( #nAllyHeroes > 2 and allyHero:GetAttackRange() < 450) then
-                    if allyStack < 6 then
-                        return BOT_ACTION_DESIRE_HIGH, allyHero, true
-                    end
-                end
-            end
+    -- for _, allyHero in pairs(nAllyHeroes) do
+    --     if Fu.IsValidHero(allyHero)
+    --     and allyHero ~= bot
+    --     and Fu.IsInRange(bot, allyHero, nCastRange)
+    --     and not allyHero:IsIllusion()
+    --     then
+    --         local allyStack = Fu.GetModifierCount(allyHero, 'modifier_venomancer_ward_counter')
+    --         if Fu.IsPushing(allyHero) or Fu.IsFarming(allyHero) then
+    --             if #nAllyHeroes <= 2 or ( #nAllyHeroes > 2 and allyHero:GetAttackRange() < 450) then
+    --                 if allyStack < 6 then
+    --                     return BOT_ACTION_DESIRE_HIGH, allyHero, true
+    --                 end
+    --             end
+    --         end
 
-            if Fu.IsRetreating(allyHero)
-            and allyHero:WasRecentlyDamagedByAnyHero(3.0) then
-                local nAllyInRangeEnemy = allyHero:GetNearbyHeroes(600, true, BOT_MODE_NONE)
-                for _, enemyHero in pairs(nAllyInRangeEnemy) do
-                    if Fu.IsValidHero(enemyHero)
-                    and Fu.CanBeAttacked(enemyHero)
-                    and Fu.IsChasingTarget(enemyHero, allyHero)
-                    and not Fu.IsSuspiciousIllusion(enemyHero)
-                    then
-                        if allyStack < 6 then
-                            return BOT_ACTION_DESIRE_HIGH, allyHero, true
-                        end
-                    end
-                end
-            end
-        end
-    end
+    --         if Fu.IsRetreating(allyHero)
+    --         and allyHero:WasRecentlyDamagedByAnyHero(3.0) then
+    --             local nAllyInRangeEnemy = allyHero:GetNearbyHeroes(600, true, BOT_MODE_NONE)
+    --             for _, enemyHero in pairs(nAllyInRangeEnemy) do
+    --                 if Fu.IsValidHero(enemyHero)
+    --                 and Fu.CanBeAttacked(enemyHero)
+    --                 and Fu.IsChasingTarget(enemyHero, allyHero)
+    --                 and not Fu.IsSuspiciousIllusion(enemyHero)
+    --                 then
+    --                     if allyStack < 6 then
+    --                         return BOT_ACTION_DESIRE_HIGH, allyHero, true
+    --                     end
+    --                 end
+    --             end
+    --         end
+    --     end
+    -- end
 
-    if Fu.IsPushing(bot) or Fu.IsDefending(bot) then
-        if nStacks < 6 then
-            local nEnemyLaneCreeps = bot:GetNearbyLaneCreeps(600, true)
-            if Fu.CanBeAttacked(nEnemyLaneCreeps[1])
-            and not Fu.IsRunning(nEnemyLaneCreeps[1])
-            and nBotMP > 0.5
-            then
-                return BOT_ACTION_DESIRE_HIGH, bot, true
-            end
+    -- if Fu.IsPushing(bot) or Fu.IsDefending(bot) then
+    --     if nStacks < 6 then
+    --         local nEnemyLaneCreeps = bot:GetNearbyLaneCreeps(600, true)
+    --         if Fu.CanBeAttacked(nEnemyLaneCreeps[1])
+    --         and not Fu.IsRunning(nEnemyLaneCreeps[1])
+    --         and nBotMP > 0.5
+    --         then
+    --             return BOT_ACTION_DESIRE_HIGH, bot, true
+    --         end
 
-            if Fu.IsValidBuilding(botTarget)
-            and Fu.CanBeAttacked(botTarget)
-            and Fu.IsInRange(bot, botTarget, 550)
-            and bAttacking
-            then
-                return BOT_ACTION_DESIRE_HIGH, bot, true
-            end
-        end
-	end
+    --         if Fu.IsValidBuilding(botTarget)
+    --         and Fu.CanBeAttacked(botTarget)
+    --         and Fu.IsInRange(bot, botTarget, 550)
+    --         and bAttacking
+    --         then
+    --             return BOT_ACTION_DESIRE_HIGH, bot, true
+    --         end
+    --     end
+	-- end
 
-    if nStacks < 6 then
-        if Fu.IsDoingRoshan(bot)
-        then
-            if Fu.IsRoshan(botTarget)
-            and Fu.CanBeAttacked(botTarget)
-            and Fu.IsInRange(bot, botTarget, 500)
-            and bAttacking
-            then
-                return BOT_ACTION_DESIRE_HIGH, bot, true
-            end
-        end
+    -- if nStacks < 6 then
+    --     if Fu.IsDoingRoshan(bot)
+    --     then
+    --         if Fu.IsRoshan(botTarget)
+    --         and Fu.CanBeAttacked(botTarget)
+    --         and Fu.IsInRange(bot, botTarget, 500)
+    --         and bAttacking
+    --         then
+    --             return BOT_ACTION_DESIRE_HIGH, bot, true
+    --         end
+    --     end
 
-        if Fu.IsDoingTormentor(bot)
-        then
-            if Fu.IsTormentor(botTarget)
-            and Fu.IsInRange(bot, botTarget, 500)
-            and bAttacking
-            then
-                return BOT_ACTION_DESIRE_HIGH, bot, true
-            end
-        end
-    end
+    --     if Fu.IsDoingTormentor(bot)
+    --     then
+    --         if Fu.IsTormentor(botTarget)
+    --         and Fu.IsInRange(bot, botTarget, 500)
+    --         and bAttacking
+    --         then
+    --             return BOT_ACTION_DESIRE_HIGH, bot, true
+    --         end
+    --     end
+    -- end
 
     return BOT_ACTION_DESIRE_NONE, 0, false
 end

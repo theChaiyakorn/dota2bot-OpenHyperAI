@@ -152,11 +152,11 @@ local function RecordEarthBindCast(location)
 end
 
 -- Ability handles (re-fetched in SkillsComplement)
-local EarthBind         = bot:GetAbilityByName('meepo_earthbind')
-local Poof              = bot:GetAbilityByName('meepo_poof')
-local Dig               = bot:GetAbilityByName('meepo_petrify')
-local MegaMeepo         = bot:GetAbilityByName('meepo_megameepo')
-local MegaMeepoFling    = bot:GetAbilityByName('meepo_megameepo_fling')
+local EarthBind         = SafeAbility(bot:GetAbilityByName('meepo_earthbind'), 'meepo_earthbind', 'meepo')
+local Poof              = SafeAbility(bot:GetAbilityByName('meepo_poof'), 'meepo_poof', 'meepo')
+local Dig               = SafeAbility(bot:GetAbilityByName('meepo_petrify'), 'meepo_petrify', 'meepo')
+local MegaMeepo         = SafeAbility(bot:GetAbilityByName('meepo_megameepo'), 'meepo_megameepo', 'meepo')
+local MegaMeepoFling    = SafeAbility(bot:GetAbilityByName('meepo_megameepo_fling'), 'meepo_megameepo_fling', 'meepo')
 
 local EarthBindDesire, EarthBindLocation
 local PoofDesire, PoofTarget
@@ -185,11 +185,11 @@ function X.SkillsComplement()
 	nBotMP = ctx.mp
 
     -- Re-fetch ability handles each tick for safety
-    EarthBind      = bot:GetAbilityByName('meepo_earthbind')
-    Poof           = bot:GetAbilityByName('meepo_poof')
-    Dig            = bot:GetAbilityByName('meepo_petrify')
-    MegaMeepo      = bot:GetAbilityByName('meepo_megameepo')
-    MegaMeepoFling = bot:GetAbilityByName('meepo_megameepo_fling')
+    EarthBind      = SafeAbility(bot:GetAbilityByName('meepo_earthbind'), 'meepo_earthbind', 'meepo')
+    Poof           = SafeAbility(bot:GetAbilityByName('meepo_poof'), 'meepo_poof', 'meepo')
+    Dig            = SafeAbility(bot:GetAbilityByName('meepo_petrify'), 'meepo_petrify', 'meepo')
+    MegaMeepo      = SafeAbility(bot:GetAbilityByName('meepo_megameepo'), 'meepo_megameepo', 'meepo')
+    MegaMeepoFling = SafeAbility(bot:GetAbilityByName('meepo_megameepo_fling'), 'meepo_megameepo_fling', 'meepo')
 
     -- Cache per-tick variables
     Meepos       = Fu.GetMeepos()

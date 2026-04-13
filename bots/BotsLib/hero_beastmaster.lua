@@ -16,16 +16,16 @@ local tTalentTreeList = {
 }
 
 local tAllAbilityBuildList = {
-						{1,2,2,1,1,6,1,2,2,4,6,4,4,4,6},--pos3 (Axes + Boar for lane pressure)
-						{2,4,2,4,2,6,2,4,4,1,6,1,1,1,6},--pos1/2 (Boar + Inner Beast for fighting)
+						{1,2,2,1,1,6,1,2,2,3,6,3,3,3,6},--pos3 (Axes + Razorback, then Raptor)
+						-- {2,3,2,3,2,6,2,3,3,1,6,1,1,1,6},--pos1/2 (Razorback + Raptor for fighting)
 }
 
-local nAbilityBuildList
-if sRole == 'pos_1' or sRole == 'pos_2' then
-	nAbilityBuildList = tAllAbilityBuildList[2]
-else
-	nAbilityBuildList = tAllAbilityBuildList[1]
-end
+local nAbilityBuildList = tAllAbilityBuildList[1]
+-- if sRole == 'pos_1' or sRole == 'pos_2' then
+-- 	nAbilityBuildList = tAllAbilityBuildList[2]
+-- else
+-- 	nAbilityBuildList = tAllAbilityBuildList[1]
+-- end
 
 local nTalentBuildList = Fu.Skill.GetTalentBuild( tTalentTreeList )
 
@@ -155,17 +155,17 @@ function X.MinionThink(hMinionUnit)
 end
 
 -- Ability handles initialized at load time; re-fetched each tick in SkillsComplement for Aghs safety
-local WildAxes          = bot:GetAbilityByName('beastmaster_wild_axes')
+local WildAxes          = SafeAbility(bot:GetAbilityByName('beastmaster_wild_axes'), 'beastmaster_wild_axes', 'beastmaster')
 -- 7.41: Boar→Razorback, Hawk→Raptor. Use sAbilityList for resilience to name changes.
-local CallOfTheWildBoar = bot:GetAbilityByName('beastmaster_call_of_the_wild_razorback')
-                          or bot:GetAbilityByName('beastmaster_summon_razorback')
-                          or (sAbilityList[2] and bot:GetAbilityByName(sAbilityList[2]))
-local CallOfTheWildHawk = bot:GetAbilityByName('beastmaster_call_of_the_wild_raptor')
-                          or bot:GetAbilityByName('beastmaster_summon_raptors')
-                          or (sAbilityList[3] and bot:GetAbilityByName(sAbilityList[3]))
+local CallOfTheWildBoar = SafeAbility(bot:GetAbilityByName('beastmaster_call_of_the_wild_razorback'), 'beastmaster_call_of_the_wild_razorback', 'beastmaster')
+                          or SafeAbility(bot:GetAbilityByName('beastmaster_summon_razorback'), 'beastmaster_summon_razorback', 'beastmaster')
+                          or (sAbilityList[2] and SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'beastmaster'))
+local CallOfTheWildHawk = SafeAbility(bot:GetAbilityByName('beastmaster_call_of_the_wild_raptor'), 'beastmaster_call_of_the_wild_raptor', 'beastmaster')
+                          or SafeAbility(bot:GetAbilityByName('beastmaster_summon_raptors'), 'beastmaster_summon_raptors', 'beastmaster')
+                          or (sAbilityList[3] and SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'beastmaster'))
 -- local InnerBeast     -- 7.41: now innate, cannot be cast
 -- local DrumsOfSlom        = bot:GetAbilityByName('beastmaster_drums_of_slom')
-local PrimalRoar        = bot:GetAbilityByName('beastmaster_primal_roar')
+local PrimalRoar        = SafeAbility(bot:GetAbilityByName('beastmaster_primal_roar'), 'beastmaster_primal_roar', 'beastmaster')
 
 local WildAxesDesire, WildAxesLocation
 local CallOfTheWildBoarDesire
@@ -202,14 +202,14 @@ function X.SkillsComplement()
     end
 
     -- Re-fetch ability handles each tick for safety against Aghs upgrades
-    WildAxes = bot:GetAbilityByName('beastmaster_wild_axes')
-    CallOfTheWildBoar = bot:GetAbilityByName('beastmaster_call_of_the_wild_razorback')
-                        or bot:GetAbilityByName('beastmaster_summon_razorback')
-                        or (sAbilityList[2] and bot:GetAbilityByName(sAbilityList[2]))
-    CallOfTheWildHawk = bot:GetAbilityByName('beastmaster_call_of_the_wild_raptor')
-                        or bot:GetAbilityByName('beastmaster_summon_raptors')
-                        or (sAbilityList[3] and bot:GetAbilityByName(sAbilityList[3]))
-    PrimalRoar = bot:GetAbilityByName('beastmaster_primal_roar')
+    WildAxes = SafeAbility(bot:GetAbilityByName('beastmaster_wild_axes'), 'beastmaster_wild_axes', 'beastmaster')
+    CallOfTheWildBoar = SafeAbility(bot:GetAbilityByName('beastmaster_call_of_the_wild_razorback'), 'beastmaster_call_of_the_wild_razorback', 'beastmaster')
+                        or SafeAbility(bot:GetAbilityByName('beastmaster_summon_razorback'), 'beastmaster_summon_razorback', 'beastmaster')
+                        or (sAbilityList[2] and SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'beastmaster'))
+    CallOfTheWildHawk = SafeAbility(bot:GetAbilityByName('beastmaster_call_of_the_wild_raptor'), 'beastmaster_call_of_the_wild_raptor', 'beastmaster')
+                        or SafeAbility(bot:GetAbilityByName('beastmaster_summon_raptors'), 'beastmaster_summon_raptors', 'beastmaster')
+                        or (sAbilityList[3] and SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'beastmaster'))
+    PrimalRoar = SafeAbility(bot:GetAbilityByName('beastmaster_primal_roar'), 'beastmaster_primal_roar', 'beastmaster')
 
     -- Cache per-tick variables
     botTarget = ctx.target

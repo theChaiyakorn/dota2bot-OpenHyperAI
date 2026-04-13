@@ -168,10 +168,10 @@ modifier_skywrath_mystic_flare_aura_effect
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'skywrath_mage')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'skywrath_mage')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'skywrath_mage')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'skywrath_mage')
 
 
 local castQDesire, castQTarget
@@ -343,15 +343,13 @@ function X.ConsiderQ()
 	end
 
 
-	if Fu.IsFarming( bot ) and nLV > 9
+	if Fu.IsFarming( bot ) and nLV >= 3
 	then
 		if Fu.IsValid( botTarget )
 			and Fu.IsInRange( bot, botTarget, nCastRange )
 			and botTarget:GetTeam() == TEAM_NEUTRAL
-			and ( botTarget:GetMagicResist() < 0.3 or nMP > 0.95 )
-			and not Fu.CanKillTarget( botTarget, nAttackDamage * 1.68, DAMAGE_TYPE_PHYSICAL )
-			and not Fu.CanKillTarget( botTarget, nDamage - 10, nDamageType )
-			and not Fu.WillKillTarget( botTarget, nAttackDamage, DAMAGE_TYPE_PHYSICAL, nCastPoint )
+			and ( botTarget:GetMagicResist() < 0.3 or nMP > 0.7 )
+			and nMP > 0.4
 		then
 			return BOT_ACTION_DESIRE_HIGH, botTarget, 'Q打野'
 		end

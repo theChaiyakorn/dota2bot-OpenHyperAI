@@ -70,7 +70,7 @@ do
 end
 -- End of Lua Library inline imports
 local ____exports = {}
-local ____dota = require("bots.ts_libs.dota.index")
+local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local BotMode = ____dota.BotMode
 local DEBUFFS = {
     modifier_stunned = {
@@ -623,7 +623,7 @@ function ____exports.ShouldUseAllyDispelItem(bot)
                 end
                 if not ally:HasModifier("modifier_item_lotus_orb_active") then
                     local enemiesNearAlly = ally:GetNearbyHeroes(800, true, BotMode.None)
-                    if enemiesNearAlly then
+                    if enemiesNearAlly ~= nil and enemiesNearAlly ~= nil then
                         for ____, enemy in ipairs(enemiesNearAlly) do
                             if enemy and not enemy:IsNull() and enemy:IsAlive() then
                                 local eName = enemy:GetUnitName()

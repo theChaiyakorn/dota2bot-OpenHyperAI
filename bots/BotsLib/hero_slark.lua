@@ -16,7 +16,7 @@ local tTalentTreeList = {
 }
 
 local tAllAbilityBuildList = {
-						{3,2,1,1,1,6,1,2,2,2,6,3,3,3,6},--pos1
+						{1,2,3,1,1,6,1,4,2,2,6,2,4,4,6},--pos1: Q>W>E early, Depth Shroud from 8
 }
 
 local nAbilityBuildList = Fu.Skill.GetRandomBuild( tAllAbilityBuildList )
@@ -143,14 +143,14 @@ modifier_slark_shadow_dance_visual
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local abilityAS = bot:GetAbilityByName( sAbilityList[4] )
-local talent2 = bot:GetAbilityByName( sTalentList[2] )
-local talent6 = bot:GetAbilityByName( sTalentList[6] )
-local SaltwaterShiv = bot:GetAbilityByName('slark_saltwater_shiv')
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'slark')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'slark')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'slark')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'slark')
+local abilityAS = SafeAbility(bot:GetAbilityByName(sAbilityList[4]), 'sAbilityList[4]', 'slark')
+local talent2 = SafeAbility(bot:GetAbilityByName(sTalentList[2]), 'sTalentList[2]', 'slark')
+local talent6 = SafeAbility(bot:GetAbilityByName(sTalentList[6]), 'sTalentList[6]', 'slark')
+local SaltwaterShiv = SafeAbility(bot:GetAbilityByName('slark_saltwater_shiv'), 'slark_saltwater_shiv', 'slark')
 
 local castQDesire, castQTarget
 local castWDesire, castWTarget
@@ -164,7 +164,7 @@ local aetherRange = 0
 
 function X.SkillsComplement()
 
-	if Fu.CanNotUseAbility( bot ) or bot:IsInvisible() then return end
+	if Fu.CanNotUseAbility( bot ) then return end
 
 	local ctx = AbilityCtx.Build(bot)
 	nKeepMana = 400
@@ -176,8 +176,7 @@ function X.SkillsComplement()
 	hEnemyList = ctx.enemies
 	hAllyList = ctx.allies
 
-
-
+	castQDesire = X.ConsiderQ()
 	if castQDesire > 0
 	then
 
@@ -187,6 +186,7 @@ function X.SkillsComplement()
 		return
 	end
 
+	castWDesire = X.ConsiderW()
 	if castWDesire > 0
 	then
 
@@ -202,6 +202,7 @@ function X.SkillsComplement()
 		return
 	end
 
+	castASDesire, castASTarget = X.ConsiderAS()
 	if castASDesire > 0
 	then
 
@@ -211,6 +212,7 @@ function X.SkillsComplement()
 		return
 	end
 
+	castRDesire = X.ConsiderR()
 	if castRDesire > 0
 	then
 
@@ -227,14 +229,37 @@ function X.ConsiderSaltwaterShiv()
 		return BOT_ACTION_DESIRE_NONE, nil
 	end
 
-	if Fu.IsGoingOnSomeone(bot) then
-		if  Fu.IsValidHero(botTarget)
+	local nCastRange = SaltwaterShiv:GetCastRange()
+
+	-- Attack target
+	if Fu.IsGoingOnSomeone(bot) or Fu.IsInTeamFight(bot, 1200) then
+		if Fu.IsValidHero(botTarget)
 		and Fu.CanBeAttacked(botTarget)
-		and Fu.IsInRange(bot, botTarget, bot:GetAttackRange() + 200)
+		and Fu.IsInRange(bot, botTarget, nCastRange)
 		and not Fu.IsSuspiciousIllusion(botTarget)
+		and not Fu.HasForbiddenModifier(botTarget)
 		then
 			return BOT_ACTION_DESIRE_HIGH, botTarget
 		end
+	end
+
+	-- Retreat: slow the closest chaser
+	if Fu.IsRetreating(bot) and nHP < 0.6 then
+		local chasers = Fu.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE)
+		for _, enemy in pairs(chasers) do
+			if Fu.IsValidHero(enemy) and Fu.CanBeAttacked(enemy)
+			and enemy:IsFacingLocation(bot:GetLocation(), 30)
+			then
+				return BOT_ACTION_DESIRE_HIGH, enemy
+			end
+		end
+	end
+
+	-- Roshan/Tormentor
+	if (Fu.IsDoingRoshan(bot) or Fu.IsDoingTormentor(bot))
+	and Fu.IsValid(botTarget) and Fu.IsInRange(bot, botTarget, nCastRange)
+	then
+		return BOT_ACTION_DESIRE_HIGH, botTarget
 	end
 
 	return BOT_ACTION_DESIRE_NONE, nil
@@ -326,16 +351,15 @@ function X.ConsiderQ()
 	end
 	
 	
-	--带线时
+	--带线时 (also use Q to farm lane creeps more aggressively)
 	if ( Fu.IsPushing( bot ) or Fu.IsDefending( bot ) or Fu.IsFarming( bot ) )
 		and Fu.IsAllowedToSpam( bot, nManaCost * 0.32 )
-		and #hAllyList <= 3
 	then
 		local laneCreepList = bot:GetNearbyLaneCreeps( nRadius + 50 , true )
-		if ( #laneCreepList >= 4 or ( #laneCreepList >= 3 and nMP > 0.82 ) )
+		if ( #laneCreepList >= 3 or ( #laneCreepList >= 2 and nMP > 0.7 ) )
+			and Fu.IsValid(laneCreepList[1])
 			and not laneCreepList[1]:HasModifier( "modifier_fountain_glyph" )
 		then
-			hCastTarget = creep
 			sCastMotive = 'Q-带线AOE'..(#laneCreepList)
 			return BOT_ACTION_DESIRE_HIGH, sCastMotive
 		end
@@ -349,7 +373,7 @@ function X.ConsiderQ()
 	then
 		local creepList = bot:GetNearbyNeutralCreeps( nRadius + 300 )
 
-		if #creepList >= 3
+		if (#creepList >= 3 or (#creepList >= 2 and Fu.IsValid(creepList[1]) and creepList[1]:IsAncientCreep()))
 			and Fu.IsValid( botTarget )
 		then
 			hCastTarget = botTarget
@@ -357,10 +381,18 @@ function X.ConsiderQ()
 			return BOT_ACTION_DESIRE_HIGH, sCastMotive
 	    end
 	end
-	
-	
 
+	-- Self-dispel when debuffed (Disarmed, Rooted, Blinded)
+	if bot:IsDisarmed() or bot:IsRooted() or bot:IsBlind() then
+		return BOT_ACTION_DESIRE_HIGH, 'Q-self-dispel'
+	end
 
+	-- Roshan/Tormentor: use Q for extra damage
+	if (Fu.IsDoingRoshan(bot) or Fu.IsDoingTormentor(bot))
+		and Fu.IsAttacking(bot) and Fu.IsAllowedToSpam(bot, nManaCost)
+	then
+		return BOT_ACTION_DESIRE_HIGH, 'Q-roshan/tormentor'
+	end
 
 	return BOT_ACTION_DESIRE_NONE
 
@@ -371,7 +403,7 @@ end
 function X.ConsiderW()
 
 
-	if not abilityW:IsFullyCastable() then return 0 end
+	if not abilityW:IsFullyCastable() or bot:IsRooted() then return 0 end
 
 	local nSkillLV = abilityW:GetLevel()
 	local nCastRange = abilityW:GetSpecialValueInt( 'pounce_distance' )
@@ -384,14 +416,15 @@ function X.ConsiderW()
 	local nInBonusEnemyList = Fu.GetAroundEnemyHeroList( nCastRange + 200 )
 	local hCastTarget = nil
 	local sCastMotive = nil
-	
-	
+
+
 	--攻击没被控制的敌人时
 	if Fu.IsGoingOnSomeone( bot )
 	then
 		if Fu.IsValidHero( botTarget )
 			and Fu.IsInRange( bot, botTarget, nRadius - 80 )
 			and not Fu.IsDisabled( botTarget )
+			and not botTarget:HasModifier('modifier_slark_pounce_leash')
 			and bot:IsFacingLocation( botTarget:GetLocation(), 10 )
 			and Fu.CanCastOnNonMagicImmune( botTarget )
 		then
@@ -434,6 +467,18 @@ function X.ConsiderW()
 		return BOT_ACTION_DESIRE_HIGH, sCastMotive
 	end
 
+	-- Mobility: pounce toward destination when no enemies nearby and far from target
+	if #nInRangeEnemyList == 0 and nSkillLV >= 2 then
+		local mode = bot:GetActiveMode()
+		if (mode == BOT_MODE_PUSH_TOWER_TOP or mode == BOT_MODE_PUSH_TOWER_MID or mode == BOT_MODE_PUSH_TOWER_BOT
+			or mode == BOT_MODE_DEFEND_TOWER_TOP or mode == BOT_MODE_DEFEND_TOWER_MID or mode == BOT_MODE_DEFEND_TOWER_BOT
+			or mode == BOT_MODE_ROSHAN or mode == BOT_MODE_RUNE)
+			and bot:GetCurrentMovementSpeed() > 0
+			and bot:GetMovementDirectionStability() > 0.9
+		then
+			return BOT_ACTION_DESIRE_LOW, 'W-mobility'
+		end
+	end
 
 	return BOT_ACTION_DESIRE_NONE
 
@@ -443,70 +488,63 @@ end
 
 function X.ConsiderAS()
 
-
-	if not abilityAS:IsTrained() 
-		or not abilityAS:IsFullyCastable() 
-		or bot:HasModifier( "modifier_slark_shadow_dance" )
-		or nHP > 0.85
+	if not abilityAS:IsTrained()
+		or not abilityAS:IsFullyCastable()
+		or bot:HasModifier("modifier_slark_shadow_dance")
+		or bot:HasModifier("modifier_slark_depth_shroud")
 	then return 0 end
 
-	local nSkillLV = abilityAS:GetLevel()
-	local nCastRange = abilityAS:GetCastRange()
-	local nRadius = 300
-	local nCastPoint = abilityAS:GetCastPoint()
-	local nManaCost = abilityAS:GetManaCost()
-	local nDamage = 0
-	local nDamageType = DAMAGE_TYPE_MAGICAL
-	local nInRangeEnemyList = Fu.GetAroundEnemyHeroList( 600 )
-	local nInBonusEnemyList = Fu.GetAroundEnemyHeroList( 800 )
-	local hCastTarget = nil
-	local sCastMotive = nil
+	local nCastRange = abilityAS:GetCastRange() + aetherRange
+	local nInRangeEnemyList = Fu.GetAroundEnemyHeroList(600)
+	local nInBonusEnemyList = Fu.GetAroundEnemyHeroList(800)
 
-	--攻击敌人时
-	if Fu.IsGoingOnSomeone( bot )
-	then
-		if Fu.IsValidHero( botTarget )
-			and Fu.IsInRange( botTarget, bot, 200 )
-			and Fu.CanCastOnMagicImmune( botTarget )	
-			and bot:GetAttackTarget() == botTarget
-			and not Fu.IsRunning( botTarget )
-		then			
-			hCastTarget = Fu.GetFaceTowardDistanceLocation( bot, 100 )
-			sCastMotive = 'AS-攻击'..Fu.Chat.GetNormName( botTarget )
-			return BOT_ACTION_DESIRE_HIGH, hCastTarget, sCastMotive
+	-- Protect low-HP allies (primary use case)
+	for _, npcAlly in pairs(hAllyList) do
+		if Fu.IsValidHero(npcAlly) and not npcAlly:IsIllusion()
+		and Fu.GetHP(npcAlly) < 0.5
+		and Fu.IsInRange(bot, npcAlly, nCastRange)
+		and npcAlly:WasRecentlyDamagedByAnyHero(2.0)
+		and not npcAlly:HasModifier("modifier_slark_depth_shroud")
+		then
+			-- Ally is disabled, low HP and being attacked, or stun incoming
+			if Fu.IsDisabled(npcAlly)
+			or Fu.GetHP(npcAlly) < 0.3
+			or Fu.IsStunProjectileIncoming(npcAlly, 1000)
+			then
+				return BOT_ACTION_DESIRE_HIGH, npcAlly:GetLocation(), 'AS-protect-'..Fu.Chat.GetNormName(npcAlly)
+			end
 		end
 	end
-	
-	
-	--撤退时保护自己
-	if Fu.IsRetreating( bot )
-		and Fu.IsRunning( bot )
-		and bot:IsFacingLocation( GetAncient(GetTeam()):GetLocation(), 15 )
+
+	-- Self-use when fighting and taking damage
+	if Fu.IsGoingOnSomeone(bot) and nHP < 0.7 then
+		if Fu.IsValidHero(botTarget)
+			and Fu.IsInRange(botTarget, bot, 300)
+			and bot:GetAttackTarget() == botTarget
+		then
+			return BOT_ACTION_DESIRE_HIGH, bot:GetLocation(), 'AS-fight'
+		end
+	end
+
+	-- Self-use when retreating
+	if Fu.IsRetreating(bot) and nHP < 0.6
+		and bot:WasRecentlyDamagedByAnyHero(1.5)
 	then
-		for _, npcEnemy in pairs( nInBonusEnemyList )
-		do
-			if Fu.IsValid( npcEnemy )
-				and Fu.CanCastOnMagicImmune( npcEnemy )
-				and npcEnemy:GetAttackTarget() == bot
-				and bot:WasRecentlyDamagedByHero( npcEnemy, 1.0 )
-			then
-				hCastTarget = Fu.GetFaceTowardDistanceLocation( bot, 300 )
-				sCastMotive = 'AS-隐藏'
-				return BOT_ACTION_DESIRE_HIGH, hCastTarget, sCastMotive
+		for _, npcEnemy in pairs(nInBonusEnemyList) do
+			if Fu.IsValid(npcEnemy) and npcEnemy:GetAttackTarget() == bot then
+				return BOT_ACTION_DESIRE_HIGH, bot:GetLocation(), 'AS-retreat'
 			end
 		end
 	end
 
 	return BOT_ACTION_DESIRE_NONE
-
-
 end
 
 
 function X.ConsiderR()
 
 
-	if not abilityR:IsFullyCastable() or nHP > 0.8 then return 0 end
+	if not abilityR:IsFullyCastable() or nHP > 0.8 or Fu.IsRealInvisible(bot) then return 0 end
 
 	local nSkillLV = abilityR:GetLevel()
 	local nCastRange = abilityR:GetCastRange()

@@ -81,12 +81,12 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local HoofStomp     = bot:GetAbilityByName('centaur_hoof_stomp')
-local DoubleEdge    = bot:GetAbilityByName('centaur_double_edge')
+local HoofStomp     = SafeAbility(bot:GetAbilityByName('centaur_hoof_stomp'), 'centaur_hoof_stomp', 'centaur')
+local DoubleEdge    = SafeAbility(bot:GetAbilityByName('centaur_double_edge'), 'centaur_double_edge', 'centaur')
 -- local Retaliate     = bot:GetAbilityByName('centaur_return')
-local WorkHorse     = bot:GetAbilityByName('centaur_work_horse')
-local HitchARide    = bot:GetAbilityByName('centaur_mount')
-local Stampede      = bot:GetAbilityByName('centaur_stampede')
+local WorkHorse     = SafeAbility(bot:GetAbilityByName('centaur_work_horse'), 'centaur_work_horse', 'centaur')
+local HitchARide    = SafeAbility(bot:GetAbilityByName('centaur_mount'), 'centaur_mount', 'centaur')
+local Stampede      = SafeAbility(bot:GetAbilityByName('centaur_stampede'), 'centaur_stampede', 'centaur')
 
 local HoofStompDesire
 local DoubleEdgeDesire, DoubleEdgeTarget

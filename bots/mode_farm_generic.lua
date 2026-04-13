@@ -16,6 +16,7 @@ local DB = Vector(7023.000000, 6450.000000, 0.000000)
 local botName = bot:GetUnitName();
 local sec = 0;
 local preferedCamp = nil;
+local nLastFarmDesireLog = 0;
 local availableCamp = {};
 local hLaneCreepList = {};
 local farmState = 0;
@@ -47,58 +48,231 @@ local announcementGap = 6
 local hasPickedOneAnnouncer = false
 local CleanupCachedVarsTime = -100
 
-local runTime = 0;
-local shouldRunTime = 0
-local runMode = false;
+-- Map bot mode to localization key
+local modeLocaleMap = {
+	[BOT_MODE_LANING] = 'mode_laning',
+	[BOT_MODE_FARM] = 'mode_farming',
+	[BOT_MODE_PUSH_TOWER_TOP] = 'mode_pushing',
+	[BOT_MODE_PUSH_TOWER_MID] = 'mode_pushing',
+	[BOT_MODE_PUSH_TOWER_BOT] = 'mode_pushing',
+	[BOT_MODE_DEFEND_TOWER_TOP] = 'mode_defending',
+	[BOT_MODE_DEFEND_TOWER_MID] = 'mode_defending',
+	[BOT_MODE_DEFEND_TOWER_BOT] = 'mode_defending',
+	[BOT_MODE_RETREAT] = 'mode_retreating',
+	[BOT_MODE_ROSHAN] = 'mode_roshan',
+	[BOT_MODE_ATTACK] = 'mode_fighting',
+	[BOT_MODE_ROAM] = 'mode_roaming',
+	[BOT_MODE_TEAM_ROAM] = 'mode_fighting',
+	[BOT_MODE_SIDE_SHOP] = 'mode_tormentor',
+}
+if BOT_MODE_WATCHER then modeLocaleMap[BOT_MODE_WATCHER] = 'mode_tormentor' end
+function X.GetModeLocaleKey(mode)
+	return modeLocaleMap[mode] or 'mode_other'
+end
+
+-- Filter camps to only safe ones (closer to our base, near our towers)
+function X.GetSafeCamps(bot, campTable)
+	if campTable == nil or #campTable == 0 then return campTable end
+
+	local nTeam = GetTeam()
+	local teamFountain = Fu.GetTeamFountain()
+	local enemyFountain = nTeam == TEAM_RADIANT
+		and Vector(7023, 6450, 0) or Vector(-7174, -6671, 0)
+	local aliveEnemyCount = Fu.GetNumOfAliveHeroes(true)
+
+	-- Find nearest alive tower for distance check
+	local towerIds = {TOWER_TOP_1, TOWER_MID_1, TOWER_BOT_1, TOWER_TOP_2, TOWER_MID_2, TOWER_BOT_2}
+	local nearestTowerDist = 99999
+	local nearestTowerTier = 0
+	for _, tid in pairs(towerIds) do
+		local tower = GetTower(nTeam, tid)
+		if tower ~= nil and tower:IsAlive() then
+			local dist = GetUnitToUnitDistance(bot, tower)
+			if dist < nearestTowerDist then
+				nearestTowerDist = dist
+				-- T1 = first 3, T2 = last 3
+				nearestTowerTier = (tid <= TOWER_BOT_1) and 1 or 2
+			end
+		end
+	end
+
+	local safeCamps = {}
+	for _, camp in pairs(campTable) do
+		if camp ~= nil and camp.cattr ~= nil and camp.cattr.location ~= nil then
+			local campLoc = camp.cattr.location
+			local distToOurFountain = Fu.GetDistance(campLoc, teamFountain)
+			local distToEnemyFountain = Fu.GetDistance(campLoc, enemyFountain)
+
+			-- Camp must be closer to our base than enemy base
+			local bCloserToUs = distToOurFountain < distToEnemyFountain
+
+			-- Distance from nearest tower: T1 alive = within 2000, T2 alive = within 4000
+			local bNearTower = true
+			if nearestTowerTier == 1 then
+				bNearTower = Fu.GetDistance(campLoc, teamFountain) < 9000
+			elseif nearestTowerTier == 2 then
+				bNearTower = Fu.GetDistance(campLoc, teamFountain) < 11000
+			end
+
+			-- If enemies outnumber nearby allies, skip camps on enemy side
+			local bSafe = true
+			if not bCloserToUs then
+				local aliveAllyCount = Fu.GetNumOfAliveHeroes(false)
+				local nAlliesNearCamp = Fu.GetAlliesNearLoc(campLoc, 2500)
+				-- Safe on enemy side if: allies outnumber enemies, or 2+ allies near camp
+				if aliveEnemyCount >= 3 and #nAlliesNearCamp < 2 and aliveAllyCount <= aliveEnemyCount then
+					bSafe = false
+				end
+			end
+
+			-- Skip ancient camps if bot can't handle them
+			local bCanFarmCamp = true
+			if Fu.Site.IsAncientCamp(camp) then
+				if bot:GetLevel() < 10 or bot:GetArmor() < 6 then
+					bCanFarmCamp = false
+				end
+			end
+
+			if bSafe and bNearTower and bCanFarmCamp then
+				table.insert(safeCamps, camp)
+			end
+		end
+	end
+
+	-- If filtering removed everything, return original (don't leave bot with nothing)
+	if #safeCamps == 0 then return campTable end
+	return safeCamps
+end
 
 
 if bot.farmLocation == nil then bot.farmLocation = bot:GetLocation() end
 
 function GetDesire()
 	if ShouldSkipBotThink(GetBot()) then return 0 end
-	-- local cacheKey = 'GetFarmDesire'..tostring(bot:GetPlayerID())
-	-- local cachedVar = Fu.Utils.GetCachedVars(cacheKey, 0.4)
-	-- if DotaTime() > 30 and cachedVar ~= nil then return cachedVar end
-	local res = GetDesireHelper()
-	-- Fu.Utils.SetCachedVars(cacheKey, res)
-	return GetAdjustedDesireValue(res)
+
+	-- Bear without scepter: match hero's farm mode.
+	-- When hero IS farming → bear gets same farm desire (so bear farms too).
+	-- When hero is NOT farming → normal desire computation (other modes compete).
+	if bot.isBear or string.find(bot:GetUnitName(), 'lone_druid_bear') then
+		local hasScepter = bot:HasModifier('modifier_item_ultimate_scepter_consumed')
+			or bot:FindItemSlot('item_ultimate_scepter') >= 0
+		if not hasScepter then
+			local Utils = require(GetScriptDirectory()..'/FuncLib/systems/utils')
+			local ld = Utils.GetLoneDruid(bot)
+			if ld and ld.hero and Fu.IsValidHero(ld.hero) and ld.hero:IsAlive() then
+				if ld.hero:GetActiveMode() == BOT_MODE_FARM then
+					-- Hero is farming: bear should farm too (match hero's desire)
+					return ld.hero:GetActiveModeDesire() + 0.05
+				end
+			end
+		end
+	end
+
+	local ok, res = pcall(GetDesireHelper)
+	if not ok then
+		if IsDebug then log('[FARM-ERROR] %s %s', bot:GetUnitName(), tostring(res)) end
+		return BOT_MODE_DESIRE_VERYLOW
+	end
+
+	-- If defend ping active but farm still winning, announce what bot is doing
+	Fu.Utils['GameStates'] = Fu.Utils['GameStates'] or {}
+	Fu.Utils['GameStates']['defendPings'] = Fu.Utils['GameStates']['defendPings'] or { pingedTime = GameTime() }
+	if res > 0.5
+	   and GameTime() - Fu.Utils['GameStates']['defendPings'].pingedTime <= 5.0
+	   and (bot._lastDefIgnoreChat or 0) + 15 < DotaTime() then
+		bot._lastDefIgnoreChat = DotaTime()
+		local modeKey = X.GetModeLocaleKey(bot:GetActiveMode())
+		local modeName = Localization.Get(modeKey) or modeKey
+		local msg = Localization.Get('say_not_defending')
+		if msg then
+			bot:ActionImmediate_Chat(string.format(msg, modeName), false)
+		end
+	end
+	-- Diagnostic
+	if IsDebug and DotaTime() > 3 * 60 and DotaTime() > nLastFarmDesireLog + 10 then
+		nLastFarmDesireLog = DotaTime()
+		log('[FARM-DESIRE] %s t=%.0f raw=%.2f exit=%s mode=%s pos=%d prefCamp=%s',
+			bot:GetUnitName(), DotaTime(), res,
+			tostring(bot._farmExitReason or 'normal'),
+			tostring(bot:GetActiveMode()), Fu.GetPosition(bot),
+			tostring(preferedCamp ~= nil))
+	end
+
+	-- Scale farm desire by HP (low HP = farm less, retreat instead). Huskar excluded.
+	if res > 0 and bot:GetUnitName() ~= 'npc_dota_hero_huskar' then
+		res = res * RemapValClamped(Fu.GetHP(bot), 0.3, 0.7, 0, 1)
+	end
+
+	-- Reduce farm during teamfight (let attack/defend take over)
+	if res > 0 and Fu.IsInTeamFight(bot, 1200) then
+		res = res * 0.4
+	end
+
+	-- Suppress farm when any lane needs defending (prevents TP-out while enemies push HG)
+	if res > 0.3 then
+		local maxDefend = math.max(GetDefendLaneDesire(LANE_TOP), GetDefendLaneDesire(LANE_MID), GetDefendLaneDesire(LANE_BOT))
+		if maxDefend > 0.4 then
+			res = res * RemapValClamped(maxDefend, 0.4, 0.8, 1, 0.3)
+		end
+	end
+
+	-- After laning: boost farm when lane front is pushed toward enemy (safe to farm)
+	-- Reduce farm when lane front is pushed toward us (should push back instead)
+	if res > 0 and not Fu.IsInLaningPhase() then
+		local assignedLane = bot:GetAssignedLane()
+		local laneFront = GetLaneFrontLocation(GetTeam(), assignedLane, 0)
+		local ourFountain = Fu.GetTeamFountain()
+		local enemyFountain = Fu.GetEnemyFountain()
+		local frontToUs = Fu.GetDistance(laneFront, ourFountain)
+		local frontToThem = Fu.GetDistance(laneFront, enemyFountain)
+		-- >1 = pushed toward enemy (safe), <1 = pushed toward us (should push)
+		local laneRatio = frontToThem > 0 and (frontToUs / frontToThem) or 1
+		local farmBoost = RemapValClamped(laneRatio, 0.8, 1.5, 0.5, 1.2)
+		res = res * farmBoost
+	end
+
+	-- Farm commitment: once farming, maintain desire floor for 3 seconds
+	-- Prevents oscillation when walking between lane front (enemies visible) and jungle
+	if res > 0.15 then
+		bot._farmCommitUntil = DotaTime() + 3.0
+		bot._farmCommitFloor = res * 0.7
+	end
+	if bot._farmCommitUntil and DotaTime() <= bot._farmCommitUntil then
+		res = math.max(res, bot._farmCommitFloor or 0)
+	end
+
+	return res
 end
 
 function GetDesireHelper()
-	-- Utils.PrintPings(0.15)
+	bot._farmExitReason = nil -- track which path returns
+	if preferedCamp == nil then preferedCamp = Fu.Site.GetClosestNeutralSpwan(bot, availableCamp) end
 
 	if DotaTime() - CleanupCachedVarsTime > Utils.CachedVarsCleanTime then
 		Utils.CleanupCachedVars()
 		CleanupCachedVarsTime = DotaTime()
 	end
 
+    -- Defend ping: suppress farm when T2+ under attack by 2+ enemies
     Fu.Utils['GameStates'] = Fu.Utils['GameStates'] or {}
     Fu.Utils['GameStates']['defendPings'] = Fu.Utils['GameStates']['defendPings'] or { pingedTime = GameTime() }
-    if GameTime() - Fu.Utils['GameStates']['defendPings'].pingedTime <= 5.0 then
-		return BOT_MODE_DESIRE_NONE
-	end
-
-	if bot:IsAlive()
-	then
-		if runTime ~= 0
-			and DotaTime() < runTime + shouldRunTime
-		then
-			return BOT_MODE_DESIRE_ABSOLUTE * 1.1;
-		else
-			runTime = 0;
-			runMode = false;
-		end
-		
-		shouldRunTime = X.ShouldRun(bot);
-		if shouldRunTime ~= 0
-		then
-			if runTime == 0 then 
-				runTime = DotaTime(); 
-				runMode = true;
-				preferedCamp = nil;
-				bot:Action_ClearActions(true);
+    local defendPingActive = GameTime() - Fu.Utils['GameStates']['defendPings'].pingedTime <= 5.0
+    if defendPingActive then
+		local bT2PlusUnderAttack = false
+		local nTeam = GetTeam()
+		local t2Plus = {TOWER_TOP_2, TOWER_MID_2, TOWER_BOT_2, TOWER_TOP_3, TOWER_MID_3, TOWER_BOT_3}
+		for _, tid in pairs(t2Plus) do
+			local tower = GetTower(nTeam, tid)
+			if tower ~= nil and tower:IsAlive() then
+				local nEnemiesNear = Fu.GetEnemiesNearLoc(tower:GetLocation(), 1200)
+				if #nEnemiesNear >= 2 then
+					bT2PlusUnderAttack = true
+					break
+				end
 			end
-			return BOT_MODE_DESIRE_ABSOLUTE * 1.1;
+		end
+		if bT2PlusUnderAttack then
+			bot._farmExitReason = 'defend_ping'; return BOT_MODE_DESIRE_VERYLOW
 		end
 	end
 
@@ -110,58 +284,106 @@ function GetDesireHelper()
 		beVeryHighFarmer = Fu.GetPosition(bot) == 1
 	end
 
+	if DotaTime() < 50 then bot._farmExitReason = 'too_early'; return 0.0 end
+
+	-- Suppress farm when serious defense is needed
+	-- Check if any lane has high defend desire — means enemies are pushing hard
+	local maxDefendDesire = math.max(GetDefendLaneDesire(LANE_TOP), GetDefendLaneDesire(LANE_MID), GetDefendLaneDesire(LANE_BOT))
+	if maxDefendDesire > 0.5 then
+		-- Check if 3+ allies are already defending (serious fight) or 4+ enemies visible
+		local nDefendLane, _ = Fu.GetMostDefendLaneDesire()
+		local defendFront = GetLaneFrontLocation(GetTeam(), nDefendLane, 0)
+		local alliesAtDefend = Fu.GetAlliesNearLoc(defendFront, 2500)
+		if #alliesAtDefend >= 3 then
+			bot._farmExitReason = 'serious_defend'; return BOT_MODE_DESIRE_VERYLOW
+		end
+	end
+
 	local LoneDruid = Fu.CheckLoneDruid()
     local botActiveMode = bot:GetActiveMode()
 	local botActiveModeDesire = bot:GetActiveModeDesire()
     local bAlive = bot:IsAlive()
 	local bNotClone = not bot:HasModifier('modifier_arc_warden_tempest_double') and not Fu.IsMeepoClone(bot)
 
-	-- Early exits first (cheap checks before expensive queries)
-    if not bAlive
+	local nEnemyHeroes = Fu.GetEnemiesNearLoc(bot:GetLocation(), 1600)
+
+	local nInRangeAlly_tormentor = Fu.GetAlliesNearLoc(Fu.GetTormentorLocation(GetTeam()), 1600)
+	local nInRangeAlly_roshan_early = Fu.GetAlliesNearLoc(Fu.GetCurrentRoshanLocation(), 1200)
+	local bRoshanAliveEarly = Fu.IsRoshanAlive()
+	local teamNetworth, enemyNetworth = Fu.GetInventoryNetworth()
+	local networthAdvantage = teamNetworth - enemyNetworth
+	local nAliveEnemyCountEarly = Fu.GetNumOfAliveHeroes(true)
+	local nAliveAllyCountEarly = Fu.GetNumOfAliveHeroes(false)
+
+	if not bAlive
 	or Fu.IsInLaningPhase()
+	or (Fu.IsDefending(bot) and botActiveModeDesire > BOT_MODE_DESIRE_LOW)
 	or (Fu.IsDoingRoshan(bot) and bNotClone)
 	or (Fu.IsDoingTormentor(bot) and bNotClone)
-    or DotaTime() < 50
+	or DotaTime() < 50
     or ((botActiveMode == BOT_MODE_SECRET_SHOP
 		or botActiveMode == BOT_MODE_RUNE
 		or botActiveMode == BOT_MODE_WARD
 		or botActiveMode == BOT_MODE_RETREAT
 		or botActiveMode == BOT_MODE_OUTPOST) and botActiveModeDesire > 0)
+	or (#nInRangeAlly_tormentor >= 2 and bot.tormentor_state == true)
+	or (#nInRangeAlly_roshan_early >= 2 and bRoshanAliveEarly and bNotClone)
+	or (Fu.DoesTeamHaveAegis() and Fu.IsLateGame() and nAliveAllyCountEarly >= 4)
+	or X.IsUnitAroundLocation(GetAncient(GetTeam()):GetLocation(), 3200)
+	or #nEnemyHeroes > 0
+	or (nAliveEnemyCountEarly <= 1 and networthAdvantage > 10000)
     then
+		if DotaTime() > 10 * 60 and DotaTime() > (bot._lastFarmEarlyLog or 0) + 15 then
+			bot._lastFarmEarlyLog = DotaTime()
+			log(string.format('[FARM-EARLY] %s t=%.0f laning=%s defend=%s rosh=%s tor=%s enemies=%d ancient=%s aegis=%s nwAdv=%s alive=%dv%d',
+				bot:GetUnitName(), DotaTime(),
+				tostring(Fu.IsInLaningPhase()),
+				tostring(Fu.IsDefending(bot) and botActiveModeDesire > BOT_MODE_DESIRE_MODERATE),
+				tostring(Fu.IsDoingRoshan(bot) and bNotClone),
+				tostring(Fu.IsDoingTormentor(bot) and bNotClone),
+				#nEnemyHeroes,
+				tostring(X.IsUnitAroundLocation(GetAncient(GetTeam()):GetLocation(), 3200)),
+				tostring(Fu.DoesTeamHaveAegis() and Fu.IsLateGame() and nAliveAllyCountEarly >= 4),
+				tostring(nAliveEnemyCountEarly <= 1 and networthAdvantage > 10000),
+				nAliveAllyCountEarly, nAliveEnemyCountEarly))
+		end
+        bot._farmExitReason = 'early_exit'
         return BOT_MODE_DESIRE_NONE
     end
 
-	-- Expensive queries (only after early exits)
-    local botLevel = bot:GetLevel()
-	local bCore = Fu.IsCore(bot)
-	local bWeAreStronger = Fu.WeAreStronger(bot, 1600)
-    local vTormentorLocation = Fu.GetTormentorLocation(GetTeam())
-	local nInRangeAlly_tormentor = Fu.GetAlliesNearLoc(vTormentorLocation, 1600)
-	local nInRangeAlly_roshan = Fu.GetAlliesNearLoc(Fu.GetCurrentRoshanLocation(), 1200)
-    local bRoshanAlive = Fu.IsRoshanAlive()
-    local teamNetworth, enemyNetworth = Fu.GetInventoryNetworth()
-    local networthAdvantage = teamNetworth - enemyNetworth
-    local nAliveEnemyCount = Fu.GetNumOfAliveHeroes(true)
-	local nAliveAllyCount  = Fu.GetNumOfAliveHeroes(false)
-
-	if (#nInRangeAlly_tormentor >= 2 and bot.tormentor_state == true)
-    or (#nInRangeAlly_roshan >= 2 and bRoshanAlive and bNotClone)
-    or (nAliveEnemyCount <= 1 and nAliveAllyCount >= 2)
-    or (Fu.DoesTeamHaveAegis() and Fu.IsLateGame() and nAliveAllyCount >= 4)
-    then
-        return BOT_MODE_DESIRE_NONE
+    if not bAlive then
+        bot._farmExitReason = 'dead'; return BOT_MODE_DESIRE_NONE
     end
-	
-	if teamPlayers == nil then teamPlayers = GetTeamPlayers(GetTeam()) end
 
-	if DotaTime() < 50 or botActiveMode == BOT_MODE_RUNE then
-		return 0.0
+	-- Retreating allies
+	for i = 1, #GetTeamPlayers(GetTeam()) do
+		local member = GetTeamMember(i)
+		if bot ~= member and Fu.IsValidHero(member) and Fu.IsInRange(bot, member, 2000) and Fu.IsRetreating(member) then
+			local nEnemyHeroesTargetingAlly = Fu.GetHeroesTargetingUnit(nEnemyHeroes, member)
+			if #nEnemyHeroesTargetingAlly >= 2 or member:WasRecentlyDamagedByAnyHero(1.0) then
+				bot._farmExitReason = 'retreating_ally'; return BOT_MODE_DESIRE_NONE
+			end
+		end
 	end
+
+	local vTeamFightLocation = Fu.GetTeamFightLocation(bot)
+	if vTeamFightLocation ~= nil and GetUnitToLocationDistance(bot, vTeamFightLocation) < 2500 then
+		if bot:GetLevel() >= 18 or not Fu.IsCore(bot) then
+			bot._farmExitReason = 'teamfight_nearby'; return BOT_MODE_DESIRE_NONE
+		end
+	end
+
+    local nAliveEnemyCount = Fu.GetNumOfAliveHeroes(true)
+    local nAliveAllyCount  = Fu.GetNumOfAliveHeroes(false)
+    local bRoshanAlive = Fu.IsRoshanAlive()
+    local nInRangeAlly_roshan = Fu.GetAlliesNearLoc(Fu.GetCurrentRoshanLocation(), 1200)
+
+	if teamPlayers == nil then teamPlayers = GetTeamPlayers(GetTeam()) end
 	
-	if X.IsUnitAroundLocation(GetAncient(GetTeam()):GetLocation(), 3000) 
+	if X.IsUnitAroundLocation(GetAncient(GetTeam()):GetLocation(), 3000)
 	-- and aliveAllyCount >= aliveEnemyCount
 	then
-		return BOT_MODE_DESIRE_NONE;
+		bot._farmExitReason = 'enemies_at_ancient'; return BOT_MODE_DESIRE_NONE;
 	end
 	
 	sec = math.floor(DotaTime()) % 60;
@@ -179,62 +401,7 @@ function GetDesireHelper()
 		Fu.Role['hasRefreshDone'] = false;
 	end
 	
-	availableCamp = Fu.Role['availableCampTable'];
-
-    local nEnemyHeroes = Fu.GetEnemiesNearLoc(bot:GetLocation(), 1600)
-    if #nEnemyHeroes > 0 then
-		if not bWeAreStronger then
-			return BOT_MODE_DESIRE_NONE
-		end
-
-		for _, enemy in ipairs(nEnemyHeroes) do
-			if Fu.IsValidHero(enemy) and enemy:GetAttackTarget() == bot then
-				return BOT_MODE_DESIRE_NONE
-			end
-		end
-    end
-
-    local nAllyHeroes_attacking = {}
-	for i = 1, #GetTeamPlayers( GetTeam() ) do
-		local member = GetTeamMember(i)
-		if bot ~= member and Fu.IsValidHero(member) and Fu.IsInRange(bot, member, 1600) then
-            local hTarget = member:GetAttackTarget()
-			if Fu.IsGoingOnSomeone(member)
-            or (Fu.IsValidHero(hTarget) and Fu.IsChasingTarget(member, hTarget) and Fu.IsInRange(member, hTarget, 1000))
-			then
-				table.insert(nAllyHeroes_attacking, member)
-			end
-		end
-	end
-
-    if #nAllyHeroes_attacking > 0 then
-        local nInRangeEnemy = Fu.GetEnemiesNearLoc(Fu.GetCenterOfUnits(nAllyHeroes_attacking), 1200)
-        if #nAllyHeroes_attacking + 1 >= #nInRangeEnemy then
-            return BOT_MODE_DESIRE_NONE
-        end
-    end
-
-	-- Retreating allies
-    for i = 1, #GetTeamPlayers( GetTeam() ) do
-		local member = GetTeamMember(i)
-		if bot ~= member and Fu.IsValidHero(member) and Fu.IsInRange(bot, member, 2000) and Fu.IsRetreating(member) then
-            local nInRangeEnemy = Fu.GetEnemiesNearLoc(member:GetLocation(), 1200)
-            for _, enemy in pairs(nInRangeEnemy) do
-                if Fu.IsValidHero(enemy)
-                and (Fu.IsChasingTarget(enemy, bot) or enemy:GetAttackTarget() == member and Fu.GetHP(member) < 0.4)
-                then
-                    return BOT_MODE_DESIRE_NONE
-                end
-            end
-		end
-	end
-
-    local vTeamFightLocation = Fu.GetTeamFightLocation(bot)
-    if vTeamFightLocation ~= nil and GetUnitToLocationDistance(bot, vTeamFightLocation) < 2500 then
-        if bot:GetLevel() >= 18 or not Fu.IsCore(bot) then
-            return BOT_MODE_DESIRE_NONE
-        end
-    end
+	availableCamp = X.GetSafeCamps(bot, Fu.Role['availableCampTable']);
 
     if bAlive and bot:HasModifier('modifier_arc_warden_tempest_double') then
         if bRoshanAlive then
@@ -278,7 +445,7 @@ function GetDesireHelper()
     end
 	
 	if Fu.DoesTeamHaveAegis() and nAliveAllyCount >= 4 then
-		return BOT_MODE_DESIRE_NONE;
+		bot._farmExitReason = 'aegis_push'; return BOT_MODE_DESIRE_VERYLOW;
 	end
 		
 	if DotaTime() > countTime + countCD
@@ -311,7 +478,7 @@ function GetDesireHelper()
 	
 	end
 	if allyKills > enemyKills + 20 and nAliveAllyCount >= 4
-	then return BOT_MODE_DESIRE_NONE; end
+	then bot._farmExitReason = 'winning_push'; return BOT_MODE_DESIRE_VERYLOW; end
 
 	local nAlliesCount = Fu.GetAllyCount(bot,1400);
 	if nAlliesCount >= 4
@@ -343,39 +510,63 @@ function GetDesireHelper()
 		end
 	end
 
-	if teamTime > DotaTime() - 3.0 then return BOT_MODE_DESIRE_NONE end
+	if teamTime > DotaTime() - 3.0 then bot._farmExitReason = 'team_activity'; return BOT_MODE_DESIRE_VERYLOW end
 
-	local aAliveCount = Fu.GetNumOfAliveHeroes(false)
-    local eAliveCount = Fu.GetNumOfAliveHeroes(true)
-    local aAliveCoreCount = Fu.GetAliveCoreCount(false)
-    local eAliveCoreCount = Fu.GetAliveCoreCount(true)
-	if eAliveCount == 0
-	or aAliveCoreCount >= eAliveCoreCount
-	or (aAliveCoreCount >= 1 and aAliveCount >= eAliveCount + 2)
-	or Fu.IsLateGame()
-	then
-		if (beHighFarmer or (beNormalFarmer and Fu.IsMidGame()) or Fu.IsLateGame() or bot:GetNetWorth() >= 15000) then
-			if bot:GetActiveMode() == BOT_MODE_ASSEMBLE then assembleTime = DotaTime() end
-			if DotaTime() - assembleTime < 15.0 then return BOT_MODE_DESIRE_NONE end
-			if Fu.IsTeamActivityCount(bot, 3)	then return BOT_MODE_DESIRE_NONE end
+	-- local aAliveCount = Fu.GetNumOfAliveHeroes(false)
+    -- local eAliveCount = Fu.GetNumOfAliveHeroes(true)
+    -- local aAliveCoreCount = Fu.GetAliveCoreCount(false)
+    -- local eAliveCoreCount = Fu.GetAliveCoreCount(true)
+	-- Count allies actively pushing
+	local nAlliesPushing = 0
+	for i = 1, #GetTeamPlayers(GetTeam()) do
+		local member = GetTeamMember(i)
+		if member ~= nil and member ~= bot and member:IsAlive() then
+			local mode = member:GetActiveMode()
+			if mode == BOT_MODE_PUSH_TOWER_TOP or mode == BOT_MODE_PUSH_TOWER_MID or mode == BOT_MODE_PUSH_TOWER_BOT then
+				nAlliesPushing = nAlliesPushing + 1
+			end
 		end
 	end
 
-	-- Gradual farm desire cap: ramps from 0.3 during laning to 0.6 by 20min (turbo: 14min)
-	-- Keeps jungle farming as a secondary priority — never dominant over teamfight/push/defend
-	local nFarmRampStart = Fu.IsModeTurbo() and 8 * 60 or 10 * 60
-	local nFarmRampEnd   = Fu.IsModeTurbo() and 14 * 60 or 20 * 60
-	local nFarmCap = RemapValClamped(DotaTime(), nFarmRampStart, nFarmRampEnd, 0.3, 0.6)
+	-- Only suppress farm when the whole team should push together
+	if beNormalFarmer then
+		if bot:GetActiveMode() == BOT_MODE_ASSEMBLE then assembleTime = DotaTime() end
+		if DotaTime() - assembleTime < 5 then bot._farmExitReason = 'assemble'; return BOT_MODE_DESIRE_VERYLOW end
+		if Fu.IsTeamActivityCount(bot, 3) then bot._farmExitReason = 'team_activity_3'; return BOT_MODE_DESIRE_VERYLOW end
+	end
 
-	if GetGameMode() ~= GAMEMODE_MO
-	and Fu.Site.IsTimeToFarm(bot)
-	and (not Fu.IsDefending(bot) or botActiveModeDesire < 0.2)
-	and (bot:GetUnitName() ~= 'npc_dota_hero_lone_druid_bear' or (bot:HasScepter() and not Fu.IsValid(LoneDruid.hero)))
-	and (DotaTime() > 8 * 60 or bot:GetLevel() >= 8 or ( bot:GetAttackRange() < 220 and bot:GetLevel() >= 6 ))
-	and networthAdvantage < 6000
-	and not Fu.IsLateGame()
-	then
-		if Fu.GetDistanceFromEnemyFountain(bot) > 4000
+	-- If 4+ allies are pushing, everyone should join (including pos 1)
+	if nAlliesPushing >= 4 then
+		bot._farmExitReason = '4_allies_pushing'; return BOT_MODE_DESIRE_VERYLOW
+	end
+
+
+	-- local nFarmTimeThreshold = Fu.IsModeTurbo() and 4 * 60 or 7 * 60
+	-- local nFarmLevelThreshold = Fu.IsModeTurbo() and 5 or 8
+	-- local nFarmMeleeLevelThreshold = Fu.IsModeTurbo() and 4 or 6
+	-- Log why farm block is skipped
+	local bIsTimeToFarm = Fu.Site.IsTimeToFarm(bot)
+	local bIsDefending = Fu.IsDefending(bot)
+	local nArmor = bot:GetArmor()
+	local bFarmBlockEntered = GetGameMode() ~= GAMEMODE_MO
+		and bIsTimeToFarm
+		and (not bIsDefending or botActiveModeDesire < 0.2)
+		and (bot:GetUnitName() ~= 'npc_dota_hero_lone_druid_bear' or (bot:HasScepter() and not Fu.IsValid(LoneDruid.hero)))
+
+	if IsDebug and DotaTime() > 3 * 60 and not bFarmBlockEntered and DotaTime() > (bot._lastFarmBlockLog or 0) + 10 then
+		bot._lastFarmBlockLog = DotaTime()
+		log('[FARM-BLOCK] %s t=%.0f SKIPPED: isTimeToFarm=%s defending=%s armor=%.0f pos=%s',
+			bot:GetUnitName(), DotaTime(),
+			tostring(bIsTimeToFarm), tostring(bIsDefending), nArmor,
+			tostring(Fu.GetPosition(bot)))
+	end
+
+	if bFarmBlockEntered then
+
+	-- Always keep a camp ready so bot can switch to jungle when lane creeps die
+	if preferedCamp == nil then preferedCamp = Fu.Site.GetClosestNeutralSpwan(bot, availableCamp) end
+
+	if Fu.GetDistanceFromEnemyFountain(bot) > 4000
 		then
 			hLaneCreepList = bot:GetNearbyLaneCreeps(1600, true);
 			if #hLaneCreepList == 0
@@ -388,77 +579,115 @@ function GetDesireHelper()
 
 		if #hLaneCreepList > 0
 		then
-			bot.farmLocation = Fu.GetCenterOfUnits(hLaneCreepList)
-			return Min(RemapValClamped(Fu.GetHP(bot), 0.2, 0.7, 0.4, BOT_MODE_DESIRE_HIGH), nFarmCap)
-		else
-			-- Early game: prefer lane farming over jungle
-			-- Lane creeps give more gold/XP per minute than jungle camps,
-			-- especially before the bot has farming items.
-			local bEarlyGame = (Fu.IsModeTurbo() and DotaTime() < 18 * 60 or DotaTime() < 25 * 60)
-				and bot:GetNetWorth() < 15000
-			local nDeaths = GetHeroDeaths(bot:GetPlayerID())
+			-- Only farm lane creeps if no enemy heroes nearby (like reference)
+			local nEnemiesNearCreeps = Fu.GetEnemiesNearLoc(Fu.GetCenterOfUnits(hLaneCreepList), 1600)
+			if #nEnemiesNearCreeps == 0 then
+				bot.farmLocation = Fu.GetCenterOfUnits(hLaneCreepList)
+				return BOT_MODE_DESIRE_VERYHIGH;
+			end
+		end
 
-			if bEarlyGame and nDeaths < 5 then
-				-- Find the closest safe lane front to farm
-				local bestLane = nil
-				local bestDist = 99999
-				for _, lane in pairs({LANE_TOP, LANE_MID, LANE_BOT}) do
-					local laneFront = GetLaneFrontLocation(GetTeam(), lane, 0)
-					local dist = GetUnitToLocationDistance(bot, laneFront)
-					local nEnemiesAtLane = Fu.GetEnemiesNearLoc(laneFront, 1400)
-					-- Only consider safe lanes (no enemies or we're stronger)
-					if #nEnemiesAtLane == 0 and dist < bestDist then
-						bestDist = dist
-						bestLane = lane
+		-- Lane priority: if a lane front is pushed toward our base, go farm there
+		-- instead of staying in jungle. Creep waves give more gold/XP than camps.
+		if #hLaneCreepList == 0 then
+			local ourFountain = Fu.GetTeamFountain()
+			local enemyFountain = Fu.GetEnemyFountain()
+			local bestLane = nil
+			local bestScore = 0
+			for _, lane in pairs({LANE_TOP, LANE_MID, LANE_BOT}) do
+				local laneFront = GetLaneFrontLocation(GetTeam(), lane, 0)
+				local distToUs = GetUnitToLocationDistance(bot, laneFront)
+				-- Only consider lanes where front is closer to our base than enemy base
+				local frontToOur = Fu.GetDistance(laneFront, ourFountain)
+				local frontToEnemy = Fu.GetDistance(laneFront, enemyFountain)
+				if frontToOur < frontToEnemy and distToUs < 6000 then
+					local nEnemiesNear = Fu.GetLastSeenEnemiesNearLoc(laneFront, 1600)
+					if #nEnemiesNear == 0 then
+						-- Score: closer lanes and more pushed-in lanes rank higher
+						local score = (1 / math.max(1, distToUs)) * (frontToEnemy / math.max(1, frontToOur))
+						if score > bestScore then
+							bestScore = score
+							bestLane = lane
+						end
 					end
-				end
-
-				if bestLane then
-					local laneFront = GetLaneFrontLocation(GetTeam(), bestLane, 0)
-					bot.farmLocation = laneFront
-					return Min(RemapValClamped(Fu.GetHP(bot), 0.2, 0.7, 0.35, BOT_MODE_DESIRE_HIGH), nFarmCap)
 				end
 			end
+			if bestLane ~= nil then
+				local farmLoc = GetLaneFrontLocation(GetTeam(), bestLane, 0)
+				-- Ensure passable; nudge toward fountain if not
+				if not IsLocationPassable(farmLoc) then
+					farmLoc = Fu.AdjustLocationWithOffsetTowardsFountain(farmLoc, 200)
+				end
+				if IsLocationPassable(farmLoc) then
+					bot.farmLocation = farmLoc
+					return BOT_MODE_DESIRE_VERYHIGH
+				end
+			end
+		end
 
-			-- Late game or dangerous lanes: farm jungle camps
+		if #hLaneCreepList == 0 then
 			if preferedCamp == nil then preferedCamp = Fu.Site.GetClosestNeutralSpwan(bot, availableCamp);end
 
-			if preferedCamp ~= nil then
-				-- Don't farm a camp where an ally is already farming
-				local nCampAllies = Fu.GetAlliesNearLoc(preferedCamp.cattr.location, 800)
-				for _, ally in pairs(nCampAllies) do
-					if ally ~= bot and Fu.IsValidHero(ally) and not ally:IsIllusion()
-					and Fu.IsFarming(ally) then
-						return BOT_MODE_DESIRE_NONE
-					end
-				end
+			if IsDebug then
+				log('[FARM-CAMP] %s t=%.0f prefCamp=%s farmState=%d',
+					bot:GetUnitName(), DotaTime(), tostring(preferedCamp ~= nil), farmState)
+			end
 
+			if preferedCamp ~= nil then
 				if not Fu.Site.IsModeSuitableToFarm(bot)
 				then
-					return BOT_MODE_DESIRE_NONE;
+					preferedCamp = nil;
+					bot._farmExitReason = 'mode_not_suitable_'..tostring(botActiveMode)
+					return BOT_MODE_DESIRE_VERYLOW;
 				elseif bot:GetHealth() <= 200
 					then
+						preferedCamp = nil;
 						teamTime = DotaTime();
+						bot._farmExitReason = 'low_hp'
 						return BOT_MODE_DESIRE_VERYLOW;
 				elseif farmState == FARM_STATE_FARM
 					then
-						return nFarmCap;
+						bot._farmExitReason = 'farming_camp'
+						return BOT_MODE_DESIRE_VERYHIGH;
 				else
-					local farmDistance = GetUnitToLocationDistance(bot,preferedCamp.cattr.location);
+					local farmDistance = GetUnitToLocationDistance(bot, preferedCamp.cattr.location);
 					bot.farmLocation = preferedCamp.cattr.location
-					return Min(RemapValClamped(Fu.GetHP(bot), 0.2, 0.7, 0.4, BOT_MODE_DESIRE_VERYHIGH), nFarmCap);
+					bot._farmExitReason = 'walk_to_camp_'..string.format('%.0f', farmDistance)
+					return math.floor(RemapValClamped(farmDistance, 6000, 0, BOT_MODE_DESIRE_MODERATE, BOT_MODE_DESIRE_ABSOLUTE) * 10) / 10;
 				end
 			end
 		end
 	end
 
-	if not Fu.IsInLaningPhase() and (bCore or Fu.IsLateGame() or bot:GetLevel() >= 18) then
-		hLaneCreepList = bot:GetNearbyLaneCreeps(1600, true)
-		if preferedCamp == nil then preferedCamp = Fu.Site.GetClosestNeutralSpwan(bot, availableCamp) end
-		return Min(BOT_MODE_DESIRE_LOW, nFarmCap)
+	-- Fallback: ensure preferedCamp is set so Think always has a target
+	if preferedCamp == nil then
+		preferedCamp = Fu.Site.GetClosestNeutralSpwan(bot, availableCamp)
+		if preferedCamp ~= nil then
+			bot.farmLocation = preferedCamp.cattr.location
+		end
 	end
 
-	return BOT_MODE_DESIRE_NONE
+	-- Post-laning fallback: cores always farm, supports farm in late game
+	if not Fu.IsInLaningPhase() and (Fu.IsCore(bot) or Fu.IsLateGame() or bot:GetLevel() >= 18) then
+		if preferedCamp == nil then preferedCamp = Fu.Site.GetClosestNeutralSpwan(bot, availableCamp) end
+		if preferedCamp ~= nil then
+			return BOT_MODE_DESIRE_LOW
+		end
+	end
+
+	-- If all other modes have near-zero desire, give farm enough to win
+	if botActiveModeDesire < 0.1 and DotaTime() > 5 * 60 then
+		if preferedCamp ~= nil then
+			return BOT_MODE_DESIRE_MODERATE
+		end
+		hLaneCreepList = bot:GetNearbyLaneCreeps(1600, true)
+		if #hLaneCreepList > 0 then
+			return BOT_MODE_DESIRE_MODERATE
+		end
+	end
+
+	bot._farmExitReason = 'end_fallback'
+	return BOT_MODE_DESIRE_VERYLOW
 end
 
 
@@ -470,110 +699,123 @@ function OnEnd()
 	preferedCamp = nil;
 	farmState = FARM_STATE_NONE;
 	hLaneCreepList  = {};
-	runMode = false;
-	runTime = 0;
 	bot:SetTarget(nil);
 end
 
+local nLastFarmLog = 0
 function Think()
+	-- Diagnostic: log BEFORE any early returns so we always see it
+	if IsDebug then
+		local _farmLogNow = DotaTime()
+		if _farmLogNow > nLastFarmLog + 3 then
+			nLastFarmLog = _farmLogNow
+			local _canNotUse = Fu.CanNotUseAction(bot)
+			local _lc = bot:GetNearbyLaneCreeps(1200, true)
+			local _nc = bot:GetNearbyNeutralCreeps(900)
+			log('[FARM-THINK] %s t=%.0f desire=%.2f canNotUse=%s farmState=%d prefCamp=%s laneCreeps=%d neutrals=%d',
+				bot:GetUnitName(), _farmLogNow, bot:GetActiveModeDesire(),
+				tostring(_canNotUse), farmState,
+				tostring(preferedCamp ~= nil), #(_lc or {}), #(_nc or {}))
+		end
+	end
+
 	if Fu.CanNotUseAction(bot) then return end
-	if Fu.Utils.IsBotThinkingMeaningfulAction(bot, Customize.ThinkLess, "farm") then return end
+
+	-- Safety: if low HP and enemies nearby, walk toward fountain — don't farm to death
+	if Fu.GetHP(bot) < 0.35 and bot:WasRecentlyDamagedByAnyHero(3.0) then
+		local fountain = Fu.GetTeamFountain()
+		bot:Action_MoveToLocation(fountain)
+		return
+	end
+
+	-- Join nearby ally push: if 3+ allies pushing within 5000, go join them
+	local nPushingAllies = {}
+	for i = 1, #GetTeamPlayers(GetTeam()) do
+		local member = GetTeamMember(i)
+		if member ~= nil and member ~= bot and member:IsAlive() then
+			local mode = member:GetActiveMode()
+			if mode == BOT_MODE_PUSH_TOWER_TOP or mode == BOT_MODE_PUSH_TOWER_MID or mode == BOT_MODE_PUSH_TOWER_BOT then
+				if GetUnitToUnitDistance(bot, member) < 5000 then
+					table.insert(nPushingAllies, member)
+				end
+			end
+		end
+	end
+	if #nPushingAllies >= 3 then
+		-- Move to the center of pushing allies, offset by half attack range
+		local pushCenter = Fu.GetCenterOfUnits(nPushingAllies)
+		local offset = math.max(bot:GetAttackRange() / 2, 150)
+		local approachLoc = Fu.AdjustLocationWithOffsetTowardsFountain(pushCenter, offset)
+		bot:Action_MoveToLocation(approachLoc)
+		return
+	end
+
+	-- Bear: attack what the hero is attacking (farm same target)
+	if bot.isBear or string.find(bot:GetUnitName(), 'lone_druid_bear') then
+		local Utils = require(GetScriptDirectory()..'/FuncLib/systems/utils')
+		local ld = Utils.GetLoneDruid(bot)
+		if ld and ld.hero and Fu.IsValidHero(ld.hero) then
+			local heroTarget = ld.hero:GetAttackTarget()
+			if Fu.IsValid(heroTarget) and Fu.CanBeAttacked(heroTarget)
+			and GetUnitToUnitDistance(bot, heroTarget) < 1200 then
+				bot:Action_AttackUnit(heroTarget, true)
+				return
+			end
+			-- No hero target: stay near hero
+			local heroDist = GetUnitToUnitDistance(bot, ld.hero)
+			if heroDist > 500 then
+				bot:Action_MoveToLocation(ld.hero:GetLocation())
+				return
+			end
+		end
+	end
 	sec = math.floor(DotaTime()) % 60
-	if runMode
-	then
-		if not bot:IsInvisible() and bot:GetLevel() >= 15
-			and not bot:HasModifier('modifier_medusa_stone_gaze_facing')
-		then
-			local botAttackRange = bot:GetAttackRange();
-			if botAttackRange > 1400 then botAttackRange = 1400 end;
-			local runModeAllies = bot:GetNearbyHeroes(900,false,BOT_MODE_NONE);
-			local runModeEnemyHeroes = bot:GetNearbyHeroes(botAttackRange +50,true,BOT_MODE_NONE);
-			if Fu.IsValid(runModeEnemyHeroes[1])
-				and #runModeAllies >= 2
-				and not runModeEnemyHeroes[1]:IsAttackImmune()
-				and botName ~= "npc_dota_hero_bristleback"
-				and Fu.GetDistanceFromEnemyFountain(bot) > 2200
-			then
-				bot:Action_AttackUnit(runModeEnemyHeroes[1], true);
-				return;
-			end
-			local runModeBarracks  = bot:GetNearbyBarracks(botAttackRange +150,true);
-			if Fu.IsValid(runModeBarracks[1])
-				and not bot:WasRecentlyDamagedByAnyHero(1.0)
-				and not runModeBarracks[1]:IsAttackImmune()
-				and not runModeBarracks[1]:IsInvulnerable()
-				and not runModeBarracks[1]:HasModifier("modifier_fountain_glyph")
-				and not runModeBarracks[1]:HasModifier("modifier_invulnerable")
-				and not runModeBarracks[1]:HasModifier("modifier_backdoor_protection_active")
-			then
-				bot:Action_AttackUnit(runModeBarracks[1], true);
-				return;
-			end
-		end
-		if Fu.IsInAllyArea(bot) or Fu.GetDistanceFromEnemyFountain(bot) < 2600
-		then
-			if bot:GetTeam() == TEAM_RADIANT
-			then
-				bot:Action_MoveToLocation(RB);
-				return;
-			else
-				bot:Action_MoveToLocation(DB);
-				return;
-			end
-		else
-			if bot:GetTeam() == TEAM_RADIANT
-			then
-			    local mLoc = Fu.GetLocationTowardDistanceLocation(bot,DB,-700);
-				bot:Action_MoveToLocation(mLoc);
-				return;
-			else
-			    local mLoc = Fu.GetLocationTowardDistanceLocation(bot,RB,-700);
-				bot:Action_MoveToLocation(mLoc);
-				return;
-			end
+
+	-- Walk to farmLocation set by GetDesire (lane front pushed toward base)
+	if bot.farmLocation and IsLocationPassable(bot.farmLocation) and GetUnitToLocationDistance(bot, bot.farmLocation) > 1200 then
+		local nEnemyLaneCreepsNearby = bot:GetNearbyLaneCreeps(900, true)
+		local nNeutralsNearby = bot:GetNearbyNeutralCreeps(500)
+		-- Only walk to lane if not already fighting something
+		if #nEnemyLaneCreepsNearby == 0 and #nNeutralsNearby == 0 then
+			bot:Action_MoveToLocation(bot.farmLocation)
+			return
 		end
 	end
 
-	-- Ability-specific farm range detection
-	local nEffectiveRange = bot:GetAttackRange()
-	local StaticRemnant = bot:GetAbilityByName('storm_spirit_static_remnant')
-	local Firefly = bot:GetAbilityByName('batrider_firefly')
-	local ShadowWave = bot:GetAbilityByName('dazzle_shadow_wave')
-	local InnerFire = bot:GetAbilityByName('huskar_inner_fire')
-	if Fu.CanCastAbility(StaticRemnant) then
-		nEffectiveRange = StaticRemnant:GetSpecialValueInt('static_remnant_radius')
-	elseif Fu.CanCastAbility(Firefly) or bot:HasModifier('modifier_batrider_firefly') then
-		nEffectiveRange = Firefly:GetSpecialValueInt('radius')
-	elseif Fu.CanCastAbility(ShadowWave) then
-		nEffectiveRange = ShadowWave:GetSpecialValueInt('damage_radius')
-	elseif Fu.CanCastAbility(InnerFire) then
-		nEffectiveRange = InnerFire:GetSpecialValueInt('radius')
-	end
+	-- Lane creep farming: attack lowest HP creep (consistent with last-hit priority)
+	local nEnemyLaneCreeps = bot:GetNearbyLaneCreeps(900, true)
+	if nEnemyLaneCreeps ~= nil and #nEnemyLaneCreeps > 0 and farmState ~= FARM_STATE_FARM then
+		-- Tower safety
+		local nEnemyTowers = bot:GetNearbyTowers(1600, true)
+		if Fu.IsValidBuilding(nEnemyTowers[1]) then
+			if nEnemyTowers[1]:GetAttackTarget() == bot or bot:WasRecentlyDamagedByTower(5.0) then
+				bot:Action_MoveToLocation(Fu.VectorAway(bot:GetLocation(), nEnemyTowers[1]:GetLocation(), 1600))
+				return
+			end
+		end
 
-	hLaneCreepList = bot:GetNearbyLaneCreeps(900, true) -- always refresh to avoid stale data
-	if hLaneCreepList ~= nil and #hLaneCreepList > 0 and Fu.IsValid(hLaneCreepList[1]) then
-		local farmTarget = Fu.Site.GetFarmLaneTarget(hLaneCreepList);
-		local nSearchRange = bot:GetAttackRange() + 180
-		if nSearchRange > 1600 then nSearchRange = 1600 end
-		local nNeutrals = bot:GetNearbyNeutralCreeps(nSearchRange);
-		if Fu.IsValid(farmTarget) and #nNeutrals == 0 then
-			if farmTarget:GetTeam() ~= bot:GetTeam() then
-				local nEnemyTowers = bot:GetNearbyTowers(1600, true)
-				if Fu.IsValidBuilding(nEnemyTowers[1]) then
-					if nEnemyTowers[1]:GetAttackTarget() == bot or bot:WasRecentlyDamagedByTower(5.0) then
-						bot:Action_MoveToLocation(Fu.VectorAway(bot:GetLocation(), nEnemyTowers[1]:GetLocation(), 1600))
-						return
-					end
+		-- Attack lowest HP creep (kill fast, don't fight with last-hit targeting)
+		local farmTarget = nil
+		local farmTargetHealth = math.huge
+		for _, creep in pairs(nEnemyLaneCreeps) do
+			if Fu.IsValid(creep) and Fu.CanBeAttacked(creep)
+			and not Fu.IsRoshan(creep) and not Fu.IsTormentor(creep) then
+				local creepHealth = creep:GetHealth()
+				if creepHealth < farmTargetHealth then
+					farmTarget = creep
+					farmTargetHealth = creepHealth
 				end
+			end
+		end
 
-				local nFarmRange = math.max(nEffectiveRange, bot:GetAttackRange())
-				if GetUnitToUnitDistance(bot, farmTarget) > nFarmRange then
-					bot:Action_MoveToLocation(farmTarget:GetLocation());
-					return
-				else
-					bot:Action_AttackUnit(farmTarget, true);
-					return
-				end
+		if Fu.IsValid(farmTarget) then
+			local range = bot:GetAttackRange()
+			if GetUnitToUnitDistance(bot, farmTarget) > range then
+				bot:Action_MoveToLocation(farmTarget:GetLocation())
+				return
+			else
+				bot:Action_AttackUnit(farmTarget, false)
+				return
 			end
 		end
 	end
@@ -606,6 +848,29 @@ function Think()
 	if preferedCamp ~= nil then
 		local targetFarmLoc = preferedCamp.cattr.location;
 		local cDist = GetUnitToLocationDistance(bot, targetFarmLoc);
+
+		-- Lane creep priority: if lane creeps are within 1000 distance more than camp,
+		-- go kill lane creeps first (more gold/XP, prevents lane from pushing into base)
+		local nLaneCreepsWider = bot:GetNearbyLaneCreeps(math.min(cDist + 1000, 1600), true)
+		if #nLaneCreepsWider > 0 then
+			local laneCenter = Fu.GetCenterOfUnits(nLaneCreepsWider)
+			local laneDist = GetUnitToLocationDistance(bot, laneCenter)
+			local nEnemiesNearLane = Fu.GetEnemiesNearLoc(laneCenter, 1600)
+			-- Only prefer lane if no enemies and lane is reasonably close vs camp
+			if #nEnemiesNearLane == 0 and laneDist < cDist + 1000 then
+				local closestCreep = nLaneCreepsWider[1]
+				if Fu.IsValid(closestCreep) and Fu.CanBeAttacked(closestCreep) then
+					local range = bot:GetAttackRange()
+					if GetUnitToUnitDistance(bot, closestCreep) > range then
+						bot:Action_MoveToLocation(closestCreep:GetLocation())
+					else
+						bot:Action_AttackUnit(closestCreep, false)
+					end
+					return
+				end
+			end
+		end
+
 		local nNeutrals = bot:GetNearbyCreeps(900, true);
 
 		-- Don't steal farm from an ally already at this camp
@@ -623,106 +888,102 @@ function Think()
 			Fu.Role['availableCampTable'], preferedCamp = Fu.Site.UpdateAvailableCamp(bot, preferedCamp, Fu.Role['availableCampTable']);
 			availableCamp = Fu.Role['availableCampTable']
 			preferedCamp = Fu.Site.GetClosestNeutralSpwan(bot, availableCamp)
-			if preferedCamp == nil then return end
+		end
+		if preferedCamp == nil then
+			-- No camp available, skip jungle logic and fall to end-of-function fallback
+		else
 			targetFarmLoc = preferedCamp.cattr.location
 			cDist = GetUnitToLocationDistance(bot, targetFarmLoc)
 			nNeutrals = bot:GetNearbyCreeps(900, true)
+
+		-- Empty camp detection: if we can see the camp and it's empty, repick
+		if (X.IsLocCanBeSeen(targetFarmLoc) and cDist <= 600) or cDist <= 250 then
+			local bHasNeutrals = false
+			for _, creep in pairs(nNeutrals) do
+				if Fu.IsValid(creep) and not Fu.IsRoshan(creep) and not Fu.IsTormentor(creep) then
+					bHasNeutrals = true
+					break
+				end
+			end
+			if not bHasNeutrals then
+				Fu.Role['availableCampTable'], preferedCamp = Fu.Site.UpdateAvailableCamp(bot, preferedCamp, Fu.Role['availableCampTable'])
+				availableCamp = Fu.Role['availableCampTable']
+				preferedCamp = Fu.Site.GetClosestNeutralSpwan(bot, availableCamp)
+				farmState = FARM_STATE_NONE
+				-- Don't return — fall through to movement
+			end
 		end
 
-		if #nNeutrals >= 3 and cDist <= 600 and cDist > 240
-		   and ( bot:GetLevel() >= 10 or not nNeutrals[1]:IsAncientCreep())
-		then farmState = FARM_STATE_FARM end;
-
-		if farmState == FARM_STATE_NONE
-		   and ( Fu.IsValid(nNeutrals[1]) or #nNeutrals > 1)
-		   and not Fu.IsRoshan(nNeutrals[1])
-		   and ( bot:GetLevel() >= 10 or not nNeutrals[1]:IsAncientCreep())
-		then
-
-			if GetUnitToUnitDistance(bot,nNeutrals[1]) < bot:GetAttackRange() + 150
-				and Fu.HasNotActionLast(4.0,'creep')
-			then
-				Fu.Role['availableCampTable'] = Fu.Site.UpdateCommonCamp(nNeutrals[1],Fu.Role['availableCampTable']);
-			end
-
-			-- Use ability-specific range for neutral farming too
-			local nFarmRange = math.max(nEffectiveRange, bot:GetAttackRange())
-			local farmTarget = Fu.Site.FindFarmNeutralTarget(nNeutrals)
-			if Fu.IsValid(farmTarget)
-			then
-				bot:SetTarget(farmTarget);
-				bot:Action_AttackUnit(farmTarget, true);
-				return;
-			elseif Fu.IsValid(nNeutrals[1]) then
-				bot:SetTarget(nNeutrals[1]);
-				bot:Action_AttackUnit(nNeutrals[1], true);
-				return;
-			end
-			
-		elseif  farmState == FARM_STATE_NONE
-				and (#nNeutrals == 0 and GetUnitToLocationDistance(bot, targetFarmLoc) < 600)
-		        and cDist > 240
-		        and ( not X.IsLocCanBeSeen(targetFarmLoc) or cDist > 600 )
-			then
-				if Fu.IsValid(hLaneCreepList[1])
-				then
-					bot:Action_MoveToLocation( hLaneCreepList[1]:GetLocation() );
-					return;
-				end
-				
-				if X.CouldBlink(bot,targetFarmLoc) then return end;
-				
-				if X.CouldBlade(bot,targetFarmLoc) then return end;
-							
-				bot:Action_MoveToLocation(targetFarmLoc);
-				return;
-		else
-			local neutralCreeps = bot:GetNearbyCreeps(1000, true); 
-			
-			if #neutralCreeps >= 2 then
-
-				farmState = FARM_STATE_FARM;
-				
-				local farmTarget = Fu.Site.FindFarmNeutralTarget(neutralCreeps)
-				if Fu.IsValid(farmTarget)
-				then
-					bot:SetTarget(farmTarget);
-					bot:Action_AttackUnit(farmTarget, true);
-					return;
-				end
-				
-			elseif ( X.IsLocCanBeSeen(targetFarmLoc) and cDist <= 600 ) or cDist <= 240
-				then
-					
-					farmState = FARM_STATE_NONE;
-					Fu.Role['availableCampTable'], preferedCamp = Fu.Site.UpdateAvailableCamp(bot, preferedCamp, Fu.Role['availableCampTable']);
-					availableCamp = Fu.Role['availableCampTable'];	
-					preferedCamp  = Fu.Site.GetClosestNeutralSpwan(bot, availableCamp);
-
-
-					local farmTarget = Fu.Site.FindFarmNeutralTarget(neutralCreeps)
-					if Fu.IsValid(farmTarget)
-					then
-						bot:SetTarget(farmTarget);
-						bot:Action_AttackUnit(farmTarget, true);
-						return;
+		-- Neutrals nearby: select lowest HP target (kill one fast to reduce total DPS taken)
+		if #nNeutrals > 0 then
+			local farmTarget = nil
+			local farmTargetHealth = math.huge
+			local fallbackTarget = nil
+			for _, creep in pairs(nNeutrals) do
+				if Fu.IsValid(creep) and Fu.CanBeAttacked(creep)
+				and not Fu.IsRoshan(creep) and not Fu.IsTormentor(creep) then
+					if not creep:IsAncientCreep() or (bot:GetLevel() >= 10 and bot:GetArmor() >= 6) then
+						local creepHealth = creep:GetHealth()
+						if creepHealth < farmTargetHealth then
+							farmTarget = creep
+							farmTargetHealth = creepHealth
+						end
+					elseif GetUnitToUnitDistance(bot, creep) < 500 then
+						fallbackTarget = creep
 					end
-			else
-			
-				local farmTarget = Fu.Site.FindFarmNeutralTarget(neutralCreeps)
-				if Fu.IsValid(farmTarget)
-				then
-					bot:SetTarget(farmTarget);
-					bot:Action_AttackUnit(farmTarget, true);
-					return;
 				end
-				
-				if cDist > 200 then bot:Action_MoveToLocation(targetFarmLoc) return end
 			end
-		end			
+
+			local target = farmTarget or fallbackTarget
+			if Fu.IsValid(target) then
+				farmState = FARM_STATE_FARM
+				bot:SetTarget(target)
+				bot:Action_AttackUnit(target, false)
+				return
+			else
+				-- At camp but can't hit anything: move to camp center to aggro, or leave
+				if cDist < 300 then
+					-- Already at camp center, no valid targets: camp is empty or can't farm it
+					farmState = FARM_STATE_NONE
+					Fu.Role['availableCampTable'], preferedCamp = Fu.Site.UpdateAvailableCamp(bot, preferedCamp, Fu.Role['availableCampTable'])
+					availableCamp = Fu.Role['availableCampTable']
+					preferedCamp = Fu.Site.GetClosestNeutralSpwan(bot, availableCamp)
+				else
+					bot:Action_MoveToLocation(targetFarmLoc)
+					return
+				end
+			end
+		else
+			-- No neutrals detected: walk to camp to pull them
+			if cDist > 200 then
+				bot:Action_AttackMove(targetFarmLoc)
+				return
+			end
+		end
+
+		end -- preferedCamp nil check
 	end
-	
-	bot:Action_MoveToLocation( ( RB + DB )/2 );
+
+	-- Fallback: all farm paths missed. Log and attack anything nearby.
+	log('[FARM-FALLBACK] %s t=%.0f prefCamp=%s laneCreeps=%d',
+		bot:GetUnitName(), DotaTime(), tostring(preferedCamp ~= nil), #(hLaneCreepList or {}))
+
+	-- Nothing nearby: move toward nearest lane front
+	local bestDist = 99999
+	local bestLoc = nil
+	for _, lane in pairs({LANE_TOP, LANE_MID, LANE_BOT}) do
+		local laneFront = GetLaneFrontLocation(GetTeam(), lane, 0)
+		local dist = GetUnitToLocationDistance(bot, laneFront)
+		if dist < bestDist then
+			bestDist = dist
+			bestLoc = laneFront
+		end
+	end
+	if bestLoc ~= nil then
+		bot:Action_AttackMove(bestLoc)
+	else
+		bot:Action_AttackMove( ( RB + DB ) / 2 )
+	end
 	return;
 end
 
@@ -930,282 +1191,3 @@ function AnnounceMessages()
 	end
 end
 
-
-local enemyPids = nil;
-function X.ShouldRun(bot)
-	if bot:HasModifier('modifier_medusa_stone_gaze_facing') 
-	then
-		AttackTarget=bot:GetAttackTarget()
-		if AttackTarget~=nil and AttackTarget:GetUnitName() == "npc_dota_hero_medusa"  
-		and Fu.IsOtherAllyCanKillTarget( bot, AttackTarget )
-		then
-			
-		else  
-			return 3.33
-		end
-	end
-
-		
-	if bot:IsChanneling() 
-	   or not bot:IsAlive()
-	then
-		return 0
-	end	   
-	
-	local botLevel    = bot:GetLevel();
-	local botMode     = bot:GetActiveMode();
-	local botTarget   = Fu.GetProperTarget(bot);
-	local hEnemyHeroList = Fu.GetEnemyList(bot,1600);
-	local hAllyHeroList  = Fu.GetAllyList(bot,1600);
-	local enemyFountainDistance = Fu.GetDistanceFromEnemyFountain(bot);
-	local enemyAncient = GetAncient(GetOpposingTeam());
-	local enemyAncientDistance = GetUnitToUnitDistance(bot,enemyAncient);
-	local aliveEnemyCount = Fu.GetNumOfAliveHeroes(true)
-	local rushEnemyTowerDistance = 250;
-
-	if enemyFountainDistance < 1000
-	then
-		return 2;
-	end
-
-	if bot:DistanceFromFountain() < 200
-		and botMode ~= BOT_MODE_RETREAT
-		and ( Fu.GetHP(bot) + Fu.GetMP(bot) < 1.7 )
-	then
-		return 3;
-	end
-
-	if botLevel < 6
-		and DotaTime() > 30
-		and DotaTime() < 8 * 60
-		and enemyFountainDistance < 8111
-	then
-		if botTarget ~= nil and botTarget:IsHero()
-		   and Fu.GetHP(botTarget) > 0.35
-		   and (  not Fu.IsInRange(bot,botTarget,bot:GetAttackRange() + 150) 
-				  or not Fu.CanKillTarget(botTarget, bot:GetAttackDamage() * 2.33, DAMAGE_TYPE_PHYSICAL) )
-		then
-			return 2.88;
-		end
-	end
-
-	if not X.IsThereT3Detroyed() 
-	   and aliveEnemyCount >= 3 
-	   and #hAllyHeroList < aliveEnemyCount + 2
-	   and not Fu.Role.IsPvNMode()
-	   and ( DotaTime() % 600 > 285 or DotaTime() < 18 * 60 )--处于夜间或小于18分钟
-	then
-		local allyLevel = Fu.GetAverageLevel(false);
-		local enemyLevel = Fu.GetAverageLevel(true);
-		if enemyFountainDistance < 4765
-		then
-			local nAllyLaneCreeps = bot:GetNearbyLaneCreeps(550,false);
-			if( allyLevel - 4 < enemyLevel and allyLevel < 24 )
-			   and not ( allyLevel - 2 > enemyLevel and aliveEnemyCount == 3)
-			   and #nAllyLaneCreeps <= 4
-			then
-				return 1.33;
-			end
-		end
-				
-	end
-	
-	-- 前期线上别顶着小兵打太凶
-	if botLevel < 5
-	and bot:WasRecentlyDamagedByCreep(1)
-	and Fu.GetHP(bot) < 0.7
-	and botTarget ~= nil
-	and Fu.GetHP(botTarget) > Fu.GetHP(bot) - 0.15 then
-		return 2;
-	end
-
-	local nEnemyTowers = bot:GetNearbyTowers(898, true);
-	local nEnemyBrracks = bot:GetNearbyBarracks(800,true);
-	
-	if #nEnemyBrracks >= 1 and aliveEnemyCount >= 2 and #hEnemyHeroList >= #hAllyHeroList
-	then
-		if #nEnemyTowers >= 2
-		   or enemyAncientDistance <= 1314
-		   or enemyFountainDistance <= 2828
-		then
-			return 2;
-		end
-	end
-	
-
-	if nEnemyTowers[1] ~= nil and botLevel < 16
-	then
-		if nEnemyTowers[1]:HasModifier("modifier_invulnerable") and aliveEnemyCount > 1
-		then
-			return 2.5;
-		end
-		
-		if  enemyAncientDistance > 2100
-			and enemyAncientDistance < GetUnitToUnitDistance(nEnemyTowers[1],enemyAncient) - rushEnemyTowerDistance
-		then
-			local nTarget = Fu.GetProperTarget(bot);
-			if nTarget == nil
-			then
-				return 3.9;
-			end
-			
-			if Fu.IsValidHero(nTarget) and aliveEnemyCount > 2
-			then
-				
-				local assistAlly = false;
-				
-				for _,ally in pairs(hAllyHeroList)
-				do
-					if GetUnitToUnitDistance(ally,nTarget) <= ally:GetAttackRange() + 100
-						and (ally:GetAttackTarget() == nTarget or ally:GetTarget() == nTarget)
-					then
-						assistAlly = true;
-						break;
-					end
-				end
-				
-				if not assistAlly 
-				then
-					return 2.5;
-				end
-				
-			end
-		end
-	end
-	
-
-	-- 前期谨慎冲塔
-	if botLevel <= 10 and DotaTime() > 0
-		and (#hEnemyHeroList > 0 or bot:GetHealth() < 700)
-	then
-		local nLongEnemyTowers = bot:GetNearbyTowers(1200, true);
-		if bot:GetAssignedLane() == LANE_MID
-		then
-			 nLongEnemyTowers = bot:GetNearbyTowers(1100, true);
-			 nEnemyTowers     = bot:GetNearbyTowers(980, true);
-		end
-		if ( botLevel <= 2 or DotaTime() < 2 * 60 )
-			and nLongEnemyTowers[1] ~= nil
-		then
-			return 2;
-		end
-		if ( botLevel <= 4 or DotaTime() < 3 * 60 )
-			and nEnemyTowers[1] ~= nil
-		then
-			return 2;
-		end
-		if botLevel <= 9
-			and nEnemyTowers[1] ~= nil
-			and nEnemyTowers[1]:CanBeSeen()
-			and nEnemyTowers[1]:GetAttackTarget() == bot
-			and #hAllyHeroList <= 1
-		then
-			return 2;
-		end
-	end
-
-	if  botLevel <= 10
-		and (#hEnemyHeroList > 0 or bot:GetHealth() < 700)
-	then
-		local nLongEnemyTowers = bot:GetNearbyTowers(999, true);
-		if bot:GetAssignedLane() == LANE_MID 
-		then 
-			 nLongEnemyTowers = bot:GetNearbyTowers(988, true); 
-			 nEnemyTowers     = bot:GetNearbyTowers(966, true); 
-		end
-		if ( botLevel <= 2 or DotaTime() < 2 * 60 )
-			and nLongEnemyTowers[1] ~= nil
-		then
-			return 1;
-		end	
-		if ( botLevel <= 4 or DotaTime() < 3 * 60 )
-			and nEnemyTowers[1] ~= nil
-		then
-			return 1;
-		end	
-		if botLevel <= 9
-			and nEnemyTowers[1] ~= nil
-			and nEnemyTowers[1]:CanBeSeen()
-			and nEnemyTowers[1]:GetAttackTarget() == bot
-			and #hAllyHeroList <= 1
-		then
-			return 1;
-		end
-	end
-
-	if #hAllyHeroList <= 1 
-	   and botMode ~= BOT_MODE_TEAM_ROAM
-	   and botMode ~= BOT_MODE_LANING
-	   and botMode ~= BOT_MODE_RETREAT
-	   and ( botLevel <= 1 or botLevel > 5 ) 
-	   and bot:DistanceFromFountain() > 1400
-	then
-		if enemyPids == nil then
-			enemyPids = GetTeamPlayers(GetOpposingTeam())
-		end	
-		local enemyCount = 0
-		for i = 1, #enemyPids do
-			local info = GetHeroLastSeenInfo(enemyPids[i])
-			if info ~= nil then
-				local dInfo = info[1]; 
-				if dInfo ~= nil and dInfo.time_since_seen < 2.0  
-					and GetUnitToLocationDistance(bot,dInfo.location) < 1000 
-				then
-					enemyCount = enemyCount +1;
-				end
-			end	
-		end
-		if (enemyCount >= 4 or #hEnemyHeroList >= 4) 
-			and botMode ~= BOT_MODE_ATTACK
-			and botMode ~= BOT_MODE_TEAM_ROAM
-			and bot:GetCurrentMovementSpeed() > 300
-		then
-			local nNearByHeroes = bot:GetNearbyHeroes(700,true,BOT_MODE_NONE);
-			if #nNearByHeroes < 2
-	        then
-				return 4;
-			end
-		end	
-		if  botLevel >= 9 and botLevel <= 17  
-			and (enemyCount >= 3 or #hEnemyHeroList >= 3) 
-			and botMode ~= BOT_MODE_LANING
-			and bot:GetCurrentMovementSpeed() > 300
-		then
-			local nNearByHeroes = bot:GetNearbyHeroes(700,true,BOT_MODE_NONE);
-			if #nNearByHeroes < 2
-	        then
-				return 3;
-			end
-		end
-		local nEnemy = bot:GetNearbyHeroes(800,true,BOT_MODE_NONE);
-		for _,enemy in pairs(nEnemy)
-		do
-			if Fu.IsValid(enemy)
-				and enemy:GetUnitName() == "npc_dota_hero_necrolyte"
-				and enemy:GetMana() >= 200
-				and Fu.GetHP(bot) < 0.45
-				and enemy:IsFacingLocation(bot:GetLocation(),20)
-			then
-				return 3;
-			end
-		end
-	end
-	return 0
-end
-
-function X.IsThereT3Detroyed()
-	
-	local T3s = {
-		TOWER_TOP_3,
-		TOWER_MID_3,
-		TOWER_BOT_3
-	}
-	
-	for _,t in pairs(T3s) do
-		local tower = GetTower(GetOpposingTeam(), t);
-		if tower == nil or not tower:IsAlive() then
-			return true;
-		end
-	end	
-	return false;
-end

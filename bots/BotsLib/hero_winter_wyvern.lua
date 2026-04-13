@@ -139,10 +139,10 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local ArcticBurn    = bot:GetAbilityByName('winter_wyvern_arctic_burn')
-local SplinterBlast = bot:GetAbilityByName('winter_wyvern_splinter_blast')
-local ColdEmbrace   = bot:GetAbilityByName('winter_wyvern_cold_embrace')
-local WintersCurse  = bot:GetAbilityByName('winter_wyvern_winters_curse')
+local ArcticBurn    = SafeAbility(bot:GetAbilityByName('winter_wyvern_arctic_burn'), 'winter_wyvern_arctic_burn', 'winter_wyvern')
+local SplinterBlast = SafeAbility(bot:GetAbilityByName('winter_wyvern_splinter_blast'), 'winter_wyvern_splinter_blast', 'winter_wyvern')
+local ColdEmbrace   = SafeAbility(bot:GetAbilityByName('winter_wyvern_cold_embrace'), 'winter_wyvern_cold_embrace', 'winter_wyvern')
+local WintersCurse  = SafeAbility(bot:GetAbilityByName('winter_wyvern_winters_curse'), 'winter_wyvern_winters_curse', 'winter_wyvern')
 
 local ArcticBurnDesire
 local SplinterBlastDesire, SplinterBlastTarget

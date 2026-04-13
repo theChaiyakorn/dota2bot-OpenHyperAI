@@ -112,13 +112,13 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local IceShards         = bot:GetAbilityByName('tusk_ice_shards')
-local Snowball          = bot:GetAbilityByName('tusk_snowball')
-local LaunchSnowball    = bot:GetAbilityByName('tusk_launch_snowball')
-local TagTeam           = bot:GetAbilityByName('tusk_tag_team')
-local WalrusKick        = bot:GetAbilityByName('tusk_walrus_kick')
-local WalrusPunch       = bot:GetAbilityByName('tusk_walrus_punch')
-local DrinkingBuddies   = bot:GetAbilityByName('tusk_drinking_buddies')
+local IceShards         = SafeAbility(bot:GetAbilityByName('tusk_ice_shards'), 'tusk_ice_shards', 'tusk')
+local Snowball          = SafeAbility(bot:GetAbilityByName('tusk_snowball'), 'tusk_snowball', 'tusk')
+local LaunchSnowball    = SafeAbility(bot:GetAbilityByName('tusk_launch_snowball'), 'tusk_launch_snowball', 'tusk')
+local TagTeam           = SafeAbility(bot:GetAbilityByName('tusk_tag_team'), 'tusk_tag_team', 'tusk')
+local WalrusKick        = SafeAbility(bot:GetAbilityByName('tusk_walrus_kick'), 'tusk_walrus_kick', 'tusk')
+local WalrusPunch       = SafeAbility(bot:GetAbilityByName('tusk_walrus_punch'), 'tusk_walrus_punch', 'tusk')
+local DrinkingBuddies   = SafeAbility(bot:GetAbilityByName('tusk_drinking_buddies'), 'tusk_drinking_buddies', 'tusk')
 
 local IceShardsDesire, IceShardsLocation
 local SnowballDesire, SnowballTarget

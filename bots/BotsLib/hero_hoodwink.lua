@@ -125,12 +125,12 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local AcornShot         = bot:GetAbilityByName('hoodwink_acorn_shot')
-local Bushwhack         = bot:GetAbilityByName('hoodwink_bushwhack')
-local Scurry            = bot:GetAbilityByName('hoodwink_scurry')
-local HuntersBoomerang  = bot:GetAbilityByName('hoodwink_hunters_boomerang')
-local Decoy             = bot:GetAbilityByName('hoodwink_decoy')
-local Sharpshooter      = bot:GetAbilityByName('hoodwink_sharpshooter')
+local AcornShot         = SafeAbility(bot:GetAbilityByName('hoodwink_acorn_shot'), 'hoodwink_acorn_shot', 'hoodwink')
+local Bushwhack         = SafeAbility(bot:GetAbilityByName('hoodwink_bushwhack'), 'hoodwink_bushwhack', 'hoodwink')
+local Scurry            = SafeAbility(bot:GetAbilityByName('hoodwink_scurry'), 'hoodwink_scurry', 'hoodwink')
+local HuntersBoomerang  = SafeAbility(bot:GetAbilityByName('hoodwink_hunters_boomerang'), 'hoodwink_hunters_boomerang', 'hoodwink')
+local Decoy             = SafeAbility(bot:GetAbilityByName('hoodwink_decoy'), 'hoodwink_decoy', 'hoodwink')
+local Sharpshooter      = SafeAbility(bot:GetAbilityByName('hoodwink_sharpshooter'), 'hoodwink_sharpshooter', 'hoodwink')
 
 local AcornShotDesire, AcornShotLocation
 local BushwhackDesire, BushwhackLocation

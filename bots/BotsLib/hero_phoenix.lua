@@ -102,14 +102,14 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local IcarusDive        = bot:GetAbilityByName('phoenix_icarus_dive')
-local IcarusDiveStop    = bot:GetAbilityByName('phoenix_icarus_dive_stop')
-local FireSpirits       = bot:GetAbilityByName('phoenix_fire_spirits')
-local FireSpiritsLaunch = bot:GetAbilityByName('phoenix_launch_fire_spirit')
-local SunRay            = bot:GetAbilityByName('phoenix_sun_ray')
-local SunRayStop        = bot:GetAbilityByName('phoenix_sun_ray_stop')
-local ToggleMovement    = bot:GetAbilityByName('phoenix_sun_ray_toggle_move')
-local Supernova         = bot:GetAbilityByName('phoenix_supernova')
+local IcarusDive        = SafeAbility(bot:GetAbilityByName('phoenix_icarus_dive'), 'phoenix_icarus_dive', 'phoenix')
+local IcarusDiveStop    = SafeAbility(bot:GetAbilityByName('phoenix_icarus_dive_stop'), 'phoenix_icarus_dive_stop', 'phoenix')
+local FireSpirits       = SafeAbility(bot:GetAbilityByName('phoenix_fire_spirits'), 'phoenix_fire_spirits', 'phoenix')
+local FireSpiritsLaunch = SafeAbility(bot:GetAbilityByName('phoenix_launch_fire_spirit'), 'phoenix_launch_fire_spirit', 'phoenix')
+local SunRay            = SafeAbility(bot:GetAbilityByName('phoenix_sun_ray'), 'phoenix_sun_ray', 'phoenix')
+local SunRayStop        = SafeAbility(bot:GetAbilityByName('phoenix_sun_ray_stop'), 'phoenix_sun_ray_stop', 'phoenix')
+local ToggleMovement    = SafeAbility(bot:GetAbilityByName('phoenix_sun_ray_toggle_move'), 'phoenix_sun_ray_toggle_move', 'phoenix')
+local Supernova         = SafeAbility(bot:GetAbilityByName('phoenix_supernova'), 'phoenix_supernova', 'phoenix')
 
 local IcarusDiveDesire, IcarusDiveLocation
 local IcarusDiveStopDesire

@@ -77,11 +77,11 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local TimeWalk 			= bot:GetAbilityByName('faceless_void_time_walk')
-local TimeDilation 		= bot:GetAbilityByName('faceless_void_time_dilation')
-local Chronosphere 		= bot:GetAbilityByName('faceless_void_chronosphere')
-local TimeWalkReverse 	= bot:GetAbilityByName('faceless_void_time_walk_reverse')
-local Timezone 			= bot:GetAbilityByName('faceless_void_time_zone')
+local TimeWalk 			= SafeAbility(bot:GetAbilityByName('faceless_void_time_walk'), 'faceless_void_time_walk', 'faceless_void')
+local TimeDilation 		= SafeAbility(bot:GetAbilityByName('faceless_void_time_dilation'), 'faceless_void_time_dilation', 'faceless_void')
+local Chronosphere 		= SafeAbility(bot:GetAbilityByName('faceless_void_chronosphere'), 'faceless_void_chronosphere', 'faceless_void')
+local TimeWalkReverse 	= SafeAbility(bot:GetAbilityByName('faceless_void_time_walk_reverse'), 'faceless_void_time_walk_reverse', 'faceless_void')
+local Timezone 			= SafeAbility(bot:GetAbilityByName('faceless_void_time_zone'), 'faceless_void_time_zone', 'faceless_void')
 
 local TimeWalkDesire, TimeWalkLocation
 local TimeDilationDesire
@@ -102,7 +102,7 @@ function X.SkillsComplement()
 
 	bGoingOnSomeone = Fu.IsGoingOnSomeone(bot)
 	bRetreating = Fu.IsRetreating(bot)
-    if not Chronosphere or Chronosphere:IsHidden() then Chronosphere = bot:GetAbilityByName('faceless_void_time_zone') end
+    if not Chronosphere or Chronosphere:IsHidden() then Chronosphere = SafeAbility(bot:GetAbilityByName('faceless_void_time_zone'), 'faceless_void_time_zone', 'faceless_void') end
 
 	botTarget = Fu.GetProperTarget(bot)
 
@@ -137,7 +137,7 @@ function X.SkillsComplement()
 	-- Chronosphere = bot:GetAbilityByName('faceless_void_chronosphere')
 	if Chronosphere and not Chronosphere:IsNull() and not Chronosphere:IsHidden() then
 		if bot.needRefreshAbilitiesFor737 then
-			Chronosphere = bot:GetAbilityByName('faceless_void_chronosphere')
+			Chronosphere = SafeAbility(bot:GetAbilityByName('faceless_void_chronosphere'), 'faceless_void_chronosphere', 'faceless_void')
 			sAbilityList = Fu.Skill.GetAbilityList( bot )
 			X['sSkillList'] = Fu.Skill.GetSkillList( sAbilityList, nAbilityBuildList, sTalentList, nTalentBuildList )
 			bot:ActionImmediate_Chat( "I now have my Chronosphere back. Thanks!", true )
@@ -242,8 +242,16 @@ function X.ConsiderTimeWalk()
 				then
 					if Fu.IsInLaningPhase()
 					then
+						-- In laning: only time walk aggressively if low HP (backtrack value)
+						-- or target is killable in 1-3 hits
+						local nBotHP = Fu.GetHP(bot)
+						local nTargetHP = botTarget:GetHealth()
+						local nBotDmg = bot:GetAttackDamage()
+						local bLowHP = nBotHP < 0.3
+						local bCanKill = nTargetHP <= nBotDmg * 3
 						local nEnemyTowers = botTarget:GetNearbyTowers(700, false)
-						if nEnemyTowers ~= nil and #nEnemyTowers == 0
+						if (bLowHP or bCanKill)
+						and nEnemyTowers ~= nil and #nEnemyTowers == 0
 						then
 							return BOT_ACTION_DESIRE_HIGH, loc
 						end

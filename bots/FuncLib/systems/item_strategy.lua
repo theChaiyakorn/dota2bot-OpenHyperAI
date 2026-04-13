@@ -421,14 +421,14 @@ function ____exports.GetItemBuild(bot, position)
     local build = {}
     local isHeroRanged = isRanged(heroName)
     local rangeType = isHeroRanged and "ranged" or "melee"
-    if STARTING_ITEMS[position] and STARTING_ITEMS[position][rangeType] then
+    if STARTING_ITEMS[position] ~= nil and STARTING_ITEMS[position][rangeType] ~= nil then
         __TS__ArrayPushArray(build, STARTING_ITEMS[position][rangeType])
     end
     __TS__ArrayPushArray(build, CORE_ITEMS)
     if BOOTS_BY_POSITION[position] then
         __TS__ArrayPushArray(build, BOOTS_BY_POSITION[position])
     end
-    if ITEMS_BY_POSITION[position] and ITEMS_BY_POSITION[position][rangeType] then
+    if ITEMS_BY_POSITION[position] ~= nil and ITEMS_BY_POSITION[position][rangeType] ~= nil then
         __TS__ArrayPushArray(build, ITEMS_BY_POSITION[position][rangeType])
     end
     local roleItems = getRoleBasedItems(heroName, position)
@@ -478,7 +478,7 @@ function ____exports.GetLateGame6Slot(bot, position)
     local isHeroRanged = isRanged(heroName)
     local rangeType = isHeroRanged and "ranged" or "melee"
     local build = {}
-    if ITEMS_BY_POSITION[position] and ITEMS_BY_POSITION[position][rangeType] then
+    if ITEMS_BY_POSITION[position] ~= nil and ITEMS_BY_POSITION[position][rangeType] ~= nil then
         for ____, item in ipairs(ITEMS_BY_POSITION[position][rangeType]) do
             if not __TS__ArrayIncludes(NON_SLOT_ITEMS, item) then
                 build[#build + 1] = item
@@ -499,7 +499,7 @@ function ____exports.GetNonSlotItems(bot, position)
     local isHeroRanged = isRanged(heroName)
     local rangeType = isHeroRanged and "ranged" or "melee"
     local nonSlotItems = {}
-    if ITEMS_BY_POSITION[position] and ITEMS_BY_POSITION[position][rangeType] then
+    if ITEMS_BY_POSITION[position] ~= nil and ITEMS_BY_POSITION[position][rangeType] ~= nil then
         for ____, item in ipairs(ITEMS_BY_POSITION[position][rangeType]) do
             if __TS__ArrayIncludes(NON_SLOT_ITEMS, item) then
                 nonSlotItems[#nonSlotItems + 1] = item

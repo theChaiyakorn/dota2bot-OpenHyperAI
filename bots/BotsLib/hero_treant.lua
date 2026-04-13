@@ -133,12 +133,12 @@ end
 
 local bLeechSeedGround = false
 
-local NaturesGrasp      = bot:GetAbilityByName('treant_natures_grasp')
-local LeechSeed         = bot:GetAbilityByName('treant_leech_seed')
-local LivingArmor       = bot:GetAbilityByName('treant_living_armor')
+local NaturesGrasp      = SafeAbility(bot:GetAbilityByName('treant_natures_grasp'), 'treant_natures_grasp', 'treant')
+local LeechSeed         = SafeAbility(bot:GetAbilityByName('treant_leech_seed'), 'treant_leech_seed', 'treant')
+local LivingArmor       = SafeAbility(bot:GetAbilityByName('treant_living_armor'), 'treant_living_armor', 'treant')
 -- local NaturesGuise      = bot:GetAbilityByName('treant_natures_guise')
-local EyesInTheForest   = bot:GetAbilityByName('treant_eyes_in_the_forest')
-local Overgrowth        = bot:GetAbilityByName('treant_overgrowth')
+local EyesInTheForest   = SafeAbility(bot:GetAbilityByName('treant_eyes_in_the_forest'), 'treant_eyes_in_the_forest', 'treant')
+local Overgrowth        = SafeAbility(bot:GetAbilityByName('treant_overgrowth'), 'treant_overgrowth', 'treant')
 
 local NaturesGraspDesire, NaturesGraspLocation
 local LeechSeedDesire, LeechSeedTarget

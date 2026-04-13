@@ -111,10 +111,10 @@ modifier_drow_ranger_marksmanship_reduction
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local Glacier 	= bot:GetAbilityByName( 'drow_ranger_glacier' )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'drow_ranger')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'drow_ranger')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'drow_ranger')
+local Glacier 	= SafeAbility(bot:GetAbilityByName('drow_ranger_glacier'), 'drow_ranger_glacier', 'drow_ranger')
 local abilityM = nil
 
 local castQDesire, castQTarget
@@ -142,6 +142,16 @@ function X.SkillsComplement()
 	hAllyList = ctx.allies
 	abilityM = Fu.IsItemAvailable( "item_mask_of_madness" )
 
+	castWDesire, castWLocation = X.ConsiderW()
+	if castWDesire > 0
+	then
+
+		Fu.SetQueuePtToINT( bot, true )
+
+		bot:ActionQueue_UseAbilityOnLocation( abilityW , castWLocation )
+		return
+	end
+
 	GlacierDesire = X.ConsiderGlacier()
 	if GlacierDesire > 0
 	then
@@ -157,28 +167,6 @@ function X.SkillsComplement()
 		Fu.SetQueuePtToINT( bot, true )
 
 		bot:ActionQueue_UseAbilityOnLocation( abilityE , castELocation )
-		return
-	end
-
-	castWMDesire, castWMLocation = X.ConsiderWM()
-	if castWMDesire > 0
-	then
-
-		Fu.SetQueuePtToINT( bot, true )
-
-		bot:ActionQueue_UseAbilityOnLocation( abilityW , castWMLocation )
-		bot:ActionQueue_UseAbility( abilityM )
-		return
-
-	end
-
-	castWDesire, castWLocation = X.ConsiderW()
-	if castWDesire > 0
-	then
-
-		Fu.SetQueuePtToINT( bot, true )
-
-		bot:ActionQueue_UseAbilityOnLocation( abilityW , castWLocation )
 		return
 	end
 
@@ -374,25 +362,20 @@ function X.ConsiderW()
 	end
 
 
-	if bot:GetActiveMode() == BOT_MODE_RETREAT
+	if Fu.IsRetreating( bot ) and not bot:IsInvisible()
 	then
-
-		local locationAoE = bot:FindAoELocation( true, true, bot:GetLocation(), nCastRange-100, nRadius, nCastPoint, 0 )
-		if locationAoE.count >= 2
-			or ( locationAoE.count >= 1 and bot:GetHealth()/bot:GetMaxHealth() < 0.5 )
-		then
-			nTargetLocation = locationAoE.targetloc
-			return BOT_ACTION_DESIRE_HIGH, nTargetLocation
-		end
-
-
 		for _, npcEnemy in pairs( nEnemyHeroes )
 		do
-			if Fu.IsValid( npcEnemy )
-				and bot:WasRecentlyDamagedByHero( npcEnemy, 5.0 )
-				and GetUnitToUnitDistance( bot, npcEnemy ) <= 510
+			if Fu.IsValidHero( npcEnemy )
+				and Fu.CanBeAttacked( npcEnemy )
+				and Fu.IsInRange( bot, npcEnemy, nCastRange )
+				and Fu.CanCastOnNonMagicImmune( npcEnemy )
+				and not Fu.IsDisabled( npcEnemy )
+				and not npcEnemy:IsDisarmed()
+				and not npcEnemy:IsSilenced()
+				and bot:WasRecentlyDamagedByHero( npcEnemy, 2.0 )
 			then
-				nTargetLocation = npcEnemy:GetExtrapolatedLocation( nCastPoint )
+				nTargetLocation = npcEnemy:GetLocation()
 				return BOT_ACTION_DESIRE_HIGH, nTargetLocation
 			end
 		end
@@ -403,24 +386,15 @@ function X.ConsiderW()
 	then
 		local npcTarget = Fu.GetProperTarget( bot )
 		if Fu.IsValidHero( npcTarget )
-			and Fu.CanCastOnNonMagicImmune( npcTarget )
+			and Fu.CanBeAttacked( npcTarget )
 			and Fu.IsInRange( npcTarget, bot, nCastRange )
-			and not npcTarget:IsSilenced()
+			and Fu.CanCastOnNonMagicImmune( npcTarget )
 			and not Fu.IsDisabled( npcTarget )
-			and ( npcTarget:IsFacingLocation( bot:GetLocation(), 120 )
-				  or npcTarget:GetAttackTarget() ~= nil )
+			and not npcTarget:IsSilenced()
 		then
-			nTargetLocation = npcTarget:GetExtrapolatedLocation( nCastPoint )
+			nTargetLocation = npcTarget:GetLocation()
 			return BOT_ACTION_DESIRE_HIGH, nTargetLocation
 		end
-
-		local locationAoE = bot:FindAoELocation( true, true, bot:GetLocation(), nCastRange, nRadius, nCastPoint, 0 )
-		if ( locationAoE.count >= 2 )
-		then
-			nTargetLocation = locationAoE.targetloc
-			return BOT_ACTION_DESIRE_HIGH, nTargetLocation
-		end
-
 	end
 
 	return BOT_ACTION_DESIRE_NONE, nil

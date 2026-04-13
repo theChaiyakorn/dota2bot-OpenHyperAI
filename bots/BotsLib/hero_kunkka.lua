@@ -186,13 +186,13 @@ modifier_kunkka_ghost_ship_damage_delay
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityE2 = bot:GetAbilityByName( 'kunkka_return' )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'kunkka')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'kunkka')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'kunkka')
+local abilityE2 = SafeAbility(bot:GetAbilityByName('kunkka_return'), 'kunkka_return', 'kunkka')
 -- local abilityD = bot:GetAbilityByName( sAbilityList[4] )
-local kunkka_tidal_wave = bot:GetAbilityByName( 'kunkka_tidal_wave' )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
+local kunkka_tidal_wave = SafeAbility(bot:GetAbilityByName('kunkka_tidal_wave'), 'kunkka_tidal_wave', 'kunkka')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'kunkka')
 
 
 local castQDesire, castQLocation

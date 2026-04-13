@@ -133,10 +133,10 @@ function X.MinionThink(hMinionUnit)
 	end
 end
 
-local StaticRemnant 	= bot:GetAbilityByName( "storm_spirit_static_remnant" )
-local ElectricVortex 	= bot:GetAbilityByName( "storm_spirit_electric_vortex" )
-local Overload 			= bot:GetAbilityByName( "storm_spirit_overload" )
-local BallLightning 	= bot:GetAbilityByName( "storm_spirit_ball_lightning" )
+local StaticRemnant 	= SafeAbility(bot:GetAbilityByName("storm_spirit_static_remnant"), 'storm_spirit_static_remnant', 'storm_spirit')
+local ElectricVortex 	= SafeAbility(bot:GetAbilityByName("storm_spirit_electric_vortex"), 'storm_spirit_electric_vortex', 'storm_spirit')
+local Overload 			= SafeAbility(bot:GetAbilityByName("storm_spirit_overload"), 'storm_spirit_overload', 'storm_spirit')
+local BallLightning 	= SafeAbility(bot:GetAbilityByName("storm_spirit_ball_lightning"), 'storm_spirit_ball_lightning', 'storm_spirit')
 
 local StaticRemnantDesire, StaticRemnantLocation
 local ElectricVortexDesire, ElectricVortexTarget

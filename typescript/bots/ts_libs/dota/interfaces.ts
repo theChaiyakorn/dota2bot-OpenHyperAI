@@ -68,6 +68,8 @@ export interface Unit {
 
     IsBuilding(): boolean;
 
+    IsTower(): boolean;
+
     IsHero(): boolean;
 
     IsInvulnerable(): boolean;

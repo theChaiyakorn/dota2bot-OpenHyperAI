@@ -166,8 +166,8 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local MistCoil          = bot:GetAbilityByName( 'abaddon_death_coil' )
-local AphoticShield     = bot:GetAbilityByName( 'abaddon_aphotic_shield' )
+local MistCoil          = SafeAbility(bot:GetAbilityByName('abaddon_death_coil'), 'abaddon_death_coil', 'abaddon')
+local AphoticShield     = SafeAbility(bot:GetAbilityByName('abaddon_aphotic_shield'), 'abaddon_aphotic_shield', 'abaddon')
 -- local CurseOfAvernus    = bot:GetAbilityByName( 'abaddon_frostmourne' )
 -- local BorrowedTimelocal = bot:GetAbilityByName( 'abaddon_borrowed_time' )
 

@@ -3,8 +3,8 @@ local function Init(Fu)
 
 local RadiantFountain = Vector( -6619, -6336, 384 )
 local DireFountain = Vector( 6928, 6372, 392 )
-local RadiantTormentorLoc = Vector(7753.750488, -6217.413086, 0.000000)
-local DireTormentorLoc = Vector(-7678.044434, 6337.246094, 0.000000)
+local DireBottomTormentorLoc = Vector(7714, -6016, 392)
+local RadiantTopTormentorLoc = Vector(-7678, 6337, 392)
 
 
 function Fu.GetTeamFountain()
@@ -259,26 +259,23 @@ end
 
 
 function Fu.IsEarlyGame()
-	if DotaTime() < (Fu.IsModeTurbo() and 8 * 60 or 15 * 60) then
-		return true
-	end
-	return false
+	-- Turbo: < 7min, Normal: < 12min
+	return DotaTime() < (Fu.IsModeTurbo() and 7 * 60 or 12 * 60)
 end
 
 
 function Fu.IsMidGame()
-	if DotaTime() > (Fu.IsModeTurbo() and 8 * 60 or 15 * 60) and DotaTime() < (Fu.IsModeTurbo() and 18 * 60 or 30 * 60) then
-		return true
-	end
-	return false
+	-- Turbo: 7-20min, Normal: 12-26min
+	local t = DotaTime()
+	local earlyEnd = Fu.IsModeTurbo() and 7 * 60 or 12 * 60
+	local lateStart = Fu.IsModeTurbo() and 20 * 60 or 26 * 60
+	return t >= earlyEnd and t < lateStart
 end
 
 
 function Fu.IsLateGame()
-	if DotaTime() > (Fu.IsModeTurbo() and 18 * 60 or 30 * 60) then
-		return true
-	end
-	return false
+	-- Turbo: 20min+, Normal: 26min+
+	return DotaTime() >= (Fu.IsModeTurbo() and 20 * 60 or 26 * 60)
 end
 
 
@@ -328,17 +325,8 @@ end
 
 
 function Fu.IsInLaningPhase()
-	local nTime = DotaTime()
-	local bTurbo = Fu.IsModeTurbo()
-
-	-- Hard time floor: always laning phase before 8min (turbo) / 10min (normal)
-	if bTurbo and nTime < 8 * 60 then return true end
-	if not bTurbo and nTime < 10 * 60 then return true end
-
-	-- Soft extension: still laning up to 10min (turbo) / 14min (normal) if networth is low
-	if bTurbo and nTime < 10 * 60 and GetBot():GetNetWorth() < 8000 then return true end
-	if not bTurbo and nTime < 14 * 60 and GetBot():GetNetWorth() < 8000 then return true end
-
+	local bot = GetBot()
+	if bot.isInLanePhase ~= nil and bot.isInLanePhase then return true end
 	return false
 end
 
@@ -470,12 +458,23 @@ end
 
 
 function Fu.GetCurrentRoshanLocation()
-	-- 7.41: Roshan's pit preference switched (day/night swap)
-	if Fu.CheckTimeOfDay() == 'day'
-	then
-		return Fu.Utils.DireRoshanLoc
+	-- Variable names are misleading — RadiantRoshanLoc is actually the TOP pit,
+	-- DireRoshanLoc is the BOTTOM pit. Verified against reference bot coordinates.
+	-- Reference: DireLoc=(-2909,2185)=top, RadiantLoc=(2787,-2752)=bottom
+	-- Ours:      RadiantRoshanLoc=(-2984,2349)=top, DireRoshanLoc=(2980,-2816)=bottom
+	--
+	-- Roshan starts at top pit. First moves at 15:00.
+	-- Day → top pit (our RadiantRoshanLoc). Night → bottom pit (our DireRoshanLoc).
+	local topPit = Fu.Utils.RadiantRoshanLoc    -- (-2984, 2349) = top/northwest
+	local bottomPit = Fu.Utils.DireRoshanLoc    -- (2980, -2816) = bottom/southeast
+
+	if DotaTime() < 15 * 60 then
+		return topPit
+	end
+	if Fu.CheckTimeOfDay() == 'day' then
+		return topPit
 	else
-		return Fu.Utils.RadiantRoshanLoc
+		return bottomPit
 	end
 end
 
@@ -484,9 +483,9 @@ function Fu.GetTormentorLocation(team)
 	-- 7.41: Tormentor's spawn preference switched (day/night swap)
 	if Fu.CheckTimeOfDay() == 'day'
 	then
-		return RadiantTormentorLoc
+		return DireBottomTormentorLoc
 	else
-		return DireTormentorLoc
+		return RadiantTopTormentorLoc
 	end
 end
 

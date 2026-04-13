@@ -3,6 +3,7 @@ local function Init(Fu)
 
 
 function Fu.IsInTeamFight( bot, nRadius )
+	if not Fu.IsUnitValid(bot) then return false end
 
 	if nRadius == nil or nRadius > 1600 then nRadius = 1600 end
 
@@ -20,6 +21,7 @@ end
 
 
 function Fu.IsRetreating( bot )
+	if not Fu.IsUnitValid(bot) then return false end
 
 	local mode = bot:GetActiveMode()
 	local modeDesire = bot:GetActiveModeDesire()
@@ -35,6 +37,7 @@ end
 
 
 function Fu.IsGoingOnSomeone( bot )
+	if not Fu.IsUnitValid(bot) then return false end
 
 	local mode = bot:GetActiveMode()
 
@@ -48,6 +51,7 @@ end
 
 
 function Fu.IsDefending( bot )
+	if not Fu.IsUnitValid(bot) then return false end
 
 	local mode = bot:GetActiveMode()
 
@@ -59,6 +63,7 @@ end
 
 
 function Fu.IsPushing( bot )
+	if not Fu.IsUnitValid(bot) then return false end
 
 	local mode = bot:GetActiveMode()
 
@@ -70,6 +75,7 @@ end
 
 
 function Fu.IsLaning( bot )
+	if not Fu.IsUnitValid(bot) then return false end
 	local mode = bot:GetActiveMode()
 
 	return mode == BOT_MODE_LANING
@@ -78,10 +84,9 @@ end
 
 
 function Fu.IsDoingRoshan( bot )
+	if not Fu.IsUnitValid(bot) then return false end
 
-	local mode = bot:GetActiveMode()
-
-	return mode == BOT_MODE_ROSHAN
+	return bot:GetActiveMode() == BOT_MODE_ROSHAN
 
 end
 
@@ -89,6 +94,7 @@ end
 
 
 function Fu.IsFarming( bot )
+	if not Fu.IsUnitValid(bot) then return false end
 
 	local mode = bot:GetActiveMode()
 	local nTarget = Fu.GetProperTarget( bot )
@@ -126,6 +132,7 @@ end
 
 
 function Fu.GetSpecialModeAllies( bot, nDistance, nMode )
+	if not Fu.IsUnitValid(bot) then return {} end
 
 	local allyList = {}
 	local numPlayer = GetTeamPlayers( GetTeam() )
@@ -161,14 +168,10 @@ end
 
 
 function Fu.GetTeamFightLocation( bot )
-
-	local team = GetTeam()
-
-	-- local res = Fu.Utils.GetCachedVars('GetTeamFightLocation'..tostring(team), 0.5)
-	-- if res ~= nil then return res end
+	if not Fu.IsUnitValid(bot) then return nil end
 
 	local targetLocation = nil
-	local numPlayer = GetTeamPlayers( team )
+	local numPlayer = GetTeamPlayers( GetTeam() )
 
 	for i = 1, #numPlayer
 	do
@@ -183,7 +186,6 @@ function Fu.GetTeamFightLocation( bot )
 		end
 	end
 
-	-- Fu.Utils.SetCachedVars('GetTeamFightLocation', targetLocation)
 	return targetLocation
 
 end
@@ -192,6 +194,7 @@ end
 
 
 function Fu.GetTeamFightAlliesCount( bot )
+	if not Fu.IsUnitValid(bot) then return 0 end
 
 	local numPlayer = GetTeamPlayers( GetTeam() )
 	local nCount = 0
@@ -214,7 +217,9 @@ end
 
 
 function Fu.IsDoingTormentor(bot)
-	return bot:GetActiveMode() == BOT_MODE_SIDE_SHOP
+	if not Fu.IsUnitValid(bot) then return false end
+	local mode = bot:GetActiveMode()
+	return mode == BOT_MODE_SIDE_SHOP or mode == BOT_MODE_WATCHER
 end
 
 

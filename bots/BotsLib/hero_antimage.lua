@@ -83,11 +83,11 @@ function X.MinionThink(hMinionUnit)
 end
 
 -- local ManaBreak 		= bot:GetAbilityByName('antimage_mana_break')
-local Blink 			= bot:GetAbilityByName('antimage_blink')
-local CounterSpell 		= bot:GetAbilityByName('antimage_counterspell')
-local CounterSpellAlly 	= bot:GetAbilityByName('antimage_counterspell_ally')
-local BlinkFragment		= bot:GetAbilityByName('antimage_mana_overload')
-local ManaVoid 			= bot:GetAbilityByName('antimage_mana_void')
+local Blink 			= SafeAbility(bot:GetAbilityByName('antimage_blink'), 'antimage_blink', 'antimage')
+local CounterSpell 		= SafeAbility(bot:GetAbilityByName('antimage_counterspell'), 'antimage_counterspell', 'antimage')
+local CounterSpellAlly 	= SafeAbility(bot:GetAbilityByName('antimage_counterspell_ally'), 'antimage_counterspell_ally', 'antimage')
+local BlinkFragment		= SafeAbility(bot:GetAbilityByName('antimage_mana_overload'), 'antimage_mana_overload', 'antimage')
+local ManaVoid 			= SafeAbility(bot:GetAbilityByName('antimage_mana_void'), 'antimage_mana_void', 'antimage')
 
 local BlinkDesire, BlinkLocation
 local CounterSpellDesire

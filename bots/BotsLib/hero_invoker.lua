@@ -171,21 +171,21 @@ function X.MinionThink(hMinionUnit)
     end
 end
 
-local Quas      = bot:GetAbilityByName('invoker_quas')
-local Wex       = bot:GetAbilityByName('invoker_wex')
-local Exort     = bot:GetAbilityByName('invoker_exort')
-local Invoke    = bot:GetAbilityByName('invoker_invoke')
+local Quas      = SafeAbility(bot:GetAbilityByName('invoker_quas'), 'invoker_quas', 'invoker')
+local Wex       = SafeAbility(bot:GetAbilityByName('invoker_wex'), 'invoker_wex', 'invoker')
+local Exort     = SafeAbility(bot:GetAbilityByName('invoker_exort'), 'invoker_exort', 'invoker')
+local Invoke    = SafeAbility(bot:GetAbilityByName('invoker_invoke'), 'invoker_invoke', 'invoker')
 
-local ColdSnap          = bot:GetAbilityByName('invoker_cold_snap')
-local GhostWalk         = bot:GetAbilityByName('invoker_ghost_walk')
-local Tornado           = bot:GetAbilityByName('invoker_tornado')
-local EMP               = bot:GetAbilityByName('invoker_emp')
-local Alacrity          = bot:GetAbilityByName('invoker_alacrity')
-local ChaosMeteor       = bot:GetAbilityByName('invoker_chaos_meteor')
-local Sunstrike         = bot:GetAbilityByName('invoker_sun_strike')
-local ForgeSpirit       = bot:GetAbilityByName('invoker_forge_spirit')
-local IceWall           = bot:GetAbilityByName('invoker_ice_wall')
-local DeafeningBlast    = bot:GetAbilityByName('invoker_deafening_blast')
+local ColdSnap          = SafeAbility(bot:GetAbilityByName('invoker_cold_snap'), 'invoker_cold_snap', 'invoker')
+local GhostWalk         = SafeAbility(bot:GetAbilityByName('invoker_ghost_walk'), 'invoker_ghost_walk', 'invoker')
+local Tornado           = SafeAbility(bot:GetAbilityByName('invoker_tornado'), 'invoker_tornado', 'invoker')
+local EMP               = SafeAbility(bot:GetAbilityByName('invoker_emp'), 'invoker_emp', 'invoker')
+local Alacrity          = SafeAbility(bot:GetAbilityByName('invoker_alacrity'), 'invoker_alacrity', 'invoker')
+local ChaosMeteor       = SafeAbility(bot:GetAbilityByName('invoker_chaos_meteor'), 'invoker_chaos_meteor', 'invoker')
+local Sunstrike         = SafeAbility(bot:GetAbilityByName('invoker_sun_strike'), 'invoker_sun_strike', 'invoker')
+local ForgeSpirit       = SafeAbility(bot:GetAbilityByName('invoker_forge_spirit'), 'invoker_forge_spirit', 'invoker')
+local IceWall           = SafeAbility(bot:GetAbilityByName('invoker_ice_wall'), 'invoker_ice_wall', 'invoker')
+local DeafeningBlast    = SafeAbility(bot:GetAbilityByName('invoker_deafening_blast'), 'invoker_deafening_blast', 'invoker')
 local Cataclysm         = "Cataclysm" -- placeholder, Cataclysm is actually the ability Sunstrike but acts differently
 
 local modifier_wind_waker = "modifier_wind_waker"
@@ -353,9 +353,10 @@ function X.SkillsComplement()
     nAllyHeroes = Fu.GetNearbyHeroes(bot, 1600, false)
     isInLaningPhase = Fu.IsInLaningPhase(bot)
 
+    -- Ghost Walk stealth: don't break invis with abilities unless dusted
     if bot:HasModifier(modifier_invoker_ghost_walk_self)
-    and (bot:WasRecentlyDamagedByAnyHero(6)
-    or (nBotHP <= 0.8 or #nEnemyHeroes >= #nAllyHeroes + 1)) then
+    and not bot:HasModifier('modifier_item_dustofappearance')
+    and bRetreating then
         return
     end
 
@@ -605,11 +606,11 @@ function X.ConsiderPreInvoke()
         and Invoke:IsFullyCastable() then
             if nEnemyHeroes == nil or #nEnemyHeroes <= 0 then
                 if X.CanAbilityPossiblyBeCasted(Tornado) and not X.IsAbilityAvailableOnSlots(Tornado) then
-                    print('Invoke Tornado as idel spell')
+                    log('Invoke Tornado as idel spell')
                     X.InvokeActualSpell(Tornado)
                 end
                 if X.CanAbilityPossiblyBeCasted(ColdSnap) and not X.IsAbilityAvailableOnSlots(ColdSnap) then
-                    print('Invoke ColdSnap as idel spell')
+                    log('Invoke ColdSnap as idel spell')
                     X.InvokeActualSpell(ColdSnap)
                 end
 
@@ -692,16 +693,16 @@ function X.ConsiderClearActions()
 
     if nActions > 0 then
         if nActions >= 6 then
-            print("Clear Invokers queued actions")
+            log("Clear Invokers queued actions")
             bot:Action_ClearActions(false)
             return
         end
 
         for i=1, nActions do
             local aType = bot:GetQueuedActionType(i)
-            print("Enqueued actions i="..i..", type="..tostring(aType))
+            log("Enqueued actions i="..i..", type="..tostring(aType))
             if aType == -1 then
-                print("Invokers has queued invalid action (-1). Clear action queue.")
+                log("Invokers has queued invalid action (-1). Clear action queue.")
                 bot:Action_ClearActions(false)
                 return
             end
@@ -725,14 +726,14 @@ function X.CastInvokerSpell(ability, target)
         sAbility = ability:GetName()
     end
     
-    print(DotaTime()..' - Invoker checking to cast '..sAbility) -- can be annoying since this line gets printed a lot if e.g. no enough mana or before invoker trains all elements
+    log(DotaTime()..' - Invoker checking to cast '..sAbility) -- can be annoying since this line gets printed a lot if e.g. no enough mana or before invoker trains all elements
 
     if X.IsAbilityReadyForInvoke(ability) then
         X.InvokeActualSpell(ability)
     end
     if X.IsAbilityReadyForCast(ability)
     then
-        print(DotaTime()..' - Invoker has it on slot, going to cast '..sAbility)
+        log(DotaTime()..' - Invoker has it on slot, going to cast '..sAbility)
         bot:Action_ClearActions(false)
 
         -- bot:ActionQueue_Delay(ability:GetCastPoint())
@@ -741,6 +742,9 @@ function X.CastInvokerSpell(ability, target)
         elseif ability == ForgeSpirit
             or ability == IceWall
             or ability == GhostWalk then
+                bot:ActionQueue_UseAbility(ability)
+        elseif ability == DeafeningBlast and bot:GetLevel() >= 25 then
+                -- Level 25: Deafening Blast becomes a ring (no-target)
                 bot:ActionQueue_UseAbility(ability)
         elseif ability == DeafeningBlast
             or ability == Sunstrike
@@ -752,12 +756,12 @@ function X.CastInvokerSpell(ability, target)
             or ability == ColdSnap then
                 bot:ActionQueue_UseAbilityOnEntity(ability, target)
         else
-            print(DotaTime()..' - [ERROR] Tried to cast unsupported spell: '..sAbility)
-            print("Stack Trace:", debug.traceback())
+            log(DotaTime()..' - [ERROR] Tried to cast unsupported spell: '..sAbility)
+            log("Stack Trace:", debug.traceback())
         end
-        print(DotaTime()..' - Invoker tried to cast '..sAbility)
+        log(DotaTime()..' - Invoker tried to cast '..sAbility)
     else
-        -- print(DotaTime()..' - Invoker trying to cast a spell that is not ready: '..abilityName..', '.. tostring(X.IsAbilityAvailableOnSlots(ability)) ..', '..tostring(ability:IsFullyCastable()))
+        -- log(DotaTime()..' - Invoker trying to cast a spell that is not ready: '..abilityName..', '.. tostring(X.IsAbilityAvailableOnSlots(ability)) ..', '..tostring(ability:IsFullyCastable()))
     end
 end
 
@@ -1372,7 +1376,7 @@ function X.CheckTempModifiers(modifierNames, botTarget, nDelay)
         if botTarget:HasModifier(mName) then
             countMo = countMo + 1
             local remaining = Fu.GetModifierTime(botTarget, mName)
-            print(DotaTime().." - Target has modifier "..mName..", the remaining time: " .. tostring(remaining) .. " seconds, delay: "..tostring(nDelay))
+            log(DotaTime().." - Target has modifier "..mName..", the remaining time: " .. tostring(remaining) .. " seconds, delay: "..tostring(nDelay))
             if remaining > 0 and remaining <= nDelay
             then
                 return BOT_ACTION_DESIRE_HIGH
@@ -1388,8 +1392,7 @@ function X.CheckTempModifiers(modifierNames, botTarget, nDelay)
 end
 
 -- 7.39 facet changed
-function X.ConsiderCataclysm() return BOT_ACTION_DESIRE_NONE, 0 end
-function X.ConsiderCataclysm_()
+function X.ConsiderCataclysm()
     if not X.CanAbilityPossiblyBeCasted(Cataclysm) then
         return BOT_ACTION_DESIRE_NONE, 0
     end
@@ -1501,69 +1504,74 @@ function X.ConsiderSunstrike()
         return BOT_ACTION_DESIRE_NONE, 0
     end
 
+    -- Don't waste sunstrike while enemies are lifted by our Tornado
+    if DotaTime() - (AbilityCastedTimes['Tornado'] or 0) <= (TornadoLiftTime or 0) then
+        return BOT_ACTION_DESIRE_NONE, 0
+    end
+
     local nDelay = Sunstrike:GetSpecialValueFloat('delay')
-    local nCastPoint = 0 -- Sunstrike:GetCastPoint()
     local nDamage = Sunstrike:GetSpecialValueInt('damage')
+    local nAttackRange = bot:GetAttackRange()
 
     local nAllEnemyHeroes = GetUnitList(UNIT_LIST_ENEMY_HEROES)
     for _, enemyHero in pairs(nAllEnemyHeroes)
     do
-        if Fu.IsValidHero(enemyHero) and not Fu.IsSuspiciousIllusion(enemyHero) then
-            -- Check if we can kill the enemy with Sunstrike
-            if nDamage * 1.2 > enemyHero:GetHealth()
-            and not enemyHero:HasModifier('modifier_abaddon_borrowed_time')
-            and not enemyHero:HasModifier('modifier_brewmaster_storm_cyclone')
-            and not enemyHero:HasModifier('modifier_dazzle_shallow_grave')
-            and not enemyHero:HasModifier('modifier_eul_cyclone')
-            and not enemyHero:HasModifier(modifier_invoker_tornado)
-            and not enemyHero:HasModifier('modifier_necrolyte_reapers_scythe')
-            and not enemyHero:HasModifier('modifier_oracle_false_promise_timer')
-            and not enemyHero:HasModifier('modifier_templar_assassin_refraction_absorb')
-            and not enemyHero:HasModifier('modifier_item_aeon_disk_buff')
-            then
-                if nDamage > enemyHero:GetHealth() then
-                    -- 残血tp
-                    if enemyHero:HasModifier( 'modifier_teleporting' ) then
-                        local remaining = Fu.GetModifierTime(enemyHero, 'modifier_teleporting')
-                        if remaining ~= nil and remaining > nDelay + 0.05
-                        then
-                            return BOT_ACTION_DESIRE_HIGH, enemyHero:GetLocation()
-                        else
-                            -- tp 马上完成，则天火对方泉水
-                            return BOT_ACTION_DESIRE_HIGH, Utils.GetEnemyFountainTpPoint()
-                        end
+        if Fu.IsValidHero(enemyHero)
+        and not Fu.IsSuspiciousIllusion(enemyHero)
+        and Fu.CanCastOnNonMagicImmune(enemyHero)
+        and not enemyHero:HasModifier('modifier_abaddon_borrowed_time')
+        and not enemyHero:HasModifier('modifier_brewmaster_storm_cyclone')
+        and not enemyHero:HasModifier('modifier_dazzle_shallow_grave')
+        and not enemyHero:HasModifier('modifier_eul_cyclone')
+        and not enemyHero:HasModifier(modifier_invoker_tornado)
+        and not enemyHero:HasModifier('modifier_necrolyte_reapers_scythe')
+        and not enemyHero:HasModifier('modifier_oracle_false_promise_timer')
+        and not enemyHero:HasModifier('modifier_templar_assassin_refraction_absorb')
+        and not enemyHero:HasModifier('modifier_item_aeon_disk_buff')
+        then
+            -- Stability-adjusted delay: erratic targets get shorter prediction time
+            local nStability = enemyHero:GetMovementDirectionStability()
+            local nAdjustedDelay = RemapValClamped(nStability, 0.0, 1.0, 0.0, nDelay)
+            local eta = nAdjustedDelay
+
+            -- TP interrupt: enemy channeling TP with low HP
+            if enemyHero:HasModifier('modifier_teleporting') then
+                local remaining = Fu.GetModifierTime(enemyHero, 'modifier_teleporting')
+                if remaining ~= nil and remaining > nDelay + 0.05 then
+                    if nDamage > enemyHero:GetHealth() then
+                        return BOT_ACTION_DESIRE_HIGH, enemyHero:GetLocation()
                     end
-
-                    -- Predict the enemy's location
-                    local targetLoc = Fu.GetCorrectLoc(enemyHero, nDelay + nCastPoint)
-                    return BOT_ACTION_DESIRE_HIGH, targetLoc
+                else
+                    -- TP about to finish: sunstrike enemy fountain
+                    if nDamage > enemyHero:GetHealth() then
+                        return BOT_ACTION_DESIRE_HIGH, Utils.GetEnemyFountainTpPoint()
+                    end
                 end
+            end
 
-                -- If allies are nearby, assume they will help
-                if #Fu.GetHeroesNearLocation(false, enemyHero:GetLocation(), 300) >= 1 and (not isInLaningPhase or nDamage > enemyHero:GetHealth()) then
-                    local targetLoc = Fu.GetCorrectLoc(enemyHero, nDelay + nCastPoint)
-                    return BOT_ACTION_DESIRE_HIGH, targetLoc
-                end
+            -- Kill snipe: enemy outside attack range with lethal HP (pure damage, no resist)
+            if nDamage > enemyHero:GetHealth()
+            and GetUnitToUnitDistance(bot, enemyHero) > nAttackRange + 50
+            then
+                return BOT_ACTION_DESIRE_HIGH, Fu.GetCorrectLoc(enemyHero, nDelay)
+            end
+
+            -- Assist: ally fighting the enemy nearby, sunstrike adds damage
+            if #Fu.GetHeroesNearLocation(false, enemyHero:GetLocation(), 600) >= 1
+            and GetUnitToUnitDistance(bot, enemyHero) > nAttackRange + 50
+            and Fu.GetHP(enemyHero) < 0.4
+            then
+                return BOT_ACTION_DESIRE_HIGH, Fu.GetCorrectLoc(enemyHero, nDelay)
             end
         end
     end
 
-    if Fu.IsDoingRoshan(bot)
-    then
-        if Fu.IsRoshan(botTarget)
-        and bAttacking
-        then
-            return BOT_ACTION_DESIRE_HIGH, botTarget:GetLocation()
-        end
+    -- Roshan/Tormentor: extra damage while fighting
+    if Fu.IsDoingRoshan(bot) and Fu.IsRoshan(botTarget) and bAttacking then
+        return BOT_ACTION_DESIRE_HIGH, botTarget:GetLocation()
     end
-
-    if Fu.IsDoingTormentor(bot)
-    then
-        if Fu.IsTormentor(botTarget)
-        and bAttacking
-        then
-            return BOT_ACTION_DESIRE_HIGH, botTarget:GetLocation()
-        end
+    if Fu.IsDoingTormentor(bot) and Fu.IsTormentor(botTarget) and bAttacking then
+        return BOT_ACTION_DESIRE_HIGH, botTarget:GetLocation()
     end
 
     return BOT_ACTION_DESIRE_NONE, 0
@@ -1691,6 +1699,7 @@ function X.ConsiderIceWall()
         and not Fu.IsDisabled(nEnemyHeroes[1])
         and (nBotHP < 0.6 or Fu.GetTotalEstimatedDamageToTarget(nEnemyHeroes, bot) > bot:GetHealth())
         and not isInLaningPhase
+        and bot:IsFacingLocation(Fu.GetTeamFountain(), 30) -- ensure wall blocks pursuers, not behind us
 		then
             return BOT_ACTION_DESIRE_HIGH
 		end
@@ -1818,7 +1827,7 @@ function X.InvokeActualSpell(ability)
         abilityName = ability:GetName()
     end
 
-    print(DotaTime()..' - Invoker going to invoke '..abilityName)
+    log(DotaTime()..' - Invoker going to invoke '..abilityName)
 
     if abilityName == Cataclysm or ability == Sunstrike then
         X.InvokeSpell(Exort, Exort, Exort)
@@ -1841,10 +1850,10 @@ function X.InvokeActualSpell(ability)
     elseif ability == ColdSnap then
         X.InvokeSpell(Quas, Quas, Quas)
     else
-        print('[ERROR] Tried to invoke unsupported ability: '..abilityName)
-		print("Stack Trace:", debug.traceback())
+        log('[ERROR] Tried to invoke unsupported ability: '..abilityName)
+		log("Stack Trace:", debug.traceback())
     end
-    print(DotaTime()..' - Invoker tried to invoke '..abilityName)
+    log(DotaTime()..' - Invoker tried to invoke '..abilityName)
 end
 
 function X.InvokeSpell(Orb1, Orb2, Orb3)
@@ -1906,8 +1915,8 @@ function X.HaveElementsTrainedToInvokeAbility(ability)
     elseif ability == ColdSnap then
         return Quas:IsTrained()
     else
-        print('[ERROR] Checks invokability on an unsupported ability')
-		print("Stack Trace:", debug.traceback())
+        log('[ERROR] Checks invokability on an unsupported ability')
+		log("Stack Trace:", debug.traceback())
     end
     
     return nil
@@ -1939,7 +1948,7 @@ function CheckAbilityUsage()
                     if ability == Sunstrike and ability:GetCooldownTimeRemaining() > 50 then
                         sAbility = 'Cataclysm'
                     end
-                    print(DotaTime()..' - Invoker just used ability ' .. sAbility .. ', reset the cooldown tracking time.')
+                    log(DotaTime()..' - Invoker just used ability ' .. sAbility .. ', reset the cooldown tracking time.')
                     AbilityCastedTimes[sAbility] = DotaTime()
                 end
             end

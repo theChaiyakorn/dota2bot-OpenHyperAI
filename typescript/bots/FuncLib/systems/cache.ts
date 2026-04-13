@@ -63,6 +63,10 @@ let globalLocationStateCache: GlobalLocationState | null = null;
 // Import Fu here to avoid circular dependencies
 import * as Fu from "bots/FuncLib/func_utils";
 
+// Re-export cache utilities and keys so callers can import everything from cache
+export { SetCachedVars, GetCachedVars } from "./utils";
+export * as CK from "bots/FuncLib/systems/cache_keys";
+
 /**
  * Get or update global game state cache
  */

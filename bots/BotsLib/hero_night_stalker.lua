@@ -116,11 +116,11 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local Void              = bot:GetAbilityByName('night_stalker_void')
-local CripplingFear     = bot:GetAbilityByName('night_stalker_crippling_fear')
-local HunterInTheNight  = bot:GetAbilityByName('night_stalker_hunter_in_the_night')
-local MidnightFeast     = bot:GetAbilityByName('night_stalker_midnight_feast')
-local DarkAscension     = bot:GetAbilityByName('night_stalker_darkness')
+local Void              = SafeAbility(bot:GetAbilityByName('night_stalker_void'), 'night_stalker_void', 'night_stalker')
+local CripplingFear     = SafeAbility(bot:GetAbilityByName('night_stalker_crippling_fear'), 'night_stalker_crippling_fear', 'night_stalker')
+local HunterInTheNight  = SafeAbility(bot:GetAbilityByName('night_stalker_hunter_in_the_night'), 'night_stalker_hunter_in_the_night', 'night_stalker')
+local MidnightFeast     = SafeAbility(bot:GetAbilityByName('night_stalker_midnight_feast'), 'night_stalker_midnight_feast', 'night_stalker')
+local DarkAscension     = SafeAbility(bot:GetAbilityByName('night_stalker_darkness'), 'night_stalker_darkness', 'night_stalker')
 
 local VoidDesire, VoidTarget
 local CripplingFearDesire

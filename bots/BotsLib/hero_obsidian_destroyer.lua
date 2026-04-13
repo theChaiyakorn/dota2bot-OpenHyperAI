@@ -9,59 +9,89 @@ local sAbilityList = Fu.Skill.GetAbilityList( bot )
 local sRole = Fu.Item.GetRoleItemsBuyList( bot )
 
 local tTalentTreeList = {
-						['t25'] = {0, 10},
-						['t20'] = {0, 10},
-						['t15'] = {10, 0},
-						['t10'] = {10, 0},
+	{--pos1/2
+		['t25'] = {0, 10},
+		['t20'] = {10, 0},
+		['t15'] = {10, 0},
+		['t10'] = {10, 0},
+	},
 }
 
 local tAllAbilityBuildList = {
-						{2,1,4,2,2,6,2,1,1,1,6,4,4,4,6},--pos2
+	{2,1,4,2,2,6,2,4,1,1,6,1,1,4,6},--pos1: astral>objurgation>orb
+	{2,1,4,2,2,6,2,1,1,1,6,4,4,4,6},--pos2: astral>orb>objurgation
 }
 
-local nAbilityBuildList = Fu.Skill.GetRandomBuild( tAllAbilityBuildList )
+local nAbilityBuildList
+local nTalentBuildList = Fu.Skill.GetTalentBuild(tTalentTreeList[1])
 
-local nTalentBuildList = Fu.Skill.GetTalentBuild( tTalentTreeList )
+if sRole == "pos_1" then
+    nAbilityBuildList = tAllAbilityBuildList[1]
+else
+    nAbilityBuildList = tAllAbilityBuildList[2]
+end
 
 local sRoleItemsBuyList = {}
+
+sRoleItemsBuyList['pos_1'] = {
+    "item_tango",
+    "item_double_branches",
+    "item_faerie_fire",
+    "item_double_circlet",
+
+    "item_magic_wand",
+    "item_double_null_talisman",
+    "item_power_treads",
+    "item_witch_blade",
+    "item_force_staff",
+    "item_hurricane_pike",--
+    "item_black_king_bar",--
+    "item_aghanims_shard",
+    "item_devastator",--
+    "item_sheepstick",--
+    "item_shivas_guard",--
+    "item_moon_shard",
+    "item_ultimate_scepter_2",
+    "item_travel_boots_2",--
+}
 
 sRoleItemsBuyList['pos_2'] = {
     "item_tango",
     "item_double_branches",
     "item_faerie_fire",
+    "item_double_mantle",
 
+    "item_magic_wand",
     "item_double_null_talisman",
     "item_power_treads",
-    "item_magic_wand",
     "item_witch_blade",
-    "item_blink",
-    "item_dragon_lance",
-    "item_black_king_bar",--
     "item_force_staff",
     "item_hurricane_pike",--
+    "item_black_king_bar",--
     "item_aghanims_shard",
     "item_devastator",--
-    "item_travel_boots",
-    "item_moon_shard",
     "item_sheepstick",--
-    "item_arcane_blink",--
-    "item_travel_boots_2",--
+    "item_shivas_guard",--
+    "item_moon_shard",
     "item_ultimate_scepter_2",
+    "item_travel_boots_2",--
 }
 
-sRoleItemsBuyList['pos_1'] = sRoleItemsBuyList['pos_2']
-
 sRoleItemsBuyList['pos_3'] = sRoleItemsBuyList['pos_2']
-
 sRoleItemsBuyList['pos_4'] = sRoleItemsBuyList['pos_2']
-
 sRoleItemsBuyList['pos_5'] = sRoleItemsBuyList['pos_2']
 
 X['sBuyList'] = sRoleItemsBuyList[sRole]
 
 X['sSellList'] = {
-    "item_null_talisman",
+    "item_black_king_bar",
     "item_magic_wand",
+
+    "item_sheepstick",
+    "item_null_talisman",
+
+    "item_shivas_guard",
+    "item_null_talisman",
 }
 
 if Fu.Role.IsPvNMode() or Fu.Role.IsAllShadow() then X['sBuyList'], X['sSellList'] = { 'PvN_mid' }, {} end
@@ -81,11 +111,11 @@ function X.MinionThink(hMinionUnit)
 	end
 end
 
-local ArcaneOrb             = bot:GetAbilityByName('obsidian_destroyer_arcane_orb')
-local AstralImprisonment    = bot:GetAbilityByName('obsidian_destroyer_astral_imprisonment')
-local EssenceAura           = bot:GetAbilityByName('obsidian_destroyer_essence_aura')
-local SanitysEclipse        = bot:GetAbilityByName('obsidian_destroyer_sanity_eclipse')
-local Objurgation           = bot:GetAbilityByName('obsidian_destroyer_objurgation')
+local ArcaneOrb             = SafeAbility(bot:GetAbilityByName('obsidian_destroyer_arcane_orb'), 'obsidian_destroyer_arcane_orb', 'obsidian_destroyer')
+local AstralImprisonment    = SafeAbility(bot:GetAbilityByName('obsidian_destroyer_astral_imprisonment'), 'obsidian_destroyer_astral_imprisonment', 'obsidian_destroyer')
+local Equilibrium           = SafeAbility(bot:GetAbilityByName('obsidian_destroyer_equilibrium'), 'obsidian_destroyer_equilibrium', 'obsidian_destroyer')
+local SanitysEclipse        = SafeAbility(bot:GetAbilityByName('obsidian_destroyer_sanity_eclipse'), 'obsidian_destroyer_sanity_eclipse', 'obsidian_destroyer')
+local Objurgation           = SafeAbility(bot:GetAbilityByName('obsidian_destroyer_objurgation'), 'obsidian_destroyer_objurgation', 'obsidian_destroyer')
 
 local ArcaneOrbDesire, ArcaneOrbTarget
 local AstralImprisonmentDesire, AstralImprisonmentTarget
@@ -93,17 +123,23 @@ local SanitysEclipseDesire, SanitysEclipseLocation
 local ObjurgationDesire
 
 local botTarget
+local nEnemyHeroes, nAllyHeroes
 local bGoingOnSomeone
 local nBotHP
 function X.SkillsComplement()
     if Fu.CanNotUseAbility(bot) then return end
 
-	bGoingOnSomeone = Fu.IsGoingOnSomeone(bot)
+	local ctx = AbilityCtx.Build(bot)
+	bGoingOnSomeone = ctx.isEngaging
 	nBotHP = Fu.GetHP(bot)
+	botTarget = ctx.target
+	nEnemyHeroes = ctx.enemies
+	nAllyHeroes = ctx.allies
 
+	-- Auto-cast Arcane Orb at max ability level (level 4)
 	if ArcaneOrb:IsTrained()
-	and ArcaneOrb:GetAutoCastState( ) == false
-	and bot:GetLevel() >= 9
+	and ArcaneOrb:GetAutoCastState() == false
+	and ArcaneOrb:GetLevel() >= 4
 	then
 		ArcaneOrb:ToggleAutoCast()
 	end
@@ -171,24 +207,28 @@ function X.ConsiderArcaneOrb()
 		end
 	end
 
-    -- if Fu.IsLaning(bot)
-	-- then
-	-- 	local nEnemyLaneCreeps = bot:GetNearbyLaneCreeps(nAttackRange + 200, true)
+    -- Last-hit creeps with Arcane Orb during laning
+    if Fu.IsLaning(bot) and Fu.GetMP(bot) > 0.5
+    then
+        local nEnemyLaneCreeps = bot:GetNearbyLaneCreeps(nAttackRange + 100, true)
+        for _, creep in pairs(nEnemyLaneCreeps)
+        do
+            if Fu.IsValid(creep)
+            and Fu.CanKillTarget(creep, nDamage, DAMAGE_TYPE_PURE)
+            then
+                return BOT_ACTION_DESIRE_HIGH, creep
+            end
+        end
+    end
 
-	-- 	for _, creep in pairs(nEnemyLaneCreeps)
-	-- 	do
-	-- 		if Fu.IsValid(creep)
-	-- 		and Fu.CanKillTarget(creep, nDamage, DAMAGE_TYPE_PURE)
-	-- 		then
-	-- 			local nCreepInRangeHero = creep:GetNearbyHeroes(500, false, BOT_MODE_NONE)
-
-	-- 			if nCreepInRangeHero ~= nil and #nCreepInRangeHero >= 1
-	-- 			then
-	-- 				return BOT_ACTION_DESIRE_HIGH, creep
-	-- 			end
-	-- 		end
-	-- 	end
-	-- end
+    -- Use orb when pushing/farming if mana is high
+    if (Fu.IsPushing(bot) or Fu.IsDefending(bot)) and Fu.GetMP(bot) > 0.6
+    then
+        local nEnemyCreeps = bot:GetNearbyCreeps(nAttackRange + 100, true)
+        if Fu.IsValid(nEnemyCreeps[1]) then
+            return BOT_ACTION_DESIRE_HIGH, nEnemyCreeps[1]
+        end
+    end
 
     if Fu.IsDoingRoshan(bot)
     then
@@ -224,6 +264,21 @@ function X.ConsiderAstralImprisonment()
 	local nDamage = AstralImprisonment:GetSpecialValueInt('damage')
     local nDuration = AstralImprisonment:GetSpecialValueInt('prison_duration')
     botTarget = Fu.GetProperTarget(bot)
+
+    -- Self-cast for survival: astral self when about to die
+    if nBotHP < 0.2 and bot:WasRecentlyDamagedByAnyHero(1.5)
+    and #(bot:GetNearbyHeroes(800, true, BOT_MODE_NONE) or {}) >= 1
+    and not bot:HasModifier('modifier_obsidian_destroyer_astral_imprisonment_prison')
+    then
+        return BOT_ACTION_DESIRE_HIGH, bot
+    end
+
+    -- Self-cast to dodge incoming stun projectile at low HP
+    if nBotHP < 0.4 and Fu.IsStunProjectileIncoming(bot, 1200)
+    and not bot:HasModifier('modifier_obsidian_destroyer_astral_imprisonment_prison')
+    then
+        return BOT_ACTION_DESIRE_HIGH, bot
+    end
 
     local nEnemyHeroes = Fu.GetNearbyHeroes(bot,nCastRange, true, BOT_MODE_NONE)
     for _, enemyHero in pairs(nEnemyHeroes)
@@ -454,38 +509,34 @@ function X.ConsiderSanitysEclipse()
 	local nCastRange = SanitysEclipse:GetCastRange()
 	local nMultiplier = SanitysEclipse:GetSpecialValueFloat('damage_multiplier')
     local nBaseDamage = SanitysEclipse:GetSpecialValueFloat('base_damage')
+    local nRadius = SanitysEclipse:GetSpecialValueInt('radius')
 
-    if bGoingOnSomeone
-	then
-        local nInRangeAlly = Fu.GetNearbyHeroes(bot,1200, false, BOT_MODE_NONE)
+    local nInRangeEnemy = Fu.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE)
+    for _, enemyHero in pairs(nInRangeEnemy)
+    do
+        if Fu.IsValidTarget(enemyHero)
+        and Fu.CanCastOnNonMagicImmune(enemyHero)
+        and not Fu.IsSuspiciousIllusion(enemyHero)
+        and not Fu.HasForbiddenModifier(enemyHero)
+        then
+            local nManaDiff = math.abs(bot:GetMana() - enemyHero:GetMana())
+            local nDamage = nManaDiff * nMultiplier
 
-        local nInRangeEnemy = Fu.GetNearbyHeroes(bot,nCastRange, true, BOT_MODE_NONE)
-        for _, enemyHero in pairs(nInRangeEnemy)
-        do
-            if Fu.IsValidTarget(enemyHero)
-            and Fu.CanCastOnNonMagicImmune(enemyHero)
-            and not Fu.IsSuspiciousIllusion(enemyHero)
-            and not enemyHero:HasModifier('modifier_abaddon_borrowed_time')
-            and not enemyHero:HasModifier('modifier_dazzle_shallow_grave')
-            and not enemyHero:HasModifier('modifier_enigma_black_hole_pull')
-            and not enemyHero:HasModifier('modifier_faceless_void_chronosphere_freeze')
-            and not enemyHero:HasModifier('modifier_legion_commander_duel')
-            and not enemyHero:HasModifier('modifier_necrolyte_reapers_scythe')
-            and not enemyHero:HasModifier('modifier_oracle_false_promise_timer')
+            -- Use ult if it can kill
+            if Fu.CanKillTarget(enemyHero, nBaseDamage + nDamage, DAMAGE_TYPE_MAGICAL)
             then
-                local nTargetInRangeAlly = Fu.GetNearbyHeroes(enemyHero, 1200, false, BOT_MODE_NONE)
-                local nManaDiff = math.abs(bot:GetMana() - enemyHero:GetMana())
-                local nDamage = nManaDiff * nMultiplier
+                return BOT_ACTION_DESIRE_HIGH, enemyHero:GetLocation()
+            end
 
-                if nInRangeAlly ~= nil and nTargetInRangeAlly ~= nil
-                and #nInRangeAlly >= #nTargetInRangeAlly
-                and Fu.CanKillTarget(enemyHero, nBaseDamage + nDamage, DAMAGE_TYPE_MAGICAL)
-                then
-                    return BOT_ACTION_DESIRE_HIGH, enemyHero:GetLocation()
+            -- Use ult in teamfight if it hits 2+ enemies
+            if Fu.IsInTeamFight(bot, 1200) then
+                local locationAoE = bot:FindAoELocation(true, true, bot:GetLocation(), nCastRange, nRadius, 0, 0)
+                if locationAoE.count >= 2 then
+                    return BOT_ACTION_DESIRE_HIGH, locationAoE.targetloc
                 end
             end
         end
-	end
+    end
 
     return BOT_ACTION_DESIRE_NONE, 0
 end
@@ -535,6 +586,14 @@ function X.ConsiderObjurgation()
         then
             return BOT_ACTION_DESIRE_HIGH
         end
+    end
+
+    -- Roshan/Tormentor: use barrier when taking damage
+    if (Fu.IsDoingRoshan(bot) or Fu.IsDoingTormentor(bot))
+    and nBotHP < 0.6
+    and Fu.IsAttacking(bot)
+    then
+        return BOT_ACTION_DESIRE_HIGH
     end
 
     return BOT_ACTION_DESIRE_NONE

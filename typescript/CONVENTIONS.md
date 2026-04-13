@@ -128,33 +128,34 @@ TSTL compiles `obj.method(arg)` to Lua `obj:method(arg)` (colon = passes `obj` a
 
 These functions have a fixed, small number of possible keys. Cache on the bot handle with appropriate TTL:
 
-| Function | Max keys | TTL | Why safe |
-|----------|----------|-----|----------|
-| `GetNumOfAliveHeroes(bEnemy)` | 2 | 1.0s | Only true/false param |
-| `GetAliveCoreCount(bEnemy)` | 2 | 1.0s | Only true/false param |
-| `GetAverageLevel(bEnemy)` | 2 | 2.0s | Only true/false param |
-| `IsInTeamFight(bot, radius)` | 1 | 0.2s | Always called with 1200 |
-| `GetCoresAverageNetworth()` | 1 | 2.0s | No params |
-| `DoesTeamHaveAegis()` | 1 | 2.0s | No params |
-| `WeAreStronger(bot, radius)` | ~3 | 0.5s | Few distinct radii |
+| Function                      | Max keys | TTL  | Why safe                |
+| ----------------------------- | -------- | ---- | ----------------------- |
+| `GetNumOfAliveHeroes(bEnemy)` | 2        | 1.0s | Only true/false param   |
+| `GetAliveCoreCount(bEnemy)`   | 2        | 1.0s | Only true/false param   |
+| `GetAverageLevel(bEnemy)`     | 2        | 2.0s | Only true/false param   |
+| `IsInTeamFight(bot, radius)`  | 1        | 0.2s | Always called with 1200 |
+| `GetCoresAverageNetworth()`   | 1        | 2.0s | No params               |
+| `DoesTeamHaveAegis()`         | 1        | 2.0s | No params               |
+| `WeAreStronger(bot, radius)`  | ~3       | 0.5s | Few distinct radii      |
 
 ### NEVER cache (unbounded key space)
 
 These functions take **location parameters** that change every tick as units move, creating infinite unique keys. Caching these caused game crashes from unbounded table growth:
 
-| Function | Why NOT safe |
-|----------|-------------|
+| Function                                    | Why NOT safe                              |
+| ------------------------------------------- | ----------------------------------------- |
 | `GetNearbyHeroes(bot, radius, enemy, mode)` | Called from different locations each tick |
-| `GetAlliesNearLoc(vLoc, radius)` | Location changes continuously |
-| `GetEnemiesNearLoc(vLoc, radius)` | Location changes continuously |
-| `GetLastSeenEnemiesNearLoc(vLoc, radius)` | Location changes continuously |
-| `GetHeroesNearLocation(enemy, loc, dist)` | Location changes continuously |
+| `GetAlliesNearLoc(vLoc, radius)`            | Location changes continuously             |
+| `GetEnemiesNearLoc(vLoc, radius)`           | Location changes continuously             |
+| `GetLastSeenEnemiesNearLoc(vLoc, radius)`   | Location changes continuously             |
+| `GetHeroesNearLocation(enemy, loc, dist)`   | Location changes continuously             |
 
 Even with grid-snapped keys (floor(x/500)), bots moving across grid boundaries create new entries every few seconds, and old entries are never cleaned up.
 
 ### Cache storage pattern
 
 For Lua-side caching, store directly on the bot handle:
+
 ```lua
 -- GOOD: bounded key, stored on bot handle
 if bot._tfCache and DotaTime() - bot._tfCache[1] <= 0.2 then
@@ -165,6 +166,7 @@ bot._tfCache = { DotaTime(), result }
 ```
 
 For TS-side caching, use `{t, v}` named properties (NOT array indices):
+
 ```typescript
 // GOOD: named properties compile correctly regardless of type
 GameStates.cachedVars[key] = { t: DotaTime(), v: value };
@@ -177,6 +179,7 @@ if (DotaTime() - entry[0] <= withinTime) return entry[1]; // CRASH
 ```
 
 Use numeric keys instead of string concatenation:
+
 ```typescript
 // GOOD: numeric key, zero string allocation
 const cacheKey = 50000 + bot.GetPlayerID() * 10 + typeHash;
@@ -194,36 +197,43 @@ const cacheKey = "IsBotThinking" + bot.GetPlayerID() + "_" + type;
 ## Known Bugs & Lessons Learned
 
 ### 1. `entry[0]` on `any`-typed variable (CRITICAL)
+
 **Symptom:** All bots stuck at 0 desire, all modes broken.
 **Cause:** TS cache stored `[DotaTime(), value]` (array), read `entry[0]`. TSTL did not convert `[0]→[1]` because type was `any`. Lua `entry[0]` is nil → `DotaTime() - nil` → crash every frame in `IsBotThinkingMeaningfulAction`.
 **Fix:** Use `{t, v}` named properties instead of array indices.
 
 ### 2. Static class methods compiled with `self` (CRITICAL)
+
 **Symptom:** Wisp didn't buy items or learn skills.
 **Cause:** `HeroBuilder.export()` static method compiled to `HeroBuilder.export(self, ...)`. Call `HeroBuilder:export(hero, ...)` passed HeroBuilder as self, shifting all args.
 **Fix:** Use standalone exported functions, not static class methods.
 
 ### 3. `Fu.Item:GetRoleItemsBuyList` colon call (CRITICAL)
+
 **Symptom:** Hero role always nil, builds empty.
 **Cause:** TSTL compiled `Fu.Item.GetRoleItemsBuyList(bot)` as `Fu.Item:GetRoleItemsBuyList(bot)` despite `@noSelf`. Passed `Fu.Item` as self.
 **Fix:** Use `require()` directly for the Item module.
 
 ### 4. Location-based cache keys cause game crash
+
 **Symptom:** Dota freezes/crashes when bots start laning.
 **Cause:** `GetAlliesNearLoc`/`GetEnemiesNearLoc` cached with `math.floor(vLoc.x/500)` keys. As bots move, new keys created every tick, `bot._fc` table grows unbounded.
 **Fix:** Only cache functions with bounded key space (see table above).
 
 ### 5. Cache key collision between BOT_MODE_NONE and BOT_MODE_ATTACK
+
 **Symptom:** Bots stuck in attack mode or wrong desire values.
 **Cause:** `GetNearbyHeroes` cache key didn't include `bBotMode` parameter. `BOT_MODE_NONE` and `BOT_MODE_ATTACK` shared the same key, returning wrong filtered results.
 **Fix:** Include all parameters in cache key (removed location-based caching entirely).
 
 ### 6. `GetNearbyHeroes` returns nil (global_overrides)
+
 **Symptom:** `#enemies` crashes with nil error, modes return 0 desire.
 **Cause:** `global_overrides.lua` overrides `GetNearbyHeroes` to return nil when `bot:CanBeSeen()` is false. At game start, bots in fountain may not be "seen".
 **Fix:** Always use `or {}` when storing the result: `local enemies = bot:GetNearbyHeroes(...) or {}`
 
 ### 7. Missing Consider() assignments in SkillsComplement (22 heroes)
+
 **Symptom:** Heroes never cast abilities.
 **Cause:** PR-140 refactor from `J.` to `Fu.` accidentally removed `castQDesire = X.ConsiderQ()` assignment lines. The `if castQDesire > 0` checks remained but desire was always nil.
 **Fix:** Added assignments back for all 22 affected heroes.

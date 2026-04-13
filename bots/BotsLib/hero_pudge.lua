@@ -208,10 +208,10 @@ function X.SkillsComplement()
 	bAttacking = Fu.IsAttacking(bot)
 
     -- [Improvement #8] Re-fetch ability handles each tick
-    local MeatHook   = bot:GetAbilityByName('pudge_meat_hook')
-    local Rot        = bot:GetAbilityByName('pudge_rot')
-    local MeatShield = bot:GetAbilityByName('pudge_flesh_heap')
-    local Dismember  = bot:GetAbilityByName('pudge_dismember')
+    local MeatHook   = SafeAbility(bot:GetAbilityByName('pudge_meat_hook'), 'pudge_meat_hook', 'pudge')
+    local Rot        = SafeAbility(bot:GetAbilityByName('pudge_rot'), 'pudge_rot', 'pudge')
+    local MeatShield = SafeAbility(bot:GetAbilityByName('pudge_flesh_heap'), 'pudge_flesh_heap', 'pudge')
+    local Dismember  = SafeAbility(bot:GetAbilityByName('pudge_dismember'), 'pudge_dismember', 'pudge')
 
     -- [Improvement #9] Cache per-tick variables
     botTarget = Fu.GetProperTarget(bot)

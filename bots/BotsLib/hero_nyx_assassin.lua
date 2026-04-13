@@ -123,12 +123,12 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local Impale            = bot:GetAbilityByName('nyx_assassin_impale')
-local Mindflare         = bot:GetAbilityByName('nyx_assassin_jolt')
-local SpikedCarapace    = bot:GetAbilityByName('nyx_assassin_spiked_carapace')
-local Burrow            = bot:GetAbilityByName('nyx_assassin_burrow')
-local UnBurrow          = bot:GetAbilityByName('nyx_assassin_unburrow')
-local Vendetta          = bot:GetAbilityByName('nyx_assassin_vendetta')
+local Impale            = SafeAbility(bot:GetAbilityByName('nyx_assassin_impale'), 'nyx_assassin_impale', 'nyx_assassin')
+local Mindflare         = SafeAbility(bot:GetAbilityByName('nyx_assassin_jolt'), 'nyx_assassin_jolt', 'nyx_assassin')
+local SpikedCarapace    = SafeAbility(bot:GetAbilityByName('nyx_assassin_spiked_carapace'), 'nyx_assassin_spiked_carapace', 'nyx_assassin')
+local Burrow            = SafeAbility(bot:GetAbilityByName('nyx_assassin_burrow'), 'nyx_assassin_burrow', 'nyx_assassin')
+local UnBurrow          = SafeAbility(bot:GetAbilityByName('nyx_assassin_unburrow'), 'nyx_assassin_unburrow', 'nyx_assassin')
+local Vendetta          = SafeAbility(bot:GetAbilityByName('nyx_assassin_vendetta'), 'nyx_assassin_vendetta', 'nyx_assassin')
 
 local ImpaleDesire, ImpaleLocation
 local MindflareDesire, MindflareTarget

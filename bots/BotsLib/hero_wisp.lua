@@ -125,7 +125,7 @@ local function considerTether()
         return BotActionDesire.None, nil
     end
     local castRange = abilityTether:GetCastRange()
-    local allies = bot:GetNearbyHeroes(castRange, false, BotMode.None)
+    local allies = bot:GetNearbyHeroes(castRange, false, BotMode.None) or ({})
     for ____, ally in ipairs(allies) do
         do
             local __continue8
@@ -190,7 +190,7 @@ local function considerRelocate()
         local allyHP = Fu.GetHP(bot.stateTetheredHero)
         local botHP = Fu.GetHP(bot)
         if allyHP <= RELOCATE_HP_THRESHOLD or botHP <= RELOCATE_HP_THRESHOLD then
-            local allyNearbyEnemies = bot.stateTetheredHero:GetNearbyHeroes(1200, true, BotMode.None)
+            local allyNearbyEnemies = bot.stateTetheredHero:GetNearbyHeroes(1200, true, BotMode.None) or ({})
             local allyOutmatched = #allyNearbyEnemies >= 1 and allyHP < Fu.GetHP(allyNearbyEnemies[1])
             local selfOutmatched = #nearbyEnemies >= 1 and botHP < Fu.GetHP(nearbyEnemies[1])
             if allyOutmatched or selfOutmatched then
@@ -213,7 +213,7 @@ local function SkillsComplement()
     if Fu.CanNotUseAbility(bot) or bot:IsInvisible() then
         return
     end
-    nearbyEnemies = bot:GetNearbyHeroes(1600, true, BotMode.None)
+    nearbyEnemies = bot:GetNearbyHeroes(1600, true, BotMode.None) or ({})
     local tetherDesire, tetherTarget = considerTether()
     if tetherDesire > 0 and tetherTarget then
         bot:Action_UseAbilityOnEntity(abilityTether, tetherTarget)

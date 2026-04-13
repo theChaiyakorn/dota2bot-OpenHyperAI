@@ -118,11 +118,11 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local BrambleMaze   = bot:GetAbilityByName('dark_willow_bramble_maze')
-local ShadowRealm   = bot:GetAbilityByName('dark_willow_shadow_realm')
-local CurseCrown    = bot:GetAbilityByName('dark_willow_cursed_crown')
-local Bedlam        = bot:GetAbilityByName('dark_willow_bedlam')
-local Terrorize     = bot:GetAbilityByName('dark_willow_terrorize')
+local BrambleMaze   = SafeAbility(bot:GetAbilityByName('dark_willow_bramble_maze'), 'dark_willow_bramble_maze', 'dark_willow')
+local ShadowRealm   = SafeAbility(bot:GetAbilityByName('dark_willow_shadow_realm'), 'dark_willow_shadow_realm', 'dark_willow')
+local CurseCrown    = SafeAbility(bot:GetAbilityByName('dark_willow_cursed_crown'), 'dark_willow_cursed_crown', 'dark_willow')
+local Bedlam        = SafeAbility(bot:GetAbilityByName('dark_willow_bedlam'), 'dark_willow_bedlam', 'dark_willow')
+local Terrorize     = SafeAbility(bot:GetAbilityByName('dark_willow_terrorize'), 'dark_willow_terrorize', 'dark_willow')
 
 local BrambleMazeDesire, BrambleMazeLocation
 local ShadowRealmDesire

@@ -133,12 +133,12 @@ modifier_crystal_maiden_freezing_field_tracker
 local amuletTime = 0
 local aetherRange = 0
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local CrystalClone = bot:GetAbilityByName( sAbilityList[4] )
-local talent2 = bot:GetAbilityByName( sTalentList[2] )
-local ArcaneAura = bot:GetAbilityByName("crystal_maiden_brilliance_aura")
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'crystal_maiden')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'crystal_maiden')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'crystal_maiden')
+local CrystalClone = SafeAbility(bot:GetAbilityByName(sAbilityList[4]), 'sAbilityList[4]', 'crystal_maiden')
+local talent2 = SafeAbility(bot:GetAbilityByName(sTalentList[2]), 'sTalentList[2]', 'crystal_maiden')
+local ArcaneAura = SafeAbility(bot:GetAbilityByName("crystal_maiden_brilliance_aura"), 'crystal_maiden_brilliance_aura', 'crystal_maiden')
 
 local castQDesire, castQLoc = 0
 local castWDesire, castWTarget = 0

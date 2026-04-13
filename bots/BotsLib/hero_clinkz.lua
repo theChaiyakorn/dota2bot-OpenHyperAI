@@ -121,13 +121,13 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local Strafe            = bot:GetAbilityByName('clinkz_strafe')
-local TarBomb           = bot:GetAbilityByName('clinkz_tar_bomb')
-local DeathPact         = bot:GetAbilityByName('clinkz_death_pact')
-local BurningBarrage    = bot:GetAbilityByName('clinkz_burning_barrage')
-local BurningArmy       = bot:GetAbilityByName('clinkz_burning_army')
-local SkeletonWalk      = bot:GetAbilityByName('clinkz_wind_walk')
-local SearingArrows     = bot:GetAbilityByName('clinkz_searing_arrows')
+local Strafe            = SafeAbility(bot:GetAbilityByName('clinkz_strafe'), 'clinkz_strafe', 'clinkz')
+local TarBomb           = SafeAbility(bot:GetAbilityByName('clinkz_tar_bomb'), 'clinkz_tar_bomb', 'clinkz')
+local DeathPact         = SafeAbility(bot:GetAbilityByName('clinkz_death_pact'), 'clinkz_death_pact', 'clinkz')
+local BurningBarrage    = SafeAbility(bot:GetAbilityByName('clinkz_burning_barrage'), 'clinkz_burning_barrage', 'clinkz')
+local BurningArmy       = SafeAbility(bot:GetAbilityByName('clinkz_burning_army'), 'clinkz_burning_army', 'clinkz')
+local SkeletonWalk      = SafeAbility(bot:GetAbilityByName('clinkz_wind_walk'), 'clinkz_wind_walk', 'clinkz')
+local SearingArrows     = SafeAbility(bot:GetAbilityByName('clinkz_searing_arrows'), 'clinkz_searing_arrows', 'clinkz')
 
 local StrafeDesire
 local TarBombDesire, TarBombTarget
@@ -160,7 +160,7 @@ function X.SkillsComplement()
     end
 
     TarBombDesire, TarBombTarget = X.ConsiderTarBomb()
-    if TarBombDesire > 0
+    if TarBombDesire > 0 and TarBomb ~= nil and TarBombTarget ~= nil
     then
         bot:Action_UseAbilityOnEntity(TarBomb, TarBombTarget)
         return
@@ -305,7 +305,7 @@ function X.ConsiderStrafe()
 end
 
 function X.ConsiderTarBomb()
-    if not TarBomb:IsFullyCastable()
+    if TarBomb == nil or not TarBomb:IsFullyCastable()
     then
 		return BOT_ACTION_DESIRE_NONE, nil
 	end
@@ -759,6 +759,19 @@ function X.ConsiderSearingArrows()
                 return BOT_ACTION_DESIRE_NONE
             end
         end
+    end
+
+    -- Laning/attack: autocast when attacking enemy heroes in range
+    if Fu.IsValidHero(botTarget)
+    and Fu.CanBeAttacked(botTarget)
+    and Fu.IsInRange(bot, botTarget, nCastRange + 100)
+    and not botTarget:IsMagicImmune()
+    and fManaAfter > fManaThreshold1
+    then
+        if not bIsAutoCasted then
+            SearingArrows:ToggleAutoCast()
+        end
+        return BOT_ACTION_DESIRE_NONE
     end
 
     if bIsAutoCasted then

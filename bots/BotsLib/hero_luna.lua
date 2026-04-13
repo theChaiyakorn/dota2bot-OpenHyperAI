@@ -79,12 +79,12 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local LucentBeam 	= bot:GetAbilityByName('luna_lucent_beam')
-local MoonGlaives 	= bot:GetAbilityByName('luna_moon_glaive')
-local LunarOrbit    = bot:GetAbilityByName("luna_lunar_orbit")
+local LucentBeam 	= SafeAbility(bot:GetAbilityByName('luna_lucent_beam'), 'luna_lucent_beam', 'luna')
+local MoonGlaives 	= SafeAbility(bot:GetAbilityByName('luna_moon_glaive'), 'luna_moon_glaive', 'luna')
+local LunarOrbit    = SafeAbility(bot:GetAbilityByName("luna_lunar_orbit"), 'luna_lunar_orbit', 'luna')
 -- local LunarBlessing = bot:GetAbilityByName('luna_lunar_blessing')
-local Eclipse 		= bot:GetAbilityByName('luna_eclipse')
-local talent6 		= bot:GetAbilityByName(sTalentList[6])
+local Eclipse 		= SafeAbility(bot:GetAbilityByName('luna_eclipse'), 'luna_eclipse', 'luna')
+local talent6 		= SafeAbility(bot:GetAbilityByName(sTalentList[6]), 'sTalentList[6]', 'luna')
 
 local LucentBeamDesire, LucentBeamTarget
 local MoonGlaivesDesire

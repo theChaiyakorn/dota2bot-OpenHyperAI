@@ -173,10 +173,10 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local StickyNapalm  = bot:GetAbilityByName('batrider_sticky_napalm')
-local Flamebreak    = bot:GetAbilityByName('batrider_flamebreak')
-local Firefly       = bot:GetAbilityByName('batrider_firefly')
-local FlamingLasso  = bot:GetAbilityByName('batrider_flaming_lasso')
+local StickyNapalm  = SafeAbility(bot:GetAbilityByName('batrider_sticky_napalm'), 'batrider_sticky_napalm', 'batrider')
+local Flamebreak    = SafeAbility(bot:GetAbilityByName('batrider_flamebreak'), 'batrider_flamebreak', 'batrider')
+local Firefly       = SafeAbility(bot:GetAbilityByName('batrider_firefly'), 'batrider_firefly', 'batrider')
+local FlamingLasso  = SafeAbility(bot:GetAbilityByName('batrider_flaming_lasso'), 'batrider_flaming_lasso', 'batrider')
 
 local StickyNapalmDesire, StickyNapalmLocation
 local FlamebreakDesire, FlamebreakLocation

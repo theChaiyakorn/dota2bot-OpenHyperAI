@@ -190,13 +190,13 @@ modifier_ogre_magi_bloodlust
 
 ]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityD = bot:GetAbilityByName( sAbilityList[4] )
-local FireShield = bot:GetAbilityByName( sAbilityList[5] )
-local talent2 = bot:GetAbilityByName( sTalentList[2] )
-local talent8 = bot:GetAbilityByName( sTalentList[8] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'ogre_magi')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'ogre_magi')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'ogre_magi')
+local abilityD = SafeAbility(bot:GetAbilityByName(sAbilityList[4]), 'sAbilityList[4]', 'ogre_magi')
+local FireShield = SafeAbility(bot:GetAbilityByName(sAbilityList[5]), 'sAbilityList[5]', 'ogre_magi')
+local talent2 = SafeAbility(bot:GetAbilityByName(sTalentList[2]), 'sTalentList[2]', 'ogre_magi')
+local talent8 = SafeAbility(bot:GetAbilityByName(sTalentList[8]), 'sTalentList[8]', 'ogre_magi')
 
 local castQDesire, castQTarget
 local castWDesire, castWTarget

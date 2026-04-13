@@ -175,10 +175,10 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local abilityQ = bot:GetAbilityByName('silencer_curse_of_the_silent')
-local abilityW = bot:GetAbilityByName('silencer_glaives_of_wisdom')
-local abilityE = bot:GetAbilityByName('silencer_last_word')
-local abilityR = bot:GetAbilityByName('silencer_global_silence')
+local abilityQ = SafeAbility(bot:GetAbilityByName('silencer_curse_of_the_silent'), 'silencer_curse_of_the_silent', 'silencer')
+local abilityW = SafeAbility(bot:GetAbilityByName('silencer_glaives_of_wisdom'), 'silencer_glaives_of_wisdom', 'silencer')
+local abilityE = SafeAbility(bot:GetAbilityByName('silencer_last_word'), 'silencer_last_word', 'silencer')
+local abilityR = SafeAbility(bot:GetAbilityByName('silencer_global_silence'), 'silencer_global_silence', 'silencer')
 
 local talent20Left = nil
 
@@ -194,7 +194,7 @@ local botTarget
 function X.SkillsComplement()
 	if Fu.CanNotUseAbility( bot ) or bot:IsInvisible() then return end
 
-	talent20Left = bot:GetAbilityByName('special_bonus_unique_silencer_4')
+	talent20Left = SafeAbility(bot:GetAbilityByName('special_bonus_unique_silencer_4'), 'special_bonus_unique_silencer_4', 'silencer')
 
 	local ctx = AbilityCtx.Build(bot)
 	nKeepMana = 300
@@ -676,6 +676,7 @@ function X.ConsiderW()
 			and botMode ~= BOT_MODE_ASSEMBLE
 			and botMode ~= BOT_MODE_SECRET_SHOP
 			and botMode ~= BOT_MODE_SIDE_SHOP
+			and botMode ~= BOT_MODE_WATCHER
 			and botMode ~= BOT_MODE_WARD
 			and GetRoshanDesire() < BOT_MODE_DESIRE_HIGH
 			and not bot:WasRecentlyDamagedByAnyHero( 2.0 )

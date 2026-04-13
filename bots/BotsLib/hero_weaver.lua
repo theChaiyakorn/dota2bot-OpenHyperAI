@@ -80,10 +80,10 @@ function X.MinionThink(hMinionUnit)
     Minion.MinionThink(hMinionUnit)
 end
 
-local TheSwarm          = bot:GetAbilityByName('weaver_the_swarm')
-local Shukuchi          = bot:GetAbilityByName('weaver_shukuchi')
+local TheSwarm          = SafeAbility(bot:GetAbilityByName('weaver_the_swarm'), 'weaver_the_swarm', 'weaver')
+local Shukuchi          = SafeAbility(bot:GetAbilityByName('weaver_shukuchi'), 'weaver_shukuchi', 'weaver')
 -- local GeminateAttack    = bot:GetAbilityByName('weaver_geminate_attack')
-local TimeLapse         = bot:GetAbilityByName('weaver_time_lapse')
+local TimeLapse         = SafeAbility(bot:GetAbilityByName('weaver_time_lapse'), 'weaver_time_lapse', 'weaver')
 
 local TheSwarmDesire, TheSwarmLocation
 local ShukuchiDesire

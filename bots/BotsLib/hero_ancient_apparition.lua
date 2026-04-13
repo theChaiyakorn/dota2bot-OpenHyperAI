@@ -111,13 +111,13 @@ function X.MinionThink(hMinionUnit)
 	Minion.MinionThink(hMinionUnit)
 end
 
-local ColdFeet          = bot:GetAbilityByName('ancient_apparition_cold_feet')
-local IceVortex         = bot:GetAbilityByName('ancient_apparition_ice_vortex')
-local ChillingTouch     = bot:GetAbilityByName('ancient_apparition_chilling_touch')
-local IceBlast          = bot:GetAbilityByName('ancient_apparition_ice_blast')
-local IceBlastRelease   = bot:GetAbilityByName('ancient_apparition_ice_blast_release')
+local ColdFeet          = SafeAbility(bot:GetAbilityByName('ancient_apparition_cold_feet'), 'ancient_apparition_cold_feet', 'ancient_apparition')
+local IceVortex         = SafeAbility(bot:GetAbilityByName('ancient_apparition_ice_vortex'), 'ancient_apparition_ice_vortex', 'ancient_apparition')
+local ChillingTouch     = SafeAbility(bot:GetAbilityByName('ancient_apparition_chilling_touch'), 'ancient_apparition_chilling_touch', 'ancient_apparition')
+local IceBlast          = SafeAbility(bot:GetAbilityByName('ancient_apparition_ice_blast'), 'ancient_apparition_ice_blast', 'ancient_apparition')
+local IceBlastRelease   = SafeAbility(bot:GetAbilityByName('ancient_apparition_ice_blast_release'), 'ancient_apparition_ice_blast_release', 'ancient_apparition')
 
-local ColdFeetAoETalent = bot:GetAbilityByName('special_bonus_unique_ancient_apparition_7')
+local ColdFeetAoETalent = SafeAbility(bot:GetAbilityByName('special_bonus_unique_ancient_apparition_7'), 'special_bonus_unique_ancient_apparition_7', 'ancient_apparition')
 
 local ColdFeetDesire, ColdFeetTarget
 local IceVortexDesire, IceVortextLocation

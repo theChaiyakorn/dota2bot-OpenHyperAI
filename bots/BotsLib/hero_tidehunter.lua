@@ -194,13 +194,13 @@ modifier_tidehunter_ravage
 
 --]]
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-abilityW = bot:GetAbilityByName('tidehunter_kraken_shell')
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local DeadInTheWater = bot:GetAbilityByName( 'tidehunter_dead_in_the_water' )
-local talent3 = bot:GetAbilityByName( sTalentList[3] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'tidehunter')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'tidehunter')
+abilityW = SafeAbility(bot:GetAbilityByName('tidehunter_kraken_shell'), 'tidehunter_kraken_shell', 'tidehunter')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'tidehunter')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'tidehunter')
+local DeadInTheWater = SafeAbility(bot:GetAbilityByName('tidehunter_dead_in_the_water'), 'tidehunter_dead_in_the_water', 'tidehunter')
+local talent3 = SafeAbility(bot:GetAbilityByName(sTalentList[3]), 'sTalentList[3]', 'tidehunter')
 
 
 local castQDesire, castQTarget
@@ -229,7 +229,7 @@ function X.SkillsComplement()
 	hEnemyList = ctx.enemies
 	hAllyList = ctx.allies
 
-	
+	castRDesire = X.ConsiderR()
 	if castRDesire > 0
 	then
 
@@ -238,13 +238,13 @@ function X.SkillsComplement()
 		bot:ActionQueue_UseAbility( abilityR )
 		return
 	end
-	
 
+	castQDesire, castQTarget = X.ConsiderQ()
 	if castQDesire > 0
 	then
 
 		Fu.SetQueuePtToINT( bot, true )
-		
+
 		if bot:HasScepter()
 		and castQTarget ~= nil
 		then
@@ -255,7 +255,7 @@ function X.SkillsComplement()
 		return
 	end
 
-
+	castEDesire = X.ConsiderE()
 	if castEDesire > 0
 	then
 

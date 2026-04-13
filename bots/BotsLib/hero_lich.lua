@@ -186,16 +186,16 @@ modifier_lich_chain_frost_thinker
 --]]
 
 
-local abilityQ = bot:GetAbilityByName( sAbilityList[1] )
-local abilityW = bot:GetAbilityByName( sAbilityList[2] )
-local abilityE = bot:GetAbilityByName( sAbilityList[3] )
-local abilityAS = bot:GetAbilityByName( sAbilityList[4] )
-local abilityR = bot:GetAbilityByName( sAbilityList[6] )
-local Sacrifice = bot:GetAbilityByName('lich_death_charge')
-local talent1 = bot:GetAbilityByName( sTalentList[1] )
-local talent2 = bot:GetAbilityByName( sTalentList[2] )
-local talent5 = bot:GetAbilityByName( sTalentList[5] )
-local talent7 = bot:GetAbilityByName( sTalentList[7] )
+local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'lich')
+local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'lich')
+local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'lich')
+local abilityAS = SafeAbility(bot:GetAbilityByName(sAbilityList[4]), 'sAbilityList[4]', 'lich')
+local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'lich')
+local Sacrifice = SafeAbility(bot:GetAbilityByName('lich_death_charge'), 'lich_death_charge', 'lich')
+local talent1 = SafeAbility(bot:GetAbilityByName(sTalentList[1]), 'sTalentList[1]', 'lich')
+local talent2 = SafeAbility(bot:GetAbilityByName(sTalentList[2]), 'sTalentList[2]', 'lich')
+local talent5 = SafeAbility(bot:GetAbilityByName(sTalentList[5]), 'sTalentList[5]', 'lich')
+local talent7 = SafeAbility(bot:GetAbilityByName(sTalentList[7]), 'sTalentList[7]', 'lich')
 
 local castQDesire, castQTarget
 local castWDesire, castWTarget
