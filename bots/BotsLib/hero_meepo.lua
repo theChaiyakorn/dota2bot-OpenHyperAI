@@ -44,7 +44,7 @@ sRoleItemsBuyList['pos_1'] = {
     "item_disperser",--
     "item_ultimate_scepter_2",
     "item_swift_blink",--
-    "item_moon_shard",
+    -- "item_moon_shard", -- crashes the game in 7.41+
     "item_travel_boots_2",--
 }
 
@@ -66,7 +66,7 @@ sRoleItemsBuyList['pos_2'] = {
     "item_disperser",--
     "item_ultimate_scepter_2",
     "item_swift_blink",--
-    "item_moon_shard",
+    -- "item_moon_shard", -- crashes the game in 7.41+
     "item_travel_boots_2",--
 }
 
@@ -88,7 +88,7 @@ sRoleItemsBuyList['pos_3'] = {
     "item_disperser",--
     "item_ultimate_scepter_2",
     "item_swift_blink",--
-    "item_moon_shard",
+    -- "item_moon_shard", -- crashes the game in 7.41+
     "item_travel_boots_2",--
 }
 

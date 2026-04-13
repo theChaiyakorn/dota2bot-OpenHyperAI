@@ -189,6 +189,45 @@ root: <Steam/steamapps/common/dota 2 beta/game/dota/scripts/vscripts>
 - Future development is in **TypeScript** for better maintainability
 - [Open feature requests](https://github.com/forest0xia/dota2bot-OpenHyperAI/issues?q=is%3Aissue+is%3Aopen+%5BFeature+request%5D)
 
+### How to Contribute (for first-timers)
+
+You don't need to be a Dota coder to help — reporting a bug is a great first step, and you can start dev work with:
+
+1. **Fork** the repo on GitHub and **clone** your fork locally.
+2. **Install deps:** `npm install` (needs [Node.js](https://nodejs.org/)).
+3. **Find what to change:** e.g.:
+   - Hero item/skill builds → `bots/BotsLib/hero_[name].lua`
+   - Your local customizations (picks/bans/names) → `bots/Customize/general.lua`
+   - Bigger logic changes → see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the file map
+4. **Test in-game:** copy your edited `bots/` into `<Steam>/steamapps/common/dota 2 beta/game/dota/scripts/vscripts/bots/`, then start a Custom Lobby with **Local Host** to try it.
+1. **Local path:** Can set project root folder as: `Steam\steamapps\common\dota 2 beta\game\dota\scripts\vscripts`
+7. **Commit, push, and open a Pull Request** against `main` — describe exactly what you changed, why, how did you test, and what did the test result show.
+
+Good first issues: bugged hero builds, missing item usage for a new item, ability casting fixes for a specific hero, or adding translations. Browse [open issues](https://github.com/forest0xia/dota2bot-OpenHyperAI/issues) for ideas.
+
+---
+
+### Build & Release Commands
+
+This is a bot script that uses both lua and typescript. 
+- Typescript is used for better type support to capture errors in compile time, reducing the chance of getting runtime errors.
+- TypeScript sources under `typescript/` compile to Lua in `bots/` via [TypeScriptToLua](https://typescripttolua.github.io/). Run these from the repo root:
+
+| Command | What It Does |
+|---|---|
+| `npm run build` | Full build: `tstl` + post-process pass |
+| `npm run release` | `update-version` → `build` → `prettier` (prep for release) |
+| `npm run release-ob` | `release` + `obfuscate` (the full Workshop publish pipeline) |
+| `npm run obfuscate` | Minify/obfuscate `bots/` for Workshop (backs up raw to `bots-raw/`) |
+| `npm run deobfuscate` | Restore `bots/` from `bots-raw/` |
+
+**Typical workflows:**
+- *Local development:* `npm run dev` while editing TS; or `npm run build` after changes to verify Lua output.
+- *Preparing a release:* `npm run release` (keeps source readable).
+- *Publishing to Workshop:* `npm run release-ob` (obfuscated), then upload `bots/` via the Workshop tool.
+- *After obfuscation, to keep working on code:* `npm run deobfuscate` to restore readable sources.
+- *Obfuscation details*: [README](typescript/post-process/obfuscator/README.md)
+
 ---
 
 ## What's Next

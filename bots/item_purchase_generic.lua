@@ -44,6 +44,8 @@ if sPurchaseList == nil then
 	return
 end
 
+log("[Purchase] %s loaded %d items: %s -> %s", botName, #sPurchaseList, sPurchaseList[1] or "nil", sPurchaseList[#sPurchaseList] or "nil")
+
 for i = 1, #sPurchaseList
  do
 	bot.purchaseListInReverseOrder[i] = sPurchaseList[#sPurchaseList - i + 1]
@@ -103,7 +105,7 @@ local tARDMNeverRebuy = {
 	item_tango = true, item_double_tango = true, item_clarity = true,
 	item_faerie_fire = true, item_enchanted_mango = true, item_flask = true,
 	item_blood_grenade = true, item_branches = true, item_double_branches = true,
-	item_quelling_blade = true, item_magic_stick = true,
+	item_magic_stick = true,
 	item_magic_wand = true, item_recipe_magic_wand = true,
 	item_infused_raindrop = true, item_orb_of_venom = true,
 	item_blight_stone = true, item_orb_of_frost = true,
@@ -1190,15 +1192,25 @@ function ItemPurchaseThink()
 				and Item.GetItemTotalWorthInSlots(Utils.GetLoneDruid(bot).bear) < 28000
 				and Item.IsItemInTargetHero(bot.currBuyingItemInPurchaseList, Utils.GetLoneDruid(bot).bear)
 			)
-			or bot.countInvCheck > (GetGameMode() == GAMEMODE_ARDM and 30 or 3 * 60) -- ARDM: 30s timeout, normal: 3min
+			or bot.countInvCheck > (GetGameMode() == GAMEMODE_ARDM and 30 or 30) -- skip stuck items after 30s
+			-- Rebuilds exhausted with empty courier/stash: components were bought but
+			-- item didn't combine (virtual items like item_double_tango, or lost components).
+			-- Skip immediately instead of waiting for the 30s timeout.
+			or (bot.rebuildCount >= 5 and botCourierValue == 0 and botStashValue == 0)
 		then
 			-- skip it and continue next
+			if bot.countInvCheck > 0 or bot.rebuildCount >= 5 then
+				log("[Purchase] %s skipping stuck item %s (rebuilds=%d invCheck=%d)", botName, tostring(bot.currBuyingItemInPurchaseList), bot.rebuildCount, bot.countInvCheck)
+			end
 			bot.countInvCheck = 0
 			_resetCurrentTarget()
 			bot.purchaseListInReverseOrder[#bot.purchaseListInReverseOrder] = nil
 		elseif currentTime > bot.lastInvCheck + 1.0 then
 			bot.lastInvCheck = currentTime
-			if bot.rebuildCount < 5 and botCourierValue == 0 and botStashValue == 0 and botName ~= "npc_dota_hero_lone_druid" then
+			-- Waiting for courier/stash delivery — don't count as stuck
+			if botCourierValue > 0 or botStashValue > 0 then
+				bot.countInvCheck = 0
+			elseif bot.rebuildCount < 5 and botName ~= "npc_dota_hero_lone_druid" then
 				bot.rebuildCount = bot.rebuildCount + 1
 
 				-- Check for orphaned recipes in inventory: recipe exists but
@@ -1237,10 +1249,9 @@ function ItemPurchaseThink()
 				bot.currBuyingRequiredCounts = _buildRequiredCounts(bot.currBuyingBasicItemList)
 				_popIfNoLongerNeeded()
 			else
-				-- and can't finish even with lots of gold
-				if botGold > GetItemCost(bot.currBuyingItemInPurchaseList) * 2 and botGold >= 2000 then
-					bot.countInvCheck = bot.countInvCheck + 1
-				end
+				-- Rebuilds exhausted, courier/stash empty, item still not in inventory.
+				-- Item is genuinely stuck — count toward skip unconditionally.
+				bot.countInvCheck = bot.countInvCheck + 1
 			end
 		end
 	elseif #bot.currBuyingBasicItemList > 0

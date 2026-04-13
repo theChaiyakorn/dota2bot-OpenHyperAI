@@ -971,38 +971,16 @@ local function ItemUsageComplement()
 		or bot:IsStunned()
 		or bot:IsChanneling()
 		or bot:IsInvulnerable()
+		or bot:IsUsingAbility()
+		or bot:IsCastingAbility()
+		or bot:NumQueuedActions() > 0
 		or bot:HasModifier( 'modifier_teleporting' )
-		or bot:HasModifier( 'modifier_doom_bringer_doom' )
+		or bot:HasModifier( 'modifier_doom_bringer_doom_aura_enemy' )
 		or bot:HasModifier( 'modifier_phantom_lancer_phantom_edge_boost' )
+		or bot:HasModifier( 'modifier_life_stealer_infest' )
+		or ( bot:HasModifier( 'modifier_nyx_assassin_vendetta' ) and Fu.IsRealInvisible( bot ) )
 		or X.WillBreakInvisible( bot )
 	then return	BOT_ACTION_DESIRE_NONE end
-
-	-- -- IsCastingAbility blocks most items (would cancel the cast).
-	-- -- But no-target self-cast items (phase, arcane, armlet, etc.) are safe to use.
-	-- -- Check those before blocking on IsCastingAbility.
-	-- if bot:IsCastingAbility() then
-	-- 	local safeItems = {
-	-- 		'item_phase_boots', 'item_spider_legs', 'item_arcane_boots',
-	-- 		'item_guardian_greaves', 'item_magic_wand', 'item_faerie_fire',
-	-- 		'item_armlet', 'item_blade_mail', 'item_pipe', 'item_crimson_guard',
-	-- 		'item_black_king_bar', 'item_mekansm', 'item_holy_locket',
-	-- 		'item_mask_of_madness', 'item_cheese',
-	-- 	}
-	-- 	for _, itemName in pairs(safeItems) do
-	-- 		local slot = bot:FindItemSlot(itemName)
-	-- 		if slot >= 0 and slot <= 5 then
-	-- 			local hItem = bot:GetItemInSlot(slot)
-	-- 			if hItem and Fu.CanCastAbility(hItem) and X.ConsiderItemDesire[itemName] then
-	-- 				local desire = X.ConsiderItemDesire[itemName](hItem)
-	-- 				if desire and desire > 0 then
-	-- 					X.SetUseItem(hItem, bot, 'none')
-	-- 					return
-	-- 				end
-	-- 			end
-	-- 		end
-	-- 	end
-	-- 	return BOT_ACTION_DESIRE_NONE
-	-- end
 
 	hNearbyEnemyHeroList = Fu.GetNearbyHeroes(bot, 1600, true, BOT_MODE_NONE )
 	hNearbyEnemyTowerList = bot:GetNearbyTowers( 888, true )
@@ -1364,91 +1342,50 @@ end
 
 
 --臂章
-local nLastActiveArmletTime = -90
 X.ConsiderItemDesire["item_armlet"] = function( hItem )
 
-	if bDeafaultItemHero then return BOT_ACTION_DESIRE_NONE end
+	local bIsToggled = hItem:GetToggleState()
 
-	local nCastRange = 1000
-	local sCastType = 'none'
-	local hEffectTarget = nil
-	local sCastMotive = nil
-	local nInRangeEnmyList = Fu.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
-
-	local bActive = hItem:GetToggleState()
-	local nRealHP = bot:OriginalGetHealth()
-	-- Check if actually fighting: armlet HP drain may pollute WasRecentlyDamagedByAnyHero,
-	-- so also verify there's a real enemy nearby doing damage or we're actively attacking
-	local bEnemyDamaged = false
-	for _, enemy in pairs(nInRangeEnmyList) do
-		if Fu.IsValidHero(enemy) and bot:WasRecentlyDamagedByHero(enemy, 3.0) then
-			bEnemyDamaged = true
-			break
-		end
-	end
-	local bInFight = bEnemyDamaged or (#nInRangeEnmyList > 0 and Fu.IsAttacking(bot))
-	local bAttackingHero = Fu.IsValidHero(botTarget) and Fu.IsInRange(bot, botTarget, bot:GetAttackRange() + 180)
-	local bAttackingAnything = Fu.IsAttacking(bot) and botTarget ~= nil
-
-	-- ACTIVATE: when fighting enemy heroes or buildings (not just creeps)
-	if not bActive then
-		-- Activate for hero combat
-		if bAttackingHero
-			and not botTarget:IsAttackImmune()
-			and not botTarget:IsInvulnerable()
-			and not Fu.HasForbiddenModifier(botTarget)
-			and not bot:IsDisarmed()
-			and nRealHP > 400
-		then
-			nLastActiveArmletTime = DotaTime()
-			return BOT_ACTION_DESIRE_HIGH, botTarget, sCastType, 'Armlet on: hero fight'
-		end
-
-		-- Activate for Roshan/Tormentor
-		if (Fu.IsDoingRoshan(bot) or Fu.IsDoingTormentor(bot))
-			and Fu.IsAttacking(bot)
-			and nRealHP > 500
-		then
-			nLastActiveArmletTime = DotaTime()
-			return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Armlet on: Roshan/Tormentor'
-		end
-
-		-- Activate for building attack (pushing)
-		if Fu.IsValidBuilding(botTarget)
-			and not botTarget:IsAttackImmune()
-			and not botTarget:IsInvulnerable()
-			and not Fu.IsKeyWordUnit("OutpostName", botTarget)
-			and Fu.IsInRange(bot, botTarget, bot:GetAttackRange() + 180)
-			and #nInRangeEnmyList == 0
-			and nRealHP > 500
-		then
-			nLastActiveArmletTime = DotaTime()
-			return BOT_ACTION_DESIRE_HIGH, botTarget, sCastType, 'Armlet on: push'
-		end
-
-		-- Activate for survival (about to die, need the HP burst)
-		if nRealHP <= 600
-			and (bot:WasRecentlyDamagedByAnyHero(2.0) or Fu.IsAttackProjectileIncoming(bot, 1600))
-		then
-			nLastActiveArmletTime = DotaTime()
-			return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Armlet on: survival'
+	if Fu.IsValid(botTarget)
+	and Fu.CanBeAttacked(botTarget)
+	and Fu.IsInRange(bot, botTarget, bot:GetAttackRange() + 300)
+	and (not botTarget:IsBuilding() or not string.find(botTarget:GetUnitName(), 'OutpostName'))
+	and not bot:IsDisarmed()
+	then
+		if not bIsToggled then
+			return BOT_ACTION_DESIRE_HIGH, nil, 'none'
+		else
+			return BOT_ACTION_DESIRE_NONE
 		end
 	end
 
-	-- DEACTIVATE: when no longer fighting enemy heroes
-	if bActive then
-		-- No enemy heroes within 1000 range → turn off (farming creeps doesn't need armlet)
-		if #nInRangeEnmyList == 0
-		and not bEnemyDamaged
-		and not (Fu.IsDoingRoshan(bot) or Fu.IsDoingTormentor(bot))
-		then
-			return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Armlet off: no enemies'
+	if Fu.IsRetreating(bot) and not Fu.IsRealInvisible(bot) then
+		if Fu.GetHP(bot) < 0.2 then
+			if bot:WasRecentlyDamagedByAnyHero(2.0)
+			or Fu.IsAttackProjectileIncoming(bot, 1200)
+			or Fu.IsStunProjectileIncoming(bot, 550)
+			then
+				if not bIsToggled then
+					return BOT_ACTION_DESIRE_HIGH, nil, 'none'
+				else
+					return BOT_ACTION_DESIRE_NONE
+				end
+			end
 		end
+	end
 
-		-- Emergency: HP getting dangerously low without an active hero fight
-		if nRealHP < 400 and not bAttackingHero then
-			return BOT_ACTION_DESIRE_HIGH, bot, sCastType, 'Armlet off: HP drain'
+	if (Fu.GetAttackProjectileDamageByRange(bot, 600) > bot:GetHealth() * 2)
+	or (Fu.IsStunProjectileIncoming(bot, 600) and Fu.GetHP(bot) < 0.25)
+	then
+		if not bIsToggled then
+			return BOT_ACTION_DESIRE_HIGH, nil, 'none'
+		else
+			return BOT_ACTION_DESIRE_NONE
 		end
+	end
+
+	if bIsToggled then
+		return BOT_ACTION_DESIRE_HIGH, nil, 'none'
 	end
 
 	return BOT_ACTION_DESIRE_NONE
@@ -4048,20 +3985,14 @@ X.ConsiderItemDesire["item_power_treads"] = function( hItem )
 
 	if bDeafaultItemHero then return 0 end
 
-	local nCastRange = 1000
-	local sCastType = 'none'
-	local hEffectTarget = nil
-	local sCastMotive = nil
-	local nInRangeEnmyList = Fu.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
+	local nCurrentStat = hItem:GetPowerTreadsStat()
 
-
-	local nPtStat = hItem:GetPowerTreadsStat()
-	if nPtStat == ATTRIBUTE_INTELLECT
+	if nCurrentStat == ATTRIBUTE_INTELLECT
 	then
-		nPtStat = ATTRIBUTE_AGILITY
-	elseif nPtStat == ATTRIBUTE_AGILITY
+		nCurrentStat = ATTRIBUTE_AGILITY
+	elseif nCurrentStat == ATTRIBUTE_AGILITY
 	then
-		nPtStat = ATTRIBUTE_INTELLECT
+		nCurrentStat = ATTRIBUTE_INTELLECT
 	end
 
 	if ( bot:HasModifier( "modifier_flask_healing" )
@@ -4069,63 +4000,32 @@ X.ConsiderItemDesire["item_power_treads"] = function( hItem )
 		 or bot:HasModifier( "modifier_item_urn_heal" )
 		 or bot:HasModifier( "modifier_item_spirit_vessel_heal" )
 		 or bot:HasModifier( "modifier_bottle_regeneration" ) )
-		and nMode ~= BOT_MODE_ATTACK
-		and nMode ~= BOT_MODE_RETREAT
+		and not Fu.IsGoingOnSomeone( bot )
+		and not Fu.IsRetreating( bot )
+		and not bot:WasRecentlyDamagedByAnyHero( 5.0 )
 	then
-		if nPtStat ~= ATTRIBUTE_AGILITY
-		then
-			--切换敏捷腿回复
+		if nCurrentStat ~= ATTRIBUTE_AGILITY then
 			lastSwitchPtTime = DotaTime()
-			if nPtStat == ATTRIBUTE_STRENGTH
-			then
-				sCastMotive = '力量腿切敏捷回复'
-				return BOT_ACTION_DESIRE_HIGH, bot, 'twice', sCastMotive
-			else
-				sCastMotive = '智力腿切敏捷回复'
-				return BOT_ACTION_DESIRE_HIGH, bot, sCastType, sCastMotive
-			end
-
+			return BOT_ACTION_DESIRE_HIGH, nil, 'none'
 		end
-	elseif ( nMode == BOT_MODE_RETREAT and bot:GetActiveModeDesire() > BOT_MODE_DESIRE_MODERATE )
-			or nMode == BOT_MODE_EVASIVE_MANEUVERS
+	elseif ( Fu.IsRetreating( bot ) and not Fu.IsRealInvisible( bot ) and bot:GetActiveModeDesire() > BOT_MODE_DESIRE_MODERATE )
 			or ( Fu.IsNotAttackProjectileIncoming( bot, 1200 ) )
+			or ( nMode == BOT_MODE_EVASIVE_MANEUVERS )
 			or ( bot:HasModifier( "modifier_sniper_assassinate" ) )
-			or ( bot:GetHealth() / bot:GetMaxHealth() < 0.2 )
-			or ( nPtStat == ATTRIBUTE_STRENGTH and bot:GetHealth() / bot:GetMaxHealth() < 0.3 )
-			or ( nMode ~= BOT_MODE_LANING and bot:GetLevel() <= 10 and Fu.IsEnemyFacingUnit( bot, 800, 20 ) )
+			or ( Fu.GetHP( bot ) < 0.2 )
+			or ( nCurrentStat == ATTRIBUTE_STRENGTH and Fu.GetHP( bot ) < 0.3 )
 		then
-			if nPtStat ~= ATTRIBUTE_STRENGTH
-			then
-				--切换力量腿吃伤害
+			if nCurrentStat ~= ATTRIBUTE_STRENGTH then
 				lastSwitchPtTime = DotaTime()
-				if nPtStat == ATTRIBUTE_AGILITY
-				then
-					sCastMotive = '敏捷腿切换力量吃伤害'
-					return BOT_ACTION_DESIRE_HIGH, bot, sCastType, sCastMotive
-				else
-					sCastMotive = '智力腿切换力量吃伤害'
-					return BOT_ACTION_DESIRE_HIGH, bot, 'twice', sCastMotive
-				end
-
+				return BOT_ACTION_DESIRE_HIGH, nil, 'none'
 			end
-	elseif nMode == BOT_MODE_ATTACK
-			or nMode == BOT_MODE_TEAM_ROAM
-		then
-			if Fu.ShouldSwitchPTStat( bot, hItem )
-				and lastSwitchPtTime < DotaTime() - 0.2
-			then
-				--切换主属性腿攻击
-				sCastMotive = '切换主属性腿攻击'
-				return BOT_ACTION_DESIRE_HIGH, bot, sCastType, sCastMotive
-			end
-	elseif Fu.ShouldSwitchPTStat( bot, hItem )
-			and lastSwitchPtTime < DotaTime() - 0.2
-		then
-			--默认为主属性腿
-			sCastMotive = '默认为主属性腿'
-			return BOT_ACTION_DESIRE_HIGH, bot, sCastType, sCastMotive
+	elseif Fu.IsGoingOnSomeone( bot ) then
+		if Fu.ShouldSwitchPTStat( bot, hItem ) and lastSwitchPtTime < DotaTime() - 0.2 then
+			return BOT_ACTION_DESIRE_HIGH, nil, 'none'
+		end
+	elseif Fu.ShouldSwitchPTStat( bot, hItem ) and lastSwitchPtTime < DotaTime() - 0.2 then
+		return BOT_ACTION_DESIRE_HIGH, nil, 'none'
 	end
-
 
 	return BOT_ACTION_DESIRE_NONE
 

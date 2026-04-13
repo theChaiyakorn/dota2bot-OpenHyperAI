@@ -252,7 +252,7 @@ function X.ConsiderGorgonGrasp()
 			and not enemyHero:HasModifier('modifier_faceless_void_chronosphere_freeze')
 			and not enemyHero:HasModifier('modifier_necrolyte_reapers_scythe')
 			then
-				return BOT_ACTION_DESIRE_HIGH, Fu.GetCorrectLoc(enemyHero, eta)
+				return BOT_ACTION_DESIRE_HIGH, enemyHero:GetLocation()
 			end
 		end
 	end
@@ -267,7 +267,7 @@ function X.ConsiderGorgonGrasp()
 		and not botTarget:HasModifier('modifier_faceless_void_chronosphere_freeze')
 		and not botTarget:HasModifier('modifier_necrolyte_reapers_scythe')
 		then
-			return BOT_ACTION_DESIRE_HIGH, Fu.GetCorrectLoc(botTarget, eta)
+			return BOT_ACTION_DESIRE_HIGH, botTarget:GetLocation()
 		end
 	end
 

@@ -20,18 +20,16 @@ function GetDesire()
 		return BOT_MODE_DESIRE_NONE
 	end
 
-	-- Radiant bot lane: wisdom_shrine_ is near Dire's bot T1 — don't walk into tower range
+	-- Near enemy T1: only avoid if alone or in laning phase
+	local enemyT1 = nil
 	if GetTeam() == TEAM_RADIANT then
-		local enemyT1 = GetTower(TEAM_DIRE, TOWER_BOT_1)
-		if enemyT1 ~= nil and enemyT1:IsAlive() and GetUnitToUnitDistance(bot, enemyT1) < 1600 then
-			return BOT_MODE_DESIRE_NONE
-		end
+		enemyT1 = GetTower(TEAM_DIRE, TOWER_BOT_1)
+	else
+		enemyT1 = GetTower(TEAM_RADIANT, TOWER_TOP_1)
 	end
-
-	-- Dire top lane: wisdom_shrine_ is near Radiant's top T1 — don't walk into tower range
-	if GetTeam() == TEAM_DIRE then
-		local enemyT1 = GetTower(TEAM_RADIANT, TOWER_TOP_1)
-		if enemyT1 ~= nil and enemyT1:IsAlive() and GetUnitToUnitDistance(bot, enemyT1) < 1600 then
+	if enemyT1 ~= nil and enemyT1:IsAlive() and GetUnitToUnitDistance(bot, enemyT1) < 1600 then
+		local nAllies = Fu.GetAllyCount(bot, 1600)
+		if Fu.IsInLaningPhase() or nAllies < 3 then
 			return BOT_MODE_DESIRE_NONE
 		end
 	end

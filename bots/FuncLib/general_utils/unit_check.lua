@@ -211,32 +211,24 @@ function Fu.IsTormentor(nTarget)
 end
 
 
+function Fu.IsRealBot(bot)
+	for i = 1, 5 do
+		local member = GetTeamMember(i)
+		if member and bot == member then
+			return true
+		end
+	end
+	return false
+end
+
 function Fu.IsMeepoClone(hero)
 	if Fu.IsValidHero(hero)
 	and hero:GetUnitName() == 'npc_dota_hero_meepo'
+	and not Fu.IsRealBot(hero)
 	then
-		for i = 0, 5
-		do
-			local hItem = hero:GetItemInSlot(i)
-
-			if hItem ~= nil
-			and not (hItem:GetName() == 'item_boots'
-					or hItem:GetName() == 'item_tranquil_boots'
-					or hItem:GetName() == 'item_arcane_boots'
-					or hItem:GetName() == 'item_power_treads'
-					or hItem:GetName() == 'item_phase_boots'
-					or hItem:GetName() == 'item_travel_boots'
-					or hItem:GetName() == 'item_boots_of_bearing'
-					or hItem:GetName() == 'item_guardian_greaves'
-					or hItem:GetName() == 'item_travel_boots_2'
-				)  
-			then
-				return false
-			end
-		end
-
 		return true
-    end
+	end
+	return false
 end
 
 

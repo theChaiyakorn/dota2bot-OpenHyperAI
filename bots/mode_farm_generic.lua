@@ -70,80 +70,6 @@ function X.GetModeLocaleKey(mode)
 	return modeLocaleMap[mode] or 'mode_other'
 end
 
--- Filter camps to only safe ones (closer to our base, near our towers)
-function X.GetSafeCamps(bot, campTable)
-	if campTable == nil or #campTable == 0 then return campTable end
-
-	local nTeam = GetTeam()
-	local teamFountain = Fu.GetTeamFountain()
-	local enemyFountain = nTeam == TEAM_RADIANT
-		and Vector(7023, 6450, 0) or Vector(-7174, -6671, 0)
-	local aliveEnemyCount = Fu.GetNumOfAliveHeroes(true)
-
-	-- Find nearest alive tower for distance check
-	local towerIds = {TOWER_TOP_1, TOWER_MID_1, TOWER_BOT_1, TOWER_TOP_2, TOWER_MID_2, TOWER_BOT_2}
-	local nearestTowerDist = 99999
-	local nearestTowerTier = 0
-	for _, tid in pairs(towerIds) do
-		local tower = GetTower(nTeam, tid)
-		if tower ~= nil and tower:IsAlive() then
-			local dist = GetUnitToUnitDistance(bot, tower)
-			if dist < nearestTowerDist then
-				nearestTowerDist = dist
-				-- T1 = first 3, T2 = last 3
-				nearestTowerTier = (tid <= TOWER_BOT_1) and 1 or 2
-			end
-		end
-	end
-
-	local safeCamps = {}
-	for _, camp in pairs(campTable) do
-		if camp ~= nil and camp.cattr ~= nil and camp.cattr.location ~= nil then
-			local campLoc = camp.cattr.location
-			local distToOurFountain = Fu.GetDistance(campLoc, teamFountain)
-			local distToEnemyFountain = Fu.GetDistance(campLoc, enemyFountain)
-
-			-- Camp must be closer to our base than enemy base
-			local bCloserToUs = distToOurFountain < distToEnemyFountain
-
-			-- Distance from nearest tower: T1 alive = within 2000, T2 alive = within 4000
-			local bNearTower = true
-			if nearestTowerTier == 1 then
-				bNearTower = Fu.GetDistance(campLoc, teamFountain) < 9000
-			elseif nearestTowerTier == 2 then
-				bNearTower = Fu.GetDistance(campLoc, teamFountain) < 11000
-			end
-
-			-- If enemies outnumber nearby allies, skip camps on enemy side
-			local bSafe = true
-			if not bCloserToUs then
-				local aliveAllyCount = Fu.GetNumOfAliveHeroes(false)
-				local nAlliesNearCamp = Fu.GetAlliesNearLoc(campLoc, 2500)
-				-- Safe on enemy side if: allies outnumber enemies, or 2+ allies near camp
-				if aliveEnemyCount >= 3 and #nAlliesNearCamp < 2 and aliveAllyCount <= aliveEnemyCount then
-					bSafe = false
-				end
-			end
-
-			-- Skip ancient camps if bot can't handle them
-			local bCanFarmCamp = true
-			if Fu.Site.IsAncientCamp(camp) then
-				if bot:GetLevel() < 10 or bot:GetArmor() < 6 then
-					bCanFarmCamp = false
-				end
-			end
-
-			if bSafe and bNearTower and bCanFarmCamp then
-				table.insert(safeCamps, camp)
-			end
-		end
-	end
-
-	-- If filtering removed everything, return original (don't leave bot with nothing)
-	if #safeCamps == 0 then return campTable end
-	return safeCamps
-end
-
 
 if bot.farmLocation == nil then bot.farmLocation = bot:GetLocation() end
 
@@ -211,25 +137,25 @@ function GetDesire()
 	-- Suppress farm when any lane needs defending (prevents TP-out while enemies push HG)
 	if res > 0.3 then
 		local maxDefend = math.max(GetDefendLaneDesire(LANE_TOP), GetDefendLaneDesire(LANE_MID), GetDefendLaneDesire(LANE_BOT))
-		if maxDefend > 0.4 then
+		if maxDefend > 0.55 then
 			res = res * RemapValClamped(maxDefend, 0.4, 0.8, 1, 0.3)
 		end
 	end
 
 	-- After laning: boost farm when lane front is pushed toward enemy (safe to farm)
 	-- Reduce farm when lane front is pushed toward us (should push back instead)
-	if res > 0 and not Fu.IsInLaningPhase() then
-		local assignedLane = bot:GetAssignedLane()
-		local laneFront = GetLaneFrontLocation(GetTeam(), assignedLane, 0)
-		local ourFountain = Fu.GetTeamFountain()
-		local enemyFountain = Fu.GetEnemyFountain()
-		local frontToUs = Fu.GetDistance(laneFront, ourFountain)
-		local frontToThem = Fu.GetDistance(laneFront, enemyFountain)
-		-- >1 = pushed toward enemy (safe), <1 = pushed toward us (should push)
-		local laneRatio = frontToThem > 0 and (frontToUs / frontToThem) or 1
-		local farmBoost = RemapValClamped(laneRatio, 0.8, 1.5, 0.5, 1.2)
-		res = res * farmBoost
-	end
+	-- if res > 0 and not Fu.IsInLaningPhase() then
+	-- 	local assignedLane = bot:GetAssignedLane()
+	-- 	local laneFront = GetLaneFrontLocation(GetTeam(), assignedLane, 0)
+	-- 	local ourFountain = Fu.GetTeamFountain()
+	-- 	local enemyFountain = Fu.GetEnemyFountain()
+	-- 	local frontToUs = Fu.GetDistance(laneFront, ourFountain)
+	-- 	local frontToThem = Fu.GetDistance(laneFront, enemyFountain)
+	-- 	-- >1 = pushed toward enemy (safe), <1 = pushed toward us (should push)
+	-- 	local laneRatio = frontToThem > 0 and (frontToUs / frontToThem) or 1
+	-- 	local farmBoost = RemapValClamped(laneRatio, 0.8, 1.5, 0.5, 1.2)
+	-- 	res = res * farmBoost
+	-- end
 
 	-- Farm commitment: once farming, maintain desire floor for 3 seconds
 	-- Prevents oscillation when walking between lane front (enemies visible) and jungle
@@ -286,16 +212,19 @@ function GetDesireHelper()
 
 	if DotaTime() < 50 then bot._farmExitReason = 'too_early'; return 0.0 end
 
-	-- Suppress farm when serious defense is needed
-	-- Check if any lane has high defend desire — means enemies are pushing hard
+	-- Suppress farm when serious defense is needed — but only if bot can actually
+	-- get there (close enough to walk or has TP available)
 	local maxDefendDesire = math.max(GetDefendLaneDesire(LANE_TOP), GetDefendLaneDesire(LANE_MID), GetDefendLaneDesire(LANE_BOT))
 	if maxDefendDesire > 0.5 then
-		-- Check if 3+ allies are already defending (serious fight) or 4+ enemies visible
 		local nDefendLane, _ = Fu.GetMostDefendLaneDesire()
 		local defendFront = GetLaneFrontLocation(GetTeam(), nDefendLane, 0)
 		local alliesAtDefend = Fu.GetAlliesNearLoc(defendFront, 2500)
 		if #alliesAtDefend >= 3 then
-			bot._farmExitReason = 'serious_defend'; return BOT_MODE_DESIRE_VERYLOW
+			local distToDefend = GetUnitToLocationDistance(bot, defendFront)
+			local hasTP = Fu.Item.GetItemCharges(bot, 'item_tpscroll') >= 1
+			if distToDefend <= 3500 or hasTP then
+				bot._farmExitReason = 'serious_defend'; return BOT_MODE_DESIRE_VERYLOW
+			end
 		end
 	end
 
@@ -317,7 +246,7 @@ function GetDesireHelper()
 
 	if not bAlive
 	or Fu.IsInLaningPhase()
-	or (Fu.IsDefending(bot) and botActiveModeDesire > BOT_MODE_DESIRE_LOW)
+	or (Fu.IsDefending(bot) and botActiveModeDesire > BOT_MODE_DESIRE_MODERATE)
 	or (Fu.IsDoingRoshan(bot) and bNotClone)
 	or (Fu.IsDoingTormentor(bot) and bNotClone)
 	or DotaTime() < 50
@@ -401,7 +330,7 @@ function GetDesireHelper()
 		Fu.Role['hasRefreshDone'] = false;
 	end
 	
-	availableCamp = X.GetSafeCamps(bot, Fu.Role['availableCampTable']);
+	availableCamp = Fu.Role['availableCampTable'];
 
     if bAlive and bot:HasModifier('modifier_arc_warden_tempest_double') then
         if bRoshanAlive then
@@ -444,7 +373,7 @@ function GetDesireHelper()
         end
     end
 	
-	if Fu.DoesTeamHaveAegis() and nAliveAllyCount >= 4 then
+	if Fu.DoesTeamHaveAegis() and Fu.IsLateGame() and nAliveAllyCount >= 4 then
 		bot._farmExitReason = 'aegis_push'; return BOT_MODE_DESIRE_VERYLOW;
 	end
 		
@@ -477,9 +406,8 @@ function GetDesireHelper()
 		end
 	
 	end
-	if allyKills > enemyKills + 20 and nAliveAllyCount >= 4
-	then bot._farmExitReason = 'winning_push'; return BOT_MODE_DESIRE_VERYLOW; end
 
+	-- Winning hard: let push desire naturally increase via networth bonus instead of suppressing farm
 	local nAlliesCount = Fu.GetAllyCount(bot,1400);
 	if nAlliesCount >= 4
 	   or (bot:GetLevel() >= 23 and nAlliesCount >= 3)
@@ -510,7 +438,12 @@ function GetDesireHelper()
 		end
 	end
 
-	if teamTime > DotaTime() - 3.0 then bot._farmExitReason = 'team_activity'; return BOT_MODE_DESIRE_VERYLOW end
+	-- teamTime cooldown: only suppress farm for non-cores (pos 4/5).
+	-- Cores should keep farming even when allies group nearby
+	-- suppress core farming for team proximity.
+	if teamTime > DotaTime() - 3.0 and not beVeryHighFarmer and not beHighFarmer then
+		bot._farmExitReason = 'team_activity'; return BOT_MODE_DESIRE_VERYLOW
+	end
 
 	-- local aAliveCount = Fu.GetNumOfAliveHeroes(false)
     -- local eAliveCount = Fu.GetNumOfAliveHeroes(true)
@@ -528,8 +461,9 @@ function GetDesireHelper()
 		end
 	end
 
-	-- Only suppress farm when the whole team should push together
-	if beNormalFarmer then
+	-- Pos 3 assemble: only suppress in late game when team needs to group.
+	-- In mid-game, pos 3 should farm aggressively like other cores.
+	if beNormalFarmer and Fu.IsLateGame() then
 		if bot:GetActiveMode() == BOT_MODE_ASSEMBLE then assembleTime = DotaTime() end
 		if DotaTime() - assembleTime < 5 then bot._farmExitReason = 'assemble'; return BOT_MODE_DESIRE_VERYLOW end
 		if Fu.IsTeamActivityCount(bot, 3) then bot._farmExitReason = 'team_activity_3'; return BOT_MODE_DESIRE_VERYLOW end
@@ -550,7 +484,7 @@ function GetDesireHelper()
 	local nArmor = bot:GetArmor()
 	local bFarmBlockEntered = GetGameMode() ~= GAMEMODE_MO
 		and bIsTimeToFarm
-		and (not bIsDefending or botActiveModeDesire < 0.2)
+		and (not bIsDefending or botActiveModeDesire < BOT_MODE_DESIRE_MODERATE)
 		and (bot:GetUnitName() ~= 'npc_dota_hero_lone_druid_bear' or (bot:HasScepter() and not Fu.IsValid(LoneDruid.hero)))
 
 	if IsDebug and DotaTime() > 3 * 60 and not bFarmBlockEntered and DotaTime() > (bot._lastFarmBlockLog or 0) + 10 then
@@ -579,7 +513,7 @@ function GetDesireHelper()
 
 		if #hLaneCreepList > 0
 		then
-			-- Only farm lane creeps if no enemy heroes nearby (like reference)
+			-- Only farm lane creeps if no enemy heroes nearby
 			local nEnemiesNearCreeps = Fu.GetEnemiesNearLoc(Fu.GetCenterOfUnits(hLaneCreepList), 1600)
 			if #nEnemiesNearCreeps == 0 then
 				bot.farmLocation = Fu.GetCenterOfUnits(hLaneCreepList)
@@ -648,12 +582,11 @@ function GetDesireHelper()
 				elseif farmState == FARM_STATE_FARM
 					then
 						bot._farmExitReason = 'farming_camp'
-						return BOT_MODE_DESIRE_VERYHIGH;
+						return BOT_MODE_DESIRE_ABSOLUTE;
 				else
-					local farmDistance = GetUnitToLocationDistance(bot, preferedCamp.cattr.location);
 					bot.farmLocation = preferedCamp.cattr.location
-					bot._farmExitReason = 'walk_to_camp_'..string.format('%.0f', farmDistance)
-					return math.floor(RemapValClamped(farmDistance, 6000, 0, BOT_MODE_DESIRE_MODERATE, BOT_MODE_DESIRE_ABSOLUTE) * 10) / 10;
+					bot._farmExitReason = 'walk_to_camp'
+					return BOT_MODE_DESIRE_VERYHIGH;
 				end
 			end
 		end
@@ -667,8 +600,18 @@ function GetDesireHelper()
 		end
 	end
 
-	-- Post-laning fallback: cores always farm, supports farm in late game
-	if not Fu.IsInLaningPhase() and (Fu.IsCore(bot) or Fu.IsLateGame() or bot:GetLevel() >= 18) then
+	-- Post-laning fallback: cores farm with high desire even when IsTimeToFarm
+	-- fails (hero-specific checks may have gaps in coverage).
+	-- This ensures farm (0.6) beats push (max 0.525) for cores.
+	if not Fu.IsInLaningPhase() and Fu.IsCore(bot) and DotaTime() > 5 * 60 then
+		if preferedCamp == nil then preferedCamp = Fu.Site.GetClosestNeutralSpwan(bot, availableCamp) end
+		if preferedCamp ~= nil then
+			return BOT_MODE_DESIRE_VERYHIGH
+		end
+	end
+
+	-- Supports/late game: lower priority farm
+	if not Fu.IsInLaningPhase() and (Fu.IsLateGame() or bot:GetLevel() >= 18) then
 		if preferedCamp == nil then preferedCamp = Fu.Site.GetClosestNeutralSpwan(bot, availableCamp) end
 		if preferedCamp ~= nil then
 			return BOT_MODE_DESIRE_LOW
@@ -772,10 +715,10 @@ function Think()
 	sec = math.floor(DotaTime()) % 60
 
 	-- Walk to farmLocation set by GetDesire (lane front pushed toward base)
-	if bot.farmLocation and IsLocationPassable(bot.farmLocation) and GetUnitToLocationDistance(bot, bot.farmLocation) > 1200 then
+	-- Only use farmLocation if we don't have a camp target (avoid oscillation)
+	if preferedCamp == nil and bot.farmLocation and IsLocationPassable(bot.farmLocation) and GetUnitToLocationDistance(bot, bot.farmLocation) > 1200 then
 		local nEnemyLaneCreepsNearby = bot:GetNearbyLaneCreeps(900, true)
 		local nNeutralsNearby = bot:GetNearbyNeutralCreeps(500)
-		-- Only walk to lane if not already fighting something
 		if #nEnemyLaneCreepsNearby == 0 and #nNeutralsNearby == 0 then
 			bot:Action_MoveToLocation(bot.farmLocation)
 			return
@@ -820,26 +763,26 @@ function Think()
 		end
 	end
 
+	-- Only repick camp every 3 seconds, and require significant distance savings
+	-- to prevent oscillation between two equidistant camps
 	bot._farm_repick_at = bot._farm_repick_at or 0
 	if GameTime() >= (bot._farm_repick_at or 0) then
-		bot._farm_repick_at = GameTime() + 1.0
+		bot._farm_repick_at = GameTime() + 3.0
 
-		local old = preferedCamp
-		if old then
-			local oldDist = old and GetUnitToLocationDistance(bot, old.cattr.location) or 9e9
-	
-			local avail = Fu.Role['availableCampTable']
-			local nearest = Fu.Site.GetClosestNeutralSpwan(bot, avail)
-	
-			if nearest then
-				local newDist = GetUnitToLocationDistance(bot, nearest.cattr.location)
-				-- switch if we save >800 units or ETA improves a lot and danger isn’t worse
-				if newDist + 200 < oldDist and not Fu.Site.IsCampDangerous(bot, nearest) then
-					preferedCamp = nearest
+		if preferedCamp == nil then
+			preferedCamp = Fu.Site.GetClosestNeutralSpwan(bot, availableCamp)
+		else
+			local oldDist = GetUnitToLocationDistance(bot, preferedCamp.cattr.location)
+			-- Only switch if already far from current camp AND new camp saves >1000 units
+			if oldDist > 1500 then
+				local nearest = Fu.Site.GetClosestNeutralSpwan(bot, Fu.Role['availableCampTable'])
+				if nearest and nearest ~= preferedCamp then
+					local newDist = GetUnitToLocationDistance(bot, nearest.cattr.location)
+					if newDist + 1000 < oldDist and not Fu.Site.IsCampDangerous(bot, nearest) then
+						preferedCamp = nearest
+					end
 				end
 			end
-		else
-			preferedCamp = Fu.Site.GetClosestNeutralSpwan(bot, availableCamp);
 		end
 	end
 	
@@ -849,19 +792,18 @@ function Think()
 		local targetFarmLoc = preferedCamp.cattr.location;
 		local cDist = GetUnitToLocationDistance(bot, targetFarmLoc);
 
-		-- Lane creep priority: if lane creeps are within 1000 distance more than camp,
-		-- go kill lane creeps first (more gold/XP, prevents lane from pushing into base)
-		local nLaneCreepsWider = bot:GetNearbyLaneCreeps(math.min(cDist + 1000, 1600), true)
+		-- Lane creep priority: only if lane creeps are CLOSER than camp (not a detour)
+		local nLaneCreepsWider = bot:GetNearbyLaneCreeps(1200, true)
 		if #nLaneCreepsWider > 0 then
 			local laneCenter = Fu.GetCenterOfUnits(nLaneCreepsWider)
 			local laneDist = GetUnitToLocationDistance(bot, laneCenter)
 			local nEnemiesNearLane = Fu.GetEnemiesNearLoc(laneCenter, 1600)
-			-- Only prefer lane if no enemies and lane is reasonably close vs camp
-			if #nEnemiesNearLane == 0 and laneDist < cDist + 1000 then
+			local bLanePushedOut = GetUnitToLocationDistance(nLaneCreepsWider[1], Fu.GetEnemyFountain()) < GetUnitToLocationDistance(nLaneCreepsWider[1], Fu.GetTeamFountain())
+			-- Only prefer lane if closer than camp, no enemies, and not pushed out
+			if #nEnemiesNearLane == 0 and laneDist < cDist and not bLanePushedOut then
 				local closestCreep = nLaneCreepsWider[1]
 				if Fu.IsValid(closestCreep) and Fu.CanBeAttacked(closestCreep) then
-					local range = bot:GetAttackRange()
-					if GetUnitToUnitDistance(bot, closestCreep) > range then
+					if GetUnitToUnitDistance(bot, closestCreep) > bot:GetAttackRange() then
 						bot:Action_MoveToLocation(closestCreep:GetLocation())
 					else
 						bot:Action_AttackUnit(closestCreep, false)
@@ -954,9 +896,9 @@ function Think()
 				end
 			end
 		else
-			-- No neutrals detected: walk to camp to pull them
+			-- No neutrals detected: walk to camp (don't attack-move, which stops at wrong camps)
 			if cDist > 200 then
-				bot:Action_AttackMove(targetFarmLoc)
+				bot:Action_MoveToLocation(targetFarmLoc)
 				return
 			end
 		end

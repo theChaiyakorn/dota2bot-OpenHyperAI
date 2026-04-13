@@ -375,28 +375,6 @@ function Fu.SetQueuePtToINT( bot, bSoulRingUsed )
 
 end
 
--- Queue PT switch back to primary attribute after an ability cast.
--- Call this AFTER queueing the ability so the toggle happens when the cast finishes.
-function Fu.SetQueuePtBack( bot )
-	local pt = Fu.IsItemAvailable( "item_power_treads" )
-	if pt == nil or not pt:IsFullyCastable() then return end
-
-	local ptStat = pt:GetPowerTreadsStat()
-	local primary = bot:GetPrimaryAttribute()
-
-	-- PT cycles: STR -> INT -> AGI -> STR
-	-- We need to toggle from INT back to the bot's primary attribute.
-	if ptStat == ATTRIBUTE_INTELLECT then
-		-- INT -> AGI (1 toggle)
-		if primary == ATTRIBUTE_AGILITY then
-			bot:ActionQueue_UseAbility( pt )
-		-- INT -> STR (2 toggles)
-		elseif primary == ATTRIBUTE_STRENGTH then
-			bot:ActionQueue_UseAbility( pt )
-			bot:ActionQueue_UseAbility( pt )
-		end
-	end
-end
 
 -- 动力鞋/假腿状态
 function Fu.IsPTReady( bot, status )

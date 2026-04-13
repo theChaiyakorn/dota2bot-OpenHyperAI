@@ -40,7 +40,6 @@ else
     nTalentBuildList    = Fu.Skill.GetTalentBuild(tTalentTreeList[2])
 end
 
-local sGlimmerSolarCrest = RandomInt(1, 2) == 2 and "item_glimmer_cape" or "item_solar_crest"
 local sRoleItemsBuyList = {}
 
 sRoleItemsBuyList['pos_4'] = {
@@ -51,16 +50,15 @@ sRoleItemsBuyList['pos_4'] = {
 
     "item_boots",
     "item_magic_wand",
-    "item_arcane_boots",
-    "item_urn_of_shadows", -- Alternative: item_essence_distiller (if not going spirit_vessel)
+    "item_tranquil_boots",
     "item_force_staff",--
-    "item_spirit_vessel",--
-    sGlimmerSolarCrest,--
+    "item_blade_mail",--
+    "item_ancient_janggo",
+    "item_solar_crest",--
+    "item_boots_of_bearing",--
     "item_aghanims_shard",
-    "item_guardian_greaves",-- 
     "item_shivas_guard",--
     "item_heavens_halberd",--
-    "item_ultimate_scepter",
     "item_ultimate_scepter_2",
     "item_moon_shard",
 }
@@ -73,17 +71,15 @@ sRoleItemsBuyList['pos_5'] = {
 
     "item_boots",
     "item_magic_wand",
-    "item_tranquil_boots",
-    "item_urn_of_shadows", -- Alternative: item_essence_distiller (if not going spirit_vessel)
-	"item_pipe",
+    "item_arcane_boots",
     "item_force_staff",--
-    "item_spirit_vessel",--
-    sGlimmerSolarCrest,--
+    "item_blade_mail",--
+    "item_mekansm",
+    "item_solar_crest",--
+    "item_guardian_greaves",--
     "item_aghanims_shard",
-    "item_boots_of_bearing",-- 
     "item_shivas_guard",--
-    -- "item_heavens_halberd",--
-    "item_ultimate_scepter",
+    "item_heavens_halberd",--
     "item_ultimate_scepter_2",
     "item_moon_shard",
 }
@@ -97,9 +93,7 @@ sRoleItemsBuyList['pos_3'] = sRoleItemsBuyList['pos_4']
 X['sBuyList'] = sRoleItemsBuyList[sRole]
 
 X['sSellList'] = {
-
-	"item_black_king_bar",
-	"item_quelling_blade",
+	"item_heavens_halberd", "item_magic_wand"
 }
 
 if Fu.Role.IsPvNMode() or Fu.Role.IsAllShadow() then X['sBuyList'], X['sSellList'] = { 'PvN_antimage' }, {} end

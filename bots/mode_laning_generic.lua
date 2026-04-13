@@ -120,7 +120,7 @@ function GetDesireRaw()
 			if Fu.IsValid(hitCreep) then
 				if Fu.GetPosition(bot) <= 2 or not Fu.IsThereNonSelfCoreNearby(700) -- this is for e.g lone druid bear as pos1-2 with core LD nearby to do last hit.
 				then
-					return 0.9
+					return 0.6
 				end
 			end
 		end
@@ -151,28 +151,21 @@ function GetDesireRaw()
 	if currentTime <= 10 * 60 then
 		bot.isInLanePhase = true
 
-		-- At fountain after respawn: high desire to get back to assigned lane
-		if bot:HasModifier('modifier_fountain_aura_buff') and botHP > 0.8 then
-			return BOT_MODE_DESIRE_VERYHIGH + 0.04
-		end
-
 		if Fu.IsCore(bot)
 			and bSafeLane
 			and not bot:WasRecentlyDamagedByAnyHero(5.0)
 			and not Fu.IsRetreating(bot)
 		then
-			return BOT_MODE_DESIRE_VERYHIGH + 0.04
+			return BOT_MODE_DESIRE_HIGH + 0.04
 		end
 		return (BOT_MODE_DESIRE_MODERATE - 0.05) * hpScale
 	end
 
-	-- Past early laning: unblock farm/push modes
-	bot.isInLanePhase = false
-
 	if currentTime <= 12 * 60 and botLV <= 11 then return 0.2 * hpScale end
-	if currentTime <= 20 * 60 then return 0.1 * hpScale end
 
-	return 0.01
+	-- Past early laning: farm and push should fully take over
+	bot.isInLanePhase = false
+	return BOT_MODE_DESIRE_NONE
 end
 
 function GetFurthestEnemyAttackRange(enemyList)
@@ -198,34 +191,25 @@ local function GetCreepScore(creep)
 end
 
 function GetBestLastHitCreep(hCreepList)
-	local dmgDelta = attackDamage * 0.7
+	-- Use attackDamage - 3 as safety margin for guaranteed kills
+	local safeDamage = attackDamage - 3
 
-	-- Find best killable creep by value score
 	local bestCreep = nil
 	local bestScore = 0
-	local moveToCreep = nil
-	local moveToScore = 0
 	for _, creep in pairs(hCreepList) do
 		if Fu.IsValid(creep) and Fu.CanBeAttacked(creep) then
 			local nDelay = Fu.GetAttackProDelayTime(bot, creep)
 			local score = GetCreepScore(creep)
-			if Fu.WillKillTarget(creep, attackDamage, DAMAGE_TYPE_PHYSICAL, nDelay) then
+			if Fu.WillKillTarget(creep, safeDamage, DAMAGE_TYPE_PHYSICAL, nDelay) then
 				if score > bestScore then
 					bestScore = score
 					bestCreep = creep
 				end
-			elseif Fu.WillKillTarget(creep, attackDamage + dmgDelta, DAMAGE_TYPE_PHYSICAL, nDelay) then
-				if score > moveToScore then
-					moveToScore = score
-					moveToCreep = creep
-				end
 			end
 		end
 	end
-	if bestCreep then return bestCreep, false end
-	if moveToCreep then return moveToCreep, true end
 
-	return nil
+	return bestCreep
 end
 
 function GetBestDenyCreep(hCreepList)
@@ -237,7 +221,7 @@ function GetBestDenyCreep(hCreepList)
 		and Fu.GetHP(creep) < 0.49
 		and Fu.CanBeAttacked(creep)
 		and creep:GetHealth() <= attackDamage
-		and Fu.IsInRange(bot, creep, botAttackRange + 100)
+		and Fu.IsInRange(bot, creep, botAttackRange + 150)
 		then
 			local score = GetCreepScore(creep)
 			if score > bestScore then
@@ -298,15 +282,18 @@ if local_mode_laning_generic or (Fu.GetPosition(bot) == 1 and Fu.IsPosxHuman(5))
 		end
 
 		-- Last hit
-		local hitCreep, moveToCreep = GetBestLastHitCreep(nEnemyCreeps)
+		local hitCreep = GetBestLastHitCreep(nEnemyCreeps)
 		if Fu.IsValid(hitCreep) then
 			-- Skip last-hits when creeps are under enemy tower and out of range
+			-- but allow if we have enough ally creeps to tank
 			if Fu.IsValidBuilding(nEnemyTowers[1])
 			and Fu.IsValid(nEnemyCreeps[1])
 			and GetUnitToUnitDistance(nEnemyCreeps[1], nEnemyTowers[1]) < 700
 			and GetUnitToUnitDistance(nEnemyCreeps[1], bot) > botAttackRange then
-				-- Creeps under tower, don't walk into tower range
-				goto skipLastHit
+				local nAllyCreepsNearTower = bot:FindAoELocation(false, false, nEnemyTowers[1]:GetLocation(), 0, 650, 0, 0)
+				if nAllyCreepsNearTower.count <= 3 then
+					goto skipLastHit
+				end
 			end
 
 			-- Lane partner awareness: supports yield last hits to cores
@@ -316,9 +303,12 @@ if local_mode_laning_generic or (Fu.GetPosition(bot) == 1 and Fu.IsPosxHuman(5))
 			or (not Fu.IsCore(bot) and Fu.IsCore(partner)
 				and (not partner:IsAlive() or GetUnitToUnitDistance(partner, hitCreep) > partner:GetAttackRange() + 400))
 			then
-				if GetUnitToUnitDistance(bot, hitCreep) > botAttackRange
-				or (moveToCreep and GetUnitToUnitDistance(bot, hitCreep) > botAttackRange * 0.8) then
-					bot:Action_MoveDirectly(hitCreep:GetLocation())
+				local distToCreep = GetUnitToUnitDistance(bot, hitCreep)
+				if distToCreep > botAttackRange then
+					-- Move to attack range, stop at bounding radius distance
+					local stopDist = botAttackRange - hitCreep:GetBoundingRadius()
+					local moveTarget = Fu.GetXUnitsTowardsLocation2(hitCreep:GetLocation(), bot:GetLocation(), stopDist)
+					bot:Action_MoveDirectly(moveTarget)
 					return
 				else
 					bot:SetTarget(hitCreep)

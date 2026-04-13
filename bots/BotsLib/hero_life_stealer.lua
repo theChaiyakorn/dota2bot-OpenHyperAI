@@ -30,13 +30,13 @@ local sRoleItemsBuyList = {}
 
 sRoleItemsBuyList['pos_1'] = {
     "item_tango",
-    "item_branches",
+    "item_double_branches",
     "item_faerie_fire",
     "item_quelling_blade",
-    "item_double_gauntlets",
 
     "item_orb_of_corrosion",
 	"item_magic_wand",
+    "item_double_gauntlets",
     "item_phase_boots",
     "item_armlet",
     sRandom,--

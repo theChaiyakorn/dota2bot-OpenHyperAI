@@ -33,9 +33,19 @@ local function __TS__ArraySort(self, compareFn)
     end
     return self
 end
+
+local function __TS__ArrayFind(self, predicate, thisArg)
+    for i = 1, #self do
+        local elem = self[i]
+        if predicate(thisArg, elem, i - 1, self) then
+            return elem
+        end
+    end
+    return nil
+end
 -- End of Lua Library inline imports
 local ____exports = {}
-local getDefendState, updateDefendGameStateCache, updateDefendLocationStateCache, updateDefendUnitStateCache, _q, _keyLoc, _recentHeroCountNear, IsValidBuildingTarget, IsBaseThreatActive, WeightedEnemiesAroundLocation, GetThreatenedLane, GetClosestAllyPos, IsThereNoTeammateTravelBootsDefender, GetHighGroundEdgeWaitPoint, ConsiderPingedDefend, okLoc, Localization, PING_DELTA, MAX_DESIRE_CAP, BASE_THREAT_RADIUS, BASE_THREAT_HOLD, CACHE_ENEMY_AROUND_LOC_HZ, CACHE_LASTSEEN_WINDOW, nTeam, _threatLaneSticky, baseThreatUntil, fTraveBootsDefendTime, _cacheEnemyAroundLoc, DEFEND_CACHE_TTL, defendGameStateCache, defendLocationStateCache, defendUnitStateCache
+local getDefendState, updateDefendGameStateCache, updateDefendLocationStateCache, updateDefendUnitStateCache, _q, _keyLoc, _recentHeroCountNear, IsValidBuildingTarget, IsBaseThreatActive, IsDefendingOtherLane, WeightedEnemiesAroundLocation, GetThreatenedLane, GetClosestAllyPos, IsThereNoTeammateTravelBootsDefender, GetHighGroundEdgeWaitPoint, ConsiderPingedDefend, okLoc, Localization, PING_DELTA, MAX_DESIRE_CAP, BASE_THREAT_RADIUS, BASE_THREAT_HOLD, CACHE_ENEMY_AROUND_LOC_HZ, CACHE_LASTSEEN_WINDOW, nTeam, _threatLaneSticky, baseThreatUntil, fTraveBootsDefendTime, _cacheEnemyAroundLoc, DEFEND_CACHE_TTL, defendGameStateCache, defendLocationStateCache, defendUnitStateCache
 local Fu = require(GetScriptDirectory().."/FuncLib/func_utils")
 local ____dota = require(GetScriptDirectory().."/ts_libs/dota/index")
 local Barracks = ____dota.Barracks
@@ -207,6 +217,19 @@ function IsValidBuildingTarget(unit)
 end
 function IsBaseThreatActive()
     return DotaTime() < (baseThreatUntil or -1)
+end
+function IsDefendingOtherLane(bot, lane)
+    local mode = bot:GetActiveMode()
+    if lane == Lane.Top then
+        return mode == BotMode.DefendTowerMid or mode == BotMode.DefendTowerBot
+    end
+    if lane == Lane.Mid then
+        return mode == BotMode.DefendTowerTop or mode == BotMode.DefendTowerBot
+    end
+    if lane == Lane.Bot then
+        return mode == BotMode.DefendTowerTop or mode == BotMode.DefendTowerMid
+    end
+    return false
 end
 function WeightedEnemiesAroundLocation(vLoc, nRadius)
     local now = DotaTime()
@@ -741,11 +764,8 @@ function ConsiderPingedDefend(bot, lane, desire, building, tier, nEffAllies, nEn
     end
 end
 function ____exports.GetDefendDesireHelper(bot, lane)
-    if bot.laneToDefend == nil then
-        bot.laneToDefend = lane
-    end
     if bot.DefendLaneDesire == nil then
-        bot.DefendLaneDesire = {0, 0, 0}
+        bot.DefendLaneDesire = {}
     end
     if bot._defendCommitLane == nil then
         bot._defendCommitLane = 0
@@ -759,9 +779,6 @@ function ____exports.GetDefendDesireHelper(bot, lane)
     local ancient = gameState.ourAncient
     local commitLane = bot._defendCommitLane
     local commitUntil = bot._defendCommitUntil
-    if commitLane ~= 0 and DotaTime() < commitUntil and lane ~= commitLane then
-        return BotModeDesire.None
-    end
     local lanesNeedingDefend = {}
     for ____, l in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
         local d = GetDefendLaneDesire(l)
@@ -769,7 +786,15 @@ function ____exports.GetDefendDesireHelper(bot, lane)
             local front = locationState.laneFronts[l]
             local dist = GetUnitToLocationDistance(bot, front)
             local enemies = #Fu.GetLastSeenEnemiesNearLoc(front, 2500)
-            lanesNeedingDefend[#lanesNeedingDefend + 1] = {lane = l, desire = d, dist = dist, enemies = enemies}
+            local _bld, _urgent, bldTier = unpack(____exports.GetFurthestBuildingOnLane(l))
+            local tierWeight = bldTier >= 5 and 3 or (bldTier >= 4 and 2.5 or (bldTier >= 3 and 2 or (bldTier >= 2 and 1.5 or 1)))
+            lanesNeedingDefend[#lanesNeedingDefend + 1] = {
+                lane = l,
+                desire = d * tierWeight,
+                dist = dist,
+                enemies = enemies,
+                tier = bldTier
+            }
         end
     end
     if #lanesNeedingDefend >= 2 then
@@ -783,13 +808,29 @@ function ____exports.GetDefendDesireHelper(bot, lane)
             end
         )
         local bestLane = lanesNeedingDefend[1].lane
-        if lane ~= bestLane then
+        if commitLane ~= 0 and DotaTime() < commitUntil and lane ~= commitLane then
+            local commitEntry = __TS__ArrayFind(
+                lanesNeedingDefend,
+                function(____, e) return e.lane == commitLane end
+            )
+            local thisEntry = __TS__ArrayFind(
+                lanesNeedingDefend,
+                function(____, e) return e.lane == lane end
+            )
+            if thisEntry and commitEntry and thisEntry.tier > commitEntry.tier and thisEntry.enemies >= 1 then
+                bot._defendCommitLane = lane
+                bot._defendCommitUntil = DotaTime() + 5
+            else
+                return BotModeDesire.None
+            end
+        elseif lane ~= bestLane then
             bot._defendCommitLane = bestLane
             bot._defendCommitUntil = DotaTime() + 5
             return BotModeDesire.None
+        else
+            bot._defendCommitLane = bestLane
+            bot._defendCommitUntil = DotaTime() + 5
         end
-        bot._defendCommitLane = bestLane
-        bot._defendCommitUntil = DotaTime() + 5
     elseif DotaTime() >= commitUntil then
         bot._defendCommitLane = 0
     end
@@ -797,7 +838,7 @@ function ____exports.GetDefendDesireHelper(bot, lane)
     ds.defendLoc = locationState.laneFronts[lane]
     local distanceToDefendLoc = GetUnitToLocationDistance(bot, ds.defendLoc)
     local botLevel = bot:GetLevel()
-    if bot:GetAssignedLane() ~= lane and distanceToDefendLoc > 3000 and (Fu.GetPosition(bot) == 1 and botLevel < 8 or Fu.GetPosition(bot) == 2 and botLevel < 7 or Fu.GetPosition(bot) == 3 and botLevel < 6 or Fu.GetPosition(bot) == 4 and botLevel < 4 or Fu.GetPosition(bot) == 5 and botLevel < 4) then
+    if bot:GetAssignedLane() ~= lane and distanceToDefendLoc > 3000 and (Fu.GetPosition(bot) == 1 and botLevel < 7 or Fu.GetPosition(bot) == 2 and botLevel < 7 or Fu.GetPosition(bot) == 3 and botLevel < 6 or Fu.GetPosition(bot) == 4 and botLevel < 4 or Fu.GetPosition(bot) == 5 and botLevel < 4) then
         return BotModeDesire.None
     end
     if botLevel < 3 then
@@ -961,9 +1002,12 @@ function ____exports.GetDefendDesireHelper(bot, lane)
             pingFloor = MAX_DESIRE_CAP
         end
     end
-    local furthestBuilding, urgentMul, buildingTier = unpack(____exports.GetFurthestBuildingOnLane(lane))
+    local furthestBuilding, _urgentMul, buildingTier = unpack(____exports.GetFurthestBuildingOnLane(lane))
     if not IsValidBuildingTarget(furthestBuilding) then
         return BotModeDesire.None
+    end
+    if buildingTier >= 4 and ancient and ancient:IsAlive() and enemiesAtAncient >= 2 then
+        return MAX_DESIRE_CAP
     end
     local distToBuilding = GetUnitToUnitDistance(bot, furthestBuilding)
     local walkTime = distToBuilding / math.max(
@@ -975,15 +1019,6 @@ function ____exports.GetDefendDesireHelper(bot, lane)
     local hasNPTeleport = Fu.CanCastAbility(bot:GetAbilityByName("furion_teleportation"))
     local hasTinkerTP = Fu.CanCastAbility(bot:GetAbilityByName("tinker_keen_teleport"))
     local canGetThereFast = hasTp or hasNPTeleport or hasTinkerTP or walkTime <= 11
-    if not canGetThereFast and buildingTier <= 2 and not panic.active then
-        local earlyEnemyCheck = Fu.GetLastSeenEnemiesNearLoc(
-            furthestBuilding:GetLocation(),
-            2500
-        )
-        if #earlyEnemyCheck < 4 then
-            return BotModeDesire.None
-        end
-    end
     local shouldDef = ____exports.ShouldDefend(bot, furthestBuilding, 1600)
     if not shouldDef then
         local nearEnemiesAtBuilding = Fu.GetLastSeenEnemiesNearLoc(
@@ -1061,10 +1096,10 @@ function ____exports.GetDefendDesireHelper(bot, lane)
         if distToHub > 4000 then
             for ____, otherLane in ipairs({Lane.Top, Lane.Mid, Lane.Bot}) do
                 do
-                    local __continue203
+                    local __continue210
                     repeat
                         if otherLane == lane then
-                            __continue203 = true
+                            __continue210 = true
                             break
                         end
                         local otherHub = GetLaneFrontLocation(nTeam, otherLane, 0)
@@ -1073,9 +1108,9 @@ function ____exports.GetDefendDesireHelper(bot, lane)
                         if #otherEnemies >= 1 and otherDist < distToHub - 1500 then
                             return BotModeDesire.None
                         end
-                        __continue203 = true
+                        __continue210 = true
                     until true
-                    if not __continue203 then
+                    if not __continue210 then
                         break
                     end
                 end
@@ -1101,12 +1136,26 @@ function ____exports.GetDefendDesireHelper(bot, lane)
         0,
         0.7
     )
-    nDefendDesire = nDefendDesire * urgentMul
-    if IsValidBuildingTarget(furthestBuilding) and furthestBuilding ~= ancient then
-        local hp = Fu.GetHP(furthestBuilding)
-        if buildingTier == 1 and hp <= 0.15 or buildingTier == 2 and hp <= 0.1 then
+    local bDefendingOtherLane = IsDefendingOtherLane(bot, lane)
+    if buildingTier <= 1 then
+        if bDefendingOtherLane then
             return BotModeDesire.None
         end
+        local hp = IsValidBuildingTarget(furthestBuilding) and Fu.GetHP(furthestBuilding) or 1
+        if hp < 0.25 and #lEnemies > 0 or not canGetThereFast then
+            return BotModeDesire.None
+        end
+    elseif buildingTier == 2 then
+        if bDefendingOtherLane then
+            return BotModeDesire.None
+        end
+        local hp = IsValidBuildingTarget(furthestBuilding) and Fu.GetHP(furthestBuilding) or 1
+        if hp < 0.25 and #lEnemies > 0 or not canGetThereFast then
+            return BotModeDesire.None
+        end
+        nDefendDesire = nDefendDesire * 3
+    else
+        nDefendDesire = nDefendDesire * 5
     end
     if panic.active then
         nDefendDesire = math.max(nDefendDesire, panic.floor)
@@ -1129,10 +1178,20 @@ function ____exports.GetDefendDesireHelper(bot, lane)
     if nDefendDesire > MAX_DESIRE_CAP * 0.8 then
         Fu.Utils.GameStates = Fu.Utils.GameStates or ({})
         Fu.Utils.GameStates.recentDefendTime = DotaTime()
-        bot.laneToDefend = lane
     end
-    if distToHub < 1200 then
-        nDefendDesire = math.min(nDefendDesire, 0.3)
+    local dld = bot.DefendLaneDesire
+    dld[lane] = nDefendDesire
+    local dTop = dld[Lane.Top] or 0
+    local dMid = dld[Lane.Mid] or 0
+    local dBot = dld[Lane.Bot] or 0
+    local maxDesire = math.max(dTop, dMid, dBot)
+    if maxDesire < 0.1 then
+        bot.laneToDefend = nil
+    else
+        bot.laneToDefend = dTop >= dMid and dTop >= dBot and Lane.Top or (dMid >= dBot and Lane.Mid or Lane.Bot)
+    end
+    if distToHub < 1200 and not panic.active then
+        nDefendDesire = math.min(nDefendDesire, 0.55)
     end
     return math.min(
         math.max(nDefendDesire, 0),
@@ -1157,7 +1216,7 @@ end
 ____Customize_1.ThinkLess = ____Customize_Enable_0
 PING_DELTA = 5
 local SEARCH_RANGE_DEFAULT = 1600
-MAX_DESIRE_CAP = 0.6
+MAX_DESIRE_CAP = 0.5
 BASE_THREAT_RADIUS = 2600
 BASE_THREAT_HOLD = 4
 CACHE_ENEMY_AROUND_LOC_HZ = 0.35
@@ -1187,7 +1246,7 @@ function ____exports.GetDefendDesire(bot, lane)
     local enemiesHere = Fu.GetEnemiesNearLoc(defendLoc, 2000)
     local teamStronger = #alliesHere >= 3 and #enemiesHere >= 1 and #alliesHere > #enemiesHere and Fu.WeAreStronger(bot, 2000)
     if teamStronger and res < 0.9 then
-        res = math.min(res, 0.3)
+        res = math.min(res, 0.55)
     end
     bot.defendDesire = res
     return res

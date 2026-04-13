@@ -20,7 +20,7 @@ Customize.ThinkLess = Customize.Enable ? Customize.ThinkLess : 1;
 const PING_DELTA = 5.0;
 const SEARCH_RANGE_DEFAULT = 1600;
 // const CLOSE_RANGE = 1200;
-const MAX_DESIRE_CAP = 0.6; // Hardcode: BotModeDesire.VeryHigh can resolve to 0.9 if enums load before global_overrides
+const MAX_DESIRE_CAP = 0.5; // Hardcode: BotModeDesire.VeryHigh can resolve to 0.9 if enums load before global_overrides
 
 // Base threat (Ancient defense)
 const BASE_THREAT_RADIUS = 2600;
@@ -253,6 +253,14 @@ function IsValidBuildingTarget(unit: Unit | null): unit is Unit {
 }
 function IsBaseThreatActive(): boolean {
     return DotaTime() < (baseThreatUntil || -1);
+}
+/** check if bot is actively defending a different lane (suppress T1/T2 conflicts) */
+function IsDefendingOtherLane(bot: Unit, lane: Lane): boolean {
+    const mode = bot.GetActiveMode();
+    if (lane === Lane.Top) return mode === BotMode.DefendTowerMid || mode === BotMode.DefendTowerBot;
+    if (lane === Lane.Mid) return mode === BotMode.DefendTowerTop || mode === BotMode.DefendTowerBot;
+    if (lane === Lane.Bot) return mode === BotMode.DefendTowerTop || mode === BotMode.DefendTowerMid;
+    return false;
 }
 
 // If any enemy units (weighted) are around location; cached
@@ -644,11 +652,10 @@ export function GetDefendDesire(bot: Unit, lane: Lane): BotModeDesire {
     const enemiesHere = Fu.GetEnemiesNearLoc(defendLoc, 2000);
     const teamStronger = alliesHere.length >= 3 && enemiesHere.length >= 1 && alliesHere.length > enemiesHere.length && Fu.WeAreStronger(bot, 2000);
 
-    // Cap: team is stronger at defend point, lower defend so attack takes over.
-    // BUT: never cap during panic (ancient under attack / enemies on HG).
-    // Panic desires (0.94-0.96) should stay high regardless.
+    // Cap: team is stronger at defend point, lower defend so Valve's attack mode (0.6) takes over.
+    // Cap at 0.55 — high enough to beat farm/push/other modes, low enough for attack to win.
     if (teamStronger && res < 0.9) {
-        res = math.min(res, 0.3) as BotModeDesire;
+        res = math.min(res, 0.55) as BotModeDesire;
     }
 
     (bot as any).defendDesire = res;
@@ -656,8 +663,7 @@ export function GetDefendDesire(bot: Unit, lane: Lane): BotModeDesire {
 }
 
 export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
-    if ((bot as any).laneToDefend == null) (bot as any).laneToDefend = lane;
-    if ((bot as any).DefendLaneDesire == null) (bot as any).DefendLaneDesire = [0, 0, 0];
+    if ((bot as any).DefendLaneDesire == null) (bot as any).DefendLaneDesire = {} as Record<number, number>;
     if ((bot as any)._defendCommitLane == null) (bot as any)._defendCommitLane = 0;
     if ((bot as any)._defendCommitUntil == null) (bot as any)._defendCommitUntil = 0;
 
@@ -669,40 +675,55 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     const ancient = gameState.ourAncient;
 
     // --- Multi-lane defend conflict: commit to one lane ---
-    // When 2+ lanes need defending, pick the closest lane with fewest enemy heroes
-    // and stick to it for 5s to prevent back-and-forth oscillation.
+    // When 2+ lanes need defending, pick the lane with highest building-tier-weighted
+    // desire and stick to it for 5s to prevent back-and-forth oscillation.
+    // Ancient/T4 always wins over T1/T2 thanks to urgentMul weighting.
     const commitLane = (bot as any)._defendCommitLane as Lane;
     const commitUntil = (bot as any)._defendCommitUntil as number;
-    if (commitLane !== 0 && DotaTime() < commitUntil && lane !== commitLane) {
-        // Still committed to a different lane — suppress this one
-        return BotModeDesire.None;
-    }
+
     // Re-evaluate commitment: check which lanes actually need defending
-    const lanesNeedingDefend: { lane: Lane; desire: number; dist: number; enemies: number }[] = [];
+    const lanesNeedingDefend: { lane: Lane; desire: number; dist: number; enemies: number; tier: number }[] = [];
     for (const l of [Lane.Top, Lane.Mid, Lane.Bot]) {
         const d = GetDefendLaneDesire(l);
         if (d > 0.1) {
             const front = locationState.laneFronts[l];
             const dist = GetUnitToLocationDistance(bot, front);
             const enemies = Fu.GetLastSeenEnemiesNearLoc(front, 2500).length;
-            lanesNeedingDefend.push({ lane: l, desire: d, dist, enemies });
+            const [_bld, _urgent, bldTier] = GetFurthestBuildingOnLane(l);
+            // Weight desire by building tier: ancient(5)=3.0x, T4(4)=2.5x, T3/rax(3)=2.0x, T2=1.5x, T1=1.0x
+            const tierWeight = bldTier >= 5 ? 3.0 : bldTier >= 4 ? 2.5 : bldTier >= 3 ? 2.0 : bldTier >= 2 ? 1.5 : 1.0;
+            lanesNeedingDefend.push({ lane: l, desire: d * tierWeight, dist, enemies, tier: bldTier });
         }
     }
     if (lanesNeedingDefend.length >= 2) {
-        // Sort: highest desire first (most urgent), then closer distance as tiebreaker
+        // Sort: highest tier-weighted desire first, then closer distance as tiebreaker
         lanesNeedingDefend.sort((a, b) => {
             if (a.desire !== b.desire) return b.desire - a.desire;
             return a.dist - b.dist;
         });
         const bestLane = lanesNeedingDefend[0].lane;
-        if (lane !== bestLane) {
+        // Override stale commitment if a higher-tier building is now threatened
+        if (commitLane !== 0 && DotaTime() < commitUntil && lane !== commitLane) {
+            // Allow override: if the current lane has a higher-tier building than the committed lane
+            const commitEntry = lanesNeedingDefend.find(e => e.lane === commitLane);
+            const thisEntry = lanesNeedingDefend.find(e => e.lane === lane);
+            if (thisEntry && commitEntry && thisEntry.tier > commitEntry.tier && thisEntry.enemies >= 1) {
+                // Higher priority building under threat — break commitment
+                (bot as any)._defendCommitLane = lane;
+                (bot as any)._defendCommitUntil = DotaTime() + 5;
+            } else {
+                // Still committed to a different lane — suppress this one
+                return BotModeDesire.None;
+            }
+        } else if (lane !== bestLane) {
             // Commit to the best lane for 5s
             (bot as any)._defendCommitLane = bestLane;
             (bot as any)._defendCommitUntil = DotaTime() + 5;
             return BotModeDesire.None;
+        } else {
+            (bot as any)._defendCommitLane = bestLane;
+            (bot as any)._defendCommitUntil = DotaTime() + 5;
         }
-        (bot as any)._defendCommitLane = bestLane;
-        (bot as any)._defendCommitUntil = DotaTime() + 5;
     } else if (DotaTime() >= commitUntil) {
         // No multi-lane conflict, clear commitment
         (bot as any)._defendCommitLane = 0;
@@ -718,7 +739,7 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     if (
         bot.GetAssignedLane() !== lane &&
         distanceToDefendLoc > 3000 &&
-        ((Fu.GetPosition(bot) === 1 && botLevel < 8) ||
+        ((Fu.GetPosition(bot) === 1 && botLevel < 7) ||
             (Fu.GetPosition(bot) === 2 && botLevel < 7) ||
             (Fu.GetPosition(bot) === 3 && botLevel < 6) ||
             (Fu.GetPosition(bot) === 4 && botLevel < 4) ||
@@ -894,9 +915,15 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     }
 
     // Compute desire anchored on furthest building
-    const [furthestBuilding, urgentMul, buildingTier] = GetFurthestBuildingOnLane(lane);
+    const [furthestBuilding, _urgentMul, buildingTier] = GetFurthestBuildingOnLane(lane);
     if (!IsValidBuildingTarget(furthestBuilding)) {
         return BotModeDesire.None;
+    }
+
+    // immediate high desire when enemies at base buildings (T4/ancient).
+    // Bypasses all complex gating — base defense is non-negotiable.
+    if (buildingTier >= 4 && ancient && ancient.IsAlive() && enemiesAtAncient >= 2) {
+        return MAX_DESIRE_CAP as BotModeDesire;
     }
 
     // Can we get there fast enough?
@@ -907,14 +934,6 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     const hasNPTeleport = Fu.CanCastAbility(bot.GetAbilityByName("furion_teleportation"));
     const hasTinkerTP = Fu.CanCastAbility(bot.GetAbilityByName("tinker_keen_teleport"));
     const canGetThereFast = hasTp || hasNPTeleport || hasTinkerTP || walkTime <= 11;
-
-    // T1/T2: don't defend if can't get there fast enough — unless 4+ enemies (everyone must come)
-    if (!canGetThereFast && buildingTier <= 2 && !panic.active) {
-        const earlyEnemyCheck = Fu.GetLastSeenEnemiesNearLoc(furthestBuilding.GetLocation(), 2500);
-        if (earlyEnemyCheck.length < 4) {
-            return BotModeDesire.None;
-        }
-    }
 
     // Use ShouldDefend to gate/dampen
     const shouldDef = ShouldDefend(bot, furthestBuilding, 1600);
@@ -1031,16 +1050,34 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
         }
     }
 
-    // Reference approach: remap Valve’s GetDefendLaneDesire into [0, ABSOLUTE], multiply by tier urgency.
-    let nDefendDesire = RemapValClamped(GetDefendLaneDesire(lane), 0, 1, 0, 0.7) as number; // 0.7 = ABSOLUTE, don't use enum (can resolve to 1.0)
-    nDefendDesire = nDefendDesire * urgentMul;
+    // remap Valve’s GetDefendLaneDesire into [0, ABSOLUTE], multiply by tier.
+    let nDefendDesire = RemapValClamped(GetDefendLaneDesire(lane), 0, 1, 0, 0.7) as number; // 0.7 = ABSOLUTE, don’t use enum (can resolve to 1.0)
 
-    // Don’t throw bodies at doomed low-HP T1/T2
-    if (IsValidBuildingTarget(furthestBuilding) && furthestBuilding !== ancient) {
-        const hp = Fu.GetHP(furthestBuilding);
-        if ((buildingTier === 1 && hp <= 0.15) || (buildingTier === 2 && hp <= 0.1)) {
+    // suppress T1/T2 desire if bot is already defending another lane.
+    // T3+ never suppressed — inner buildings always take priority.
+    const bDefendingOtherLane = IsDefendingOtherLane(bot, lane);
+
+    // multipliers + gating by building tier:
+    // T1: *1, give up if HP < 0.25 with heroes or can’t reach
+    // T2: *3, give up if HP < 0.25 with heroes or can’t reach
+    // T3+: *5, always defend (heroes or not)
+    if (buildingTier <= 1) {
+        if (bDefendingOtherLane) return BotModeDesire.None;
+        const hp = IsValidBuildingTarget(furthestBuilding) ? Fu.GetHP(furthestBuilding) : 1;
+        if ((hp < 0.25 && lEnemies.length > 0) || !canGetThereFast) {
             return BotModeDesire.None;
         }
+        // T1: nDesire * 1 (no multiplier)
+    } else if (buildingTier === 2) {
+        if (bDefendingOtherLane) return BotModeDesire.None;
+        const hp = IsValidBuildingTarget(furthestBuilding) ? Fu.GetHP(furthestBuilding) : 1;
+        if ((hp < 0.25 && lEnemies.length > 0) || !canGetThereFast) {
+            return BotModeDesire.None;
+        }
+        nDefendDesire = nDefendDesire * 3;
+    } else {
+        // T3+ / rax / T4 / ancient — always prioritize, never suppress
+        nDefendDesire = nDefendDesire * 5;
     }
 
     // Apply panic/ping floors
@@ -1059,12 +1096,26 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     if (nDefendDesire > MAX_DESIRE_CAP * 0.8) {
         (Fu.Utils as any).GameStates = (Fu.Utils as any).GameStates || {};
         (Fu.Utils as any).GameStates["recentDefendTime"] = DotaTime();
-        (bot as any).laneToDefend = lane;
     }
 
-    // Drop desire once bot is near the defend location — let attack/push take over
-    if (distToHub < 1200) {
-        nDefendDesire = math.min(nDefendDesire, 0.3);
+    // Update laneToDefend: track which lane has highest desire, clear when none need defending.
+    // Use lane enum values (Top=1, Mid=2, Bot=3) as keys directly to avoid TSTL array offset issues.
+    const dld = (bot as any).DefendLaneDesire as Record<number, number>;
+    dld[lane] = nDefendDesire;
+    const dTop = dld[Lane.Top] || 0;
+    const dMid = dld[Lane.Mid] || 0;
+    const dBot = dld[Lane.Bot] || 0;
+    const maxDesire = math.max(dTop, dMid, dBot);
+    if (maxDesire < 0.1) {
+        (bot as any).laneToDefend = null;
+    } else {
+        (bot as any).laneToDefend = dTop >= dMid && dTop >= dBot ? Lane.Top : dMid >= dBot ? Lane.Mid : Lane.Bot;
+    }
+
+    // Drop desire once bot is near the defend location — let Valve's attack mode (0.6) take over.
+    // Cap at 0.55: high enough to beat farm/push/other defend lanes, low enough for attack to win.
+    if (distToHub < 1200 && !panic.active) {
+        nDefendDesire = math.min(nDefendDesire, 0.55);
     }
 
     // Final clamp: defend must never exceed MAX_DESIRE_CAP

@@ -131,6 +131,7 @@ function GetDesireHelper()
     ShouldFollowAlly = false
     followAllyTarget = nil
     ShouldPullBackFromTower = false
+    ShouldAttackSpecialUnit = false
 
     if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then
         return BOT_MODE_DESIRE_NONE
@@ -212,30 +213,35 @@ function GetDesireHelper()
     end
 
 	-- Tower danger: boost desire above Valve's attack (0.65) so our Think can pull bot back
-	-- Uses a sticky timer so bot stays back for TOWER_DANGER_HOLD seconds (prevents oscillation)
+	-- at 1200 units from tower where it still dies
 	bTowerDanger = false
-	if DotaTime() < fTowerDangerUntil and vTowerDangerAwayLoc ~= nil then
-		bTowerDanger = true
-		return 0.75
-	end
-	local eTowersDesire = bot:GetNearbyTowers(900, true)
-	if Fu.IsValidBuilding(eTowersDesire[1]) then
-		local towerTarget = eTowersDesire[1]:GetAttackTarget()
-		local allyCreeps = bot:GetNearbyLaneCreeps(900, false)
-		local btTarget = Fu.GetProperTarget(bot)
-		if towerTarget == bot
-		or (#allyCreeps == 0 and (bot:WasRecentlyDamagedByTower(2.0) or (Fu.IsValidHero(btTarget) and Fu.IsRecklesslyDivingTower(bot, btTarget))))
-		then
+	if Fu.IsLaning(bot) then
+		if DotaTime() < fTowerDangerUntil and vTowerDangerAwayLoc ~= nil then
 			bTowerDanger = true
-			vTowerDangerAwayLoc = Fu.AdjustLocationWithOffsetTowardsFountain(eTowersDesire[1]:GetLocation(), 1200)
-			fTowerDangerUntil = DotaTime() + TOWER_DANGER_HOLD
-			return 0.75 -- beats Valve attack (0.65), Think will move bot away
+			return 0.7
+		end
+		local eTowersDesire = bot:GetNearbyTowers(900, true)
+		if Fu.IsValidBuilding(eTowersDesire[1]) then
+			local towerTarget = eTowersDesire[1]:GetAttackTarget()
+			local allyCreeps = bot:GetNearbyLaneCreeps(900, false)
+			local btTarget = Fu.GetProperTarget(bot)
+			if towerTarget == bot
+			or (#allyCreeps == 0 and (bot:WasRecentlyDamagedByTower(2.0) or (Fu.IsValidHero(btTarget) and Fu.IsRecklesslyDivingTower(bot, btTarget))))
+			then
+				bTowerDanger = true
+				vTowerDangerAwayLoc = Fu.AdjustLocationWithOffsetTowardsFountain(eTowersDesire[1]:GetLocation(), 1200)
+				fTowerDangerUntil = DotaTime() + TOWER_DANGER_HOLD
+				return 0.7 -- beats Valve attack (0.65), Think will move bot away
+			end
 		end
 	end
 
-	hTargetCreep = X.GetLastHitCreep()
-	if Fu.IsValid(hTargetCreep) and Fu.CanBeAttacked(hTargetCreep) then
-		return BOT_DESIRE_OVERRIDE * 1.5
+	-- Last-hit nearby creep at absolute priority, but not when low HP (let retreat win)
+	if nBotHP > 0.3 then
+		hTargetCreep = X.GetLastHitCreep()
+		if Fu.IsValid(hTargetCreep) and Fu.CanBeAttacked(hTargetCreep) then
+			return BOT_DESIRE_OVERRIDE * 1.5
+		end
 	end
 
     if not bot:IsAlive() or bot:GetCurrentActionType() == BOT_ACTION_TYPE_DELAY then

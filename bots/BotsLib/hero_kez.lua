@@ -236,7 +236,6 @@ function X.SkillsComplement()
 		if FalconRushDesire > 0 then
 			Fu.SetQueuePtToINT(bot, false)
 			bot:ActionQueue_UseAbility(FalconRush)
-			Fu.SetQueuePtBack(bot)
 			return
 		end
 
@@ -244,7 +243,6 @@ function X.SkillsComplement()
 		if TalonTossDesire > 0 then
 			Fu.SetQueuePtToINT(bot, false)
 			bot:ActionQueue_UseAbilityOnEntity(TalonToss, TalonTossTarget)
-			Fu.SetQueuePtBack(bot)
 			return
 		end
 
@@ -276,7 +274,6 @@ function X.SkillsComplement()
 			elseif castGrapplingClawTarget ~= nil then
 				bot:Action_UseAbilityOnEntity(GrapplingClaw, castGrapplingClawTarget)
 			end
-			Fu.SetQueuePtBack(bot)
 			return
 		end
 
@@ -284,7 +281,6 @@ function X.SkillsComplement()
 		if castEchoSlashDesire > 0 then
 			Fu.SetQueuePtToINT( bot, false )
 			bot:ActionQueue_UseAbility( EchoSlash )
-			Fu.SetQueuePtBack(bot)
 			return
 		end
 
@@ -298,7 +294,6 @@ function X.SkillsComplement()
 		if castRaptorDanceDesire > 0 then
 			Fu.SetQueuePtToINT( bot, false )
 			bot:ActionQueue_UseAbility( RaptorDance )
-			Fu.SetQueuePtBack(bot)
 			return
 		end
 	end

@@ -418,7 +418,7 @@ function GetDesireHelper()
             nDesire = nDesire + (nEnemyNearbyCount - nAllyNearbyCount) * (GetAdjustedDesireValue(BOT_MODE_DESIRE_HIGH) / 4)
         end
 
-        if not bWeAreStronger and nEnemyNearbyCount >= nAllyNearbyCount then nDesire = nDesire + GetAdjustedDesireValue(0.25) end
+        if not bWeAreStronger and nEnemyNearbyCount >= nAllyNearbyCount and botHP < 0.7 then nDesire = nDesire + GetAdjustedDesireValue(0.25) end
         if nAllyNearbyCount >= nEnemyNearbyCount or bWeAreStronger then
             if bot:HasModifier('modifier_oracle_false_promise_timer') and Fu.GetModifierTime(bot, 'modifier_oracle_false_promise_timer') > 2.0 and Fu.IsUnitNearby(bot, nAllyHeroes, 1200, 'npc_dota_hero_oracle', true) then
                 nDesire = nDesire - GetAdjustedDesireValue(0.25)
@@ -448,8 +448,8 @@ function GetDesireHelper()
 
     if Fu.IsInLaningPhase() then
         if not bot:WasRecentlyDamagedByAnyHero(3.0)
-            and not bot:WasRecentlyDamagedByCreep(2.0)
-            and not bot:WasRecentlyDamagedByTower(2.0)
+            and (not bot:WasRecentlyDamagedByCreep(2.0) and botHP > 0.2)
+            and (not bot:WasRecentlyDamagedByTower(2.0) and botHP > 0.2)
             and bot:DistanceFromFountain() > 4000
             and (#Fu.GetHeroesTargetingUnit(nEnemyHeroes, bot) == 0)
         then
@@ -464,6 +464,17 @@ function GetDesireHelper()
                 nDesire = nDesire - GetAdjustedDesireValue(0.25)
             end
         end
+    end
+
+    -- Post-laning: reduce retreat desire when not in immediate danger
+    -- Prevents bots from retreating at 50-70% HP when they should be farming
+    if not Fu.IsInLaningPhase()
+        and not bot:WasRecentlyDamagedByAnyHero(3.0)
+        and not bot:WasRecentlyDamagedByTower(2.0)
+        and botHP > 0.4
+        and nEnemyNearbyCount == 0
+    then
+        nDesire = nDesire - GetAdjustedDesireValue(0.2)
     end
 
     if bot:HasModifier('modifier_slark_shadow_dance_passive_regen') then
@@ -531,25 +542,21 @@ function X.ShouldRun()
         end
     end
 
-	-- Radiant bot lane: wisdom_shrine_ is near Dire's bot T1 — don't walk into tower range
-	if GetTeam() == TEAM_RADIANT
-        and BOT_MODE_WISDOM_SHRINE
-        and bot:GetActiveMode() == BOT_MODE_WISDOM_SHRINE
-        and bot:GetActiveModeDesire() >= BOT_MODE_DESIRE_HIGH then
-		local enemyT1 = GetTower(TEAM_DIRE, TOWER_BOT_1)
-		if enemyT1 ~= nil and enemyT1:IsAlive() and GetUnitToUnitDistance(bot, enemyT1) < 1600 then
-			return 2
+	-- Wisdom shrine near enemy T1: boost retreat only if alone or in laning phase
+	if BOT_MODE_WISDOM_SHRINE
+		and bot:GetActiveMode() == BOT_MODE_WISDOM_SHRINE
+		and bot:GetActiveModeDesire() >= BOT_MODE_DESIRE_HIGH then
+		local enemyT1 = nil
+		if GetTeam() == TEAM_RADIANT then
+			enemyT1 = GetTower(TEAM_DIRE, TOWER_BOT_1)
+		else
+			enemyT1 = GetTower(TEAM_RADIANT, TOWER_TOP_1)
 		end
-	end
-
-	-- Dire top lane: wisdom_shrine_ is near Radiant's top T1 — don't walk into tower range
-	if GetTeam() == TEAM_DIRE
-        and BOT_MODE_WISDOM_SHRINE
-        and bot:GetActiveMode() == BOT_MODE_WISDOM_SHRINE
-        and bot:GetActiveModeDesire() >= BOT_MODE_DESIRE_HIGH then
-		local enemyT1 = GetTower(TEAM_RADIANT, TOWER_TOP_1)
 		if enemyT1 ~= nil and enemyT1:IsAlive() and GetUnitToUnitDistance(bot, enemyT1) < 1600 then
-			return 2
+			local nAllies = Fu.GetAllyCount(bot, 1600)
+			if Fu.IsInLaningPhase() or nAllies < 3 then
+				return 2
+			end
 		end
 	end
 

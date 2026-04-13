@@ -41,35 +41,67 @@ vscripts/
 │   │   └── ... (hero_[internal_name].lua)
 │   │
 │   ├── FuncLib/                       # Core utility libraries
-│   │   ├── func_utils.lua             # Main aggregator (loads all sub-libraries as J.*)
-│   │   ├── systems/
+│   │   ├── README.md                  # FuncLib architecture overview
+│   │   ├── func_utils.lua             # Main aggregator (loads all sub-libraries as Fu.*)
+│   │   ├── systems/                   # High-level bot subsystems
 │   │   │   ├── item.lua               # Item lists, components, sell/buy logic
 │   │   │   ├── skill.lua              # Ability slot reading, skill build system
 │   │   │   ├── role.lua               # Role/position assignment (pos 1-5)
 │   │   │   ├── utils.lua              # General utility functions
 │   │   │   ├── push.lua               # Push logic
 │   │   │   ├── defend.lua             # Defend logic
+│   │   │   ├── dispel.lua             # Dispel/debuff handling
+│   │   │   ├── ward.lua               # Ward placement logic
 │   │   │   ├── chat.lua               # Chatbot + item/hero name localization
 │   │   │   ├── item_strategy.lua      # Fallback item builds by position
+│   │   │   ├── ability_context.lua    # Precomputed context for ability decisions
 │   │   │   ├── cache.lua              # Global cache
+│   │   │   ├── cache_keys.lua         # Cache key registry
 │   │   │   ├── version.lua            # Version info
 │   │   │   ├── localization.lua       # Localization support
-│   │   │   ├── custom_loader.lua      # Custom loader
-│   │   │   └── override_generic/      # Generic overrides
-│   │   ├── data/
-│   │   │   ├── site.lua               # Map positioning, farm timing, location logic
-│   │   │   ├── buff.lua               # Buff data
-│   │   │   ├── hero_roles_map.lua     # Hero role scores (carry/support/initiator/etc.)
-│   │   │   ├── hero_pos_weights.lua   # Hero position weights
-│   │   │   ├── matchups.lua           # Matchup data
-│   │   │   ├── spell_list.lua         # Ability weight database (all heroes)
-│   │   │   └── spell_prob_list.lua    # Ability probability weights
-│   │   ├── aba_minion.lua             # Minion/summon control
-│   │   ├── aba_special_units.lua      # Special unit interactions
-│   │   ├── morphling_utility.lua      # Morphling replicate helper
-│   │   └── hero/rubick_hero/          # Rubick spell-steal hero-specific logic
-│   │       ├── beastmaster.lua
-│   │       └── ...
+│   │   │   ├── custom_loader.lua      # Custom settings loader
+│   │   │   └── override_generic/      # Mode override stubs (attack, laning)
+│   │   ├── general_utils/             # Low-level helpers, loaded into Fu via Init(Fu)
+│   │   │   ├── bot_mode.lua           # Bot mode checks and team activity queries
+│   │   │   ├── combat.lua             # Damage calc, kill checks, power comparison
+│   │   │   ├── hero_info.lua          # Hero identity/attribute queries
+│   │   │   ├── hero_state.lua         # Hero state queries (retreating, fighting, etc.)
+│   │   │   ├── init_debug.lua         # Init-time debug helpers
+│   │   │   ├── item_ability.lua       # Item/ability lookups and checks
+│   │   │   ├── lane_strategy.lua      # Lane-level strategy helpers
+│   │   │   ├── map_info.lua           # Map queries (towers, positions, areas)
+│   │   │   ├── math_helper.lua        # Math, HP/MP, tables, timing utilities
+│   │   │   ├── positioning.lua        # Position scoring and safe-spot logic
+│   │   │   ├── projectile.lua         # Projectile prediction
+│   │   │   ├── special_units.lua      # Special unit queries (couriers, wards, etc.)
+│   │   │   ├── targeting.lua          # Target selection helpers
+│   │   │   ├── team_info.lua          # Team-level information queries
+│   │   │   └── unit_check.lua         # IsValid / IsHero / validity checks
+│   │   ├── hero/                      # Hero-specific and sub-unit logic
+│   │   │   ├── captain_mode.lua       # Captain's Mode draft logic
+│   │   │   ├── enemy_role_estimation.lua # Infers enemy positions
+│   │   │   ├── hero_builder.lua       # Hero build/draft helpers
+│   │   │   ├── hero_skill.lua         # Hero skill helpers
+│   │   │   ├── hero_sub_units.lua     # Sub-unit (illusion/summon) utilities
+│   │   │   ├── minion.lua             # Minion/summon control (was aba_minion.lua)
+│   │   │   ├── minion_lib/            # Per-minion behavior modules
+│   │   │   ├── morphling.lua          # Morphling replicate helper
+│   │   │   ├── rubick.lua             # Rubick spell-steal top-level logic
+│   │   │   ├── rubick_hero/           # Rubick per-victim spell-steal modules
+│   │   │   ├── special_units.lua      # Special unit interactions (was aba_special_units.lua)
+│   │   │   └── techies.lua            # Techies-specific logic
+│   │   └── data/                      # Static data tables
+│   │       ├── site.lua               # Map positioning, farm timing, location logic
+│   │       ├── buff.lua               # Buff data
+│   │       ├── hero_names.lua         # Hero name localizations
+│   │       ├── hero_roles_map.lua     # Hero role scores (carry/support/initiator/etc.)
+│   │       ├── hero_pos_weights.lua   # Hero position weights
+│   │       ├── item_names.lua         # Item name localizations
+│   │       ├── matchups.lua           # Matchup data
+│   │       ├── spell_list.lua         # Ability weight database (all heroes)
+│   │       ├── spell_prob_list.lua    # Ability probability weights
+│   │       ├── chat_table.lua         # Chatbot string table
+│   │       └── team_names.lua         # Team name localizations
 │   │
 │   ├── Buff/                          # Buff mode (enhanced neutral items)
 │   │   └── NeutralItems.lua           # Neutral item tier lists + distribution logic
@@ -118,8 +150,8 @@ Each file in `BotsLib/hero_[name].lua` follows this exact structure:
 
 ```lua
 -- 1. IMPORTS
-local J = require(GetScriptDirectory()..'/FuncLib/func_utils')
-local sAbilityList = J.Skill.GetAbilityList(bot)   -- Dynamic slot reading
+local Fu = require(GetScriptDirectory()..'/FuncLib/func_utils')
+local sAbilityList = Fu.Skill.GetAbilityList(bot)  -- Dynamic slot reading
 
 -- 2. TALENT BUILD
 local tTalentTreeList = {
@@ -309,13 +341,13 @@ end
 
 ### Helper Functions Used
 
-- `J.GetNearbyHeroes(bot, range, isEnemy, mode)` -- Get heroes in range
-- `J.IsValid(unit)` / `J.IsValidHero(unit)` -- Validity checks
-- `J.IsInRange(unit1, unit2, range)` -- Distance check
-- `J.CanCastOnNonMagicImmune(unit)` / `J.CanCastOnMagicImmune(unit)` -- Immunity checks
-- `J.IsRetreating(bot)` / `J.IsGoingOnSomeone(bot)` -- Behavior checks
-- `J.GetHP(unit)` / `J.GetMP(unit)` -- Health/mana percentage (0-1)
-- `J.IsDisabled(unit)` -- Stun/root/silence check
+- `Fu.GetNearbyHeroes(bot, range, isEnemy, mode)` -- Get heroes in range
+- `Fu.IsValid(unit)` / `Fu.IsValidHero(unit)` -- Validity checks
+- `Fu.IsInRange(unit1, unit2, range)` -- Distance check
+- `Fu.CanCastOnNonMagicImmune(unit)` / `Fu.CanCastOnMagicImmune(unit)` -- Immunity checks
+- `Fu.IsRetreating(bot)` / `Fu.IsGoingOnSomeone(bot)` -- Behavior checks
+- `Fu.GetHP(unit)` / `Fu.GetMP(unit)` -- Health/mana percentage (0-1)
+- `Fu.IsDisabled(unit)` -- Stun/root/silence check
 - `bot:HasModifier('modifier_name')` -- Buff/debuff check
 
 ---
@@ -380,7 +412,7 @@ return {
 }
 ```
 
-Loaded by `J.SetUserHeroInit()` in each hero file. Permanent customization goes in `game/Customize/` to survive workshop updates.
+Loaded by `Fu.SetUserHeroInit()` in each hero file. Permanent customization goes in `game/Customize/` to survive workshop updates.
 
 ---
 
@@ -484,7 +516,12 @@ Some Lua files in `bots/FuncLib/` are **generated from TypeScript** via TSTL. Wh
 | `FuncLib/systems/push.lua` | `typescript/bots/FuncLib/systems/push.ts` |
 | `FuncLib/systems/defend.lua` | `typescript/bots/FuncLib/systems/defend.ts` |
 | `FuncLib/systems/cache.lua` | `typescript/bots/FuncLib/systems/cache.ts` |
+| `FuncLib/systems/cache_keys.lua` | `typescript/bots/FuncLib/systems/cache_keys.ts` |
+| `FuncLib/systems/dispel.lua` | `typescript/bots/FuncLib/systems/dispel.ts` |
 | `FuncLib/systems/role.lua` | `typescript/bots/FuncLib/systems/role.ts` |
+| `FuncLib/hero/captain_mode.lua` | `typescript/bots/FuncLib/hero/captain_mode.ts` |
+| `FuncLib/hero/enemy_role_estimation.lua` | `typescript/bots/FuncLib/hero/enemy_role_estimation.ts` |
+| `FuncLib/hero/hero_builder.lua` | `typescript/bots/FuncLib/hero/hero_builder.ts` |
 | `FuncLib/data/hero_roles_map.lua` | `typescript/bots/FuncLib/data/hero_roles_map.ts` |
 | `FuncLib/data/spell_prob_list.lua` | `typescript/bots/FuncLib/data/spell_prob_list.ts` |
 | `FuncLib/data/buff.lua` | `typescript/bots/FuncLib/data/buff.ts` |

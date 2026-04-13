@@ -40,7 +40,7 @@ local HasPossibleWallOfReplicaAround = false
 local ShouldBotsSpreadOut = false
 local nChainFrostBounceDistance = 600 + 150
 local cachedTombstoneZombieSlowState = 0
-local nInRangeEnemy, nInRangeAlly, allyTowers, enemyTowers, trySeduce, shouldTempRetreat, botTarget, shouldGoBackToFountain, nInCloseRangeEnemy, nInCloseRangeAlly
+local nInRangeEnemy, nInRangeAlly, allyTowers, enemyTowers, trySeduce, shouldTempRetreat, botTarget, shouldGoBackToFountain, nInCloseRangeEnemy, nInCloseRangeAlly, nBotHP
 
 local tangoDesire, tangoTarget, tangoSlot
 
@@ -72,6 +72,7 @@ function GetDesireHelper()
 
 	trySeduce = false
 	shouldTempRetreat = false
+	nBotHP = Fu.GetHP(bot)
 	TPScroll = Fu.Utils.GetItemFromFullInventory(bot, 'item_tpscroll')
 	botTarget = Fu.GetProperTarget(bot)
 	nInRangeEnemy = bot:GetNearbyHeroes(1200, true, BOT_MODE_NONE)

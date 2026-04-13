@@ -121,7 +121,7 @@ function GetDesireRaw()
 		then
 			local commitStatus = GetRuneStatus(bot.rune.normal.location)
 			if commitStatus == RUNE_STATUS_AVAILABLE or commitStatus == RUNE_STATUS_UNKNOWN then
-				return BOT_MODE_DESIRE_HIGH
+				return BOT_MODE_DESIRE_VERYHIGH
 			end
 		end
 
@@ -173,22 +173,22 @@ function GetDesireRaw()
 					if X.IsEnemyPickRune(rune.location) then return BOT_MODE_DESIRE_NONE end
 
 					if bBottle or (botPos >= 4 and not X.IsThereAllyWithBottle(vRuneLocation, 1600)) then
-						return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, 3500)
+						return X.GetScaledDesire(BOT_MODE_DESIRE_VERYHIGH, rune.distance, 3500)
 					else
-						return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, 3500)
+						return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, 3500)
 					end
 				elseif rune.status == RUNE_STATUS_UNKNOWN
 					and rune.distance <= nProximityRadius * 1.5
 					and DotaTime() > 3 * 60 + 50
 					and ((minute % 4 == 0) or (minute % 4 == 3) and second > 45)
 				then
-					return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius)
+					return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, nProximityRadius)
 				elseif rune.status == RUNE_STATUS_MISSING
 					and rune.distance <= nProximityRadius * 1.5
 					and DotaTime() > 3 * 60 + 50
 					and ((minute % 4 == 3) or second > 52)
 				then
-					return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius * 2.5)
+					return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, nProximityRadius * 2.5)
 				end
 			else
 				-- Power rune / water rune
@@ -200,7 +200,7 @@ function GetDesireRaw()
 					if nRuneType == RUNE_WATER and (bBottle or botHP < 0.6 or botMP < 0.5) then
 						return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, 3200)
 					elseif nRuneType == RUNE_WATER and not bBottle then
-						return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius)
+						return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, nProximityRadius)
 					end
 
 					-- Mid laner with bottle: high priority for river runes
@@ -209,18 +209,18 @@ function GetDesireRaw()
 						local baseDesire = bMidLaner and BOT_MODE_DESIRE_VERYHIGH or BOT_MODE_DESIRE_HIGH
 						return X.GetScaledDesire(baseDesire, rune.distance, nProximityRadius * 2.5)
 					else
-						return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius * 2.5)
+						return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, nProximityRadius * 2.5)
 					end
 				elseif rune.status == RUNE_STATUS_UNKNOWN and DotaTime() > 113 then
 					if bBottle or (not Fu.IsEarlyGame() and botPos <= 3) then
 						return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, nProximityRadius * 2.5)
 					else
-						return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius)
+						return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, nProximityRadius)
 					end
 				elseif rune.status == RUNE_STATUS_MISSING and DotaTime() > 60 and (minute % 2 == 1 and second > 53) then
-					return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius)
+					return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, nProximityRadius)
 				elseif rune.status == RUNE_STATUS_UNKNOWN and X.IsTeamMustSaveRune(rune.location) and DotaTime() > 113 and rune.distance <= nProximityRadius * 2 then
-					return X.GetScaledDesire(BOT_MODE_DESIRE_MODERATE, rune.distance, nProximityRadius * 2)
+					return X.GetScaledDesire(BOT_MODE_DESIRE_HIGH, rune.distance, nProximityRadius * 2)
 				end
 			end
 		end

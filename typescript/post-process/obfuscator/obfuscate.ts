@@ -39,9 +39,10 @@ const stats = { total: 0, minified: 0, stripped: 0, skipped: 0, errors: 0 };
 function encodeStrings(code: string): string {
     // Match quoted strings: "..." or '...'
     // We process the entire minified code (single line typically)
-    return code.replace(/(?:require|dofile)\s*\(\s*(?:"[^"]*"|'[^']*')\s*\)|"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/g, match => {
-        // Skip require("...") and dofile("...") — Dota needs these intact
-        if (/^(?:require|dofile)\s*\(/.test(match)) return match;
+    // Also match require/dofile with or without parens: require("..."), require'...', require "..."
+    return code.replace(/(?:require|dofile)\s*\(?\s*(?:"[^"]*"|'[^']*')\s*\)?|"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/g, match => {
+        // Skip require("..."), require'...', dofile("...") etc. — Dota needs these intact
+        if (/^(?:require|dofile)\s*[\('"]/.test(match)) return match;
 
         // Extract the quote char and inner content
         const quote = match[0]; // " or '
@@ -57,11 +58,13 @@ function encodeStrings(code: string): string {
         if (inner.length === 0) return match;
 
         // Convert to string.char(b1,b2,b3,...)
+        // Add leading space to prevent fusion with preceding identifier
+        // (e.g. dofile"path" → dofile string.char(...), not dofilestring.char(...))
         const bytes = [];
         for (let i = 0; i < inner.length; i++) {
             bytes.push(inner.charCodeAt(i));
         }
-        return `string.char(${bytes.join(",")})`;
+        return ` string.char(${bytes.join(",")})`;
     });
 }
 
@@ -133,10 +136,15 @@ function splitConstants(code: string): string {
 
 /**
  * Apply all hardening transforms to minified code.
+ *
+ * NOTE: encodeStrings and splitConstants are disabled — they produced invalid
+ * Lua in Dota's VScript VM (string.char fusions with identifiers, number
+ * splitting inside string.char args). luamin's minification + variable
+ * renaming is sufficient obfuscation for workshop publishing.
  */
 function hardenCode(code: string): string {
-    code = encodeStrings(code);
-    code = splitConstants(code);
+    // code = encodeStrings(code);
+    // code = splitConstants(code);
     return code;
 }
 

@@ -34,8 +34,9 @@ local ATTACK_DURATION = 6     -- longer duration when chasing an enemy target
 -- Human ping assembly: 0.8 is intentionally above the 0.7 cap because
 -- human commands should override all bot-computed modes.
 local PING_ASSEMBLE_DESIRE = 0.8
+local RE_GROUP_DESIRE = 0.4
 local PING_ATTACK_DESIRE = 0.7 -- desire when pinged to actively chasing a kill target
-local ATTACK_DESIRE = 0.5     -- desire when itself actively chasing a kill target
+local ATTACK_DESIRE = 0.4     -- desire when itself actively chasing a kill target
 local ARRIVE_RADIUS = 50       -- close enough to ping location
 local MAX_RESPOND_DIST = 2500  -- only respond if within this distance
 local PING_ENEMY_RADIUS = 500  -- tight radius: only target enemy directly pinged
@@ -117,7 +118,7 @@ function GetDesire()
 				return BOT_MODE_DESIRE_NONE
 			end
 		end
-		local continueDesire = enemyTarget ~= nil and PING_ATTACK_DESIRE or PING_ASSEMBLE_DESIRE
+		local continueDesire = enemyTarget ~= nil and ATTACK_DESIRE or RE_GROUP_DESIRE
 		return continueDesire * RemapValClamped(Fu.GetHP(bot), 0, 0.6, 0, 1)
 	end
 
@@ -240,12 +241,14 @@ function GetDesire()
 	-- 	end
 	-- end
 
-	-- Help nearby ally who is engaging an enemy hero
+	-- Help nearby ally who is engaging an enemy hero, especially during laning
 	if Fu.GetHP(bot) > 0.5
+	and Fu.IsLaning(bot)
 	and not Fu.IsRetreating(bot)
 	and not bot:WasRecentlyDamagedByAnyHero(2.0)
 	and not Fu.IsGoingOnSomeone(bot)
 	and not (Fu.IsValidHero(Fu.GetProperTarget(bot)) and bot:GetActiveMode() == BOT_MODE_ATTACK)
+	and not Fu.IsInTeamFight( bot, 1200 )
 	then
 		local nearbyAllies = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE) or {}
 		for _, ally in pairs(nearbyAllies) do
@@ -293,6 +296,21 @@ function Think()
 	if Fu.CanNotUseAction(bot) then return end
 	if assembleLoc == nil then return end
 
+	-- ATTACK: chasing a pinged enemy
+	if enemyTarget ~= nil and Fu.IsValidHero(enemyTarget) and Fu.CanBeAttacked(enemyTarget) then
+		assembleLoc = enemyTarget:GetLocation()
+		local distToEnemy = GetUnitToUnitDistance(bot, enemyTarget)
+		if distToEnemy <= bot:GetAttackRange() + 200 then
+			bot:Action_AttackUnit(enemyTarget, true)
+		else
+			bot:Action_MoveToLocation(enemyTarget:GetLocation() + RandomVector(50))
+		end
+		return
+	end
+
+	-- Enemy died or became invalid, clear target
+	enemyTarget = nil
+
 	-- REGROUP: following a moving ally — keep updating location
 	if regroupTarget ~= nil then
 		if not Fu.IsValidHero(regroupTarget) or not regroupTarget:IsAlive() then
@@ -318,21 +336,6 @@ function Think()
 		bot:Action_MoveToLocation(assembleLoc + RandomVector(50))
 		return
 	end
-
-	-- ATTACK: chasing a pinged enemy
-	if enemyTarget ~= nil and Fu.IsValidHero(enemyTarget) and Fu.CanBeAttacked(enemyTarget) then
-		assembleLoc = enemyTarget:GetLocation()
-		local distToEnemy = GetUnitToUnitDistance(bot, enemyTarget)
-		if distToEnemy <= bot:GetAttackRange() + 200 then
-			bot:Action_AttackUnit(enemyTarget, true)
-		else
-			bot:Action_MoveToLocation(enemyTarget:GetLocation() + RandomVector(50))
-		end
-		return
-	end
-
-	-- Enemy died or became invalid, clear target
-	enemyTarget = nil
 
 	-- PING: moving to a pinged location
 	local dist = GetUnitToLocationDistance(bot, assembleLoc)

@@ -5,13 +5,7 @@ local Fu = require(GetScriptDirectory()..'/FuncLib/func_utils')
 
 -- handle attacking special units
 
-local targetUnit = nil
-
 function X.GetDesire(bot__)
-	local nBotHP = Fu.GetHP(bot)
-	local bRetreating = Fu.IsRetreating(bot)
-	local bRealInvis = Fu.IsRealInvisible(bot)
-	local bGoingOnSomeone = Fu.IsGoingOnSomeone(bot)
     bot = bot__
 
     if Fu.CanNotUseAction(bot) or bot:IsDisarmed() then
@@ -19,49 +13,42 @@ function X.GetDesire(bot__)
     end
 
     local botHealth = bot:GetHealth()
-    local botHP = nBotHP
+    local botHP = Fu.GetHP(bot)
     local botLocation = bot:GetLocation()
 	local botAttackRange = bot:GetAttackRange()
+    local botLevel = bot:GetLevel()
+    local bMagicImmune = bot:IsMagicImmune()
+    local botTarget = Fu.GetProperTarget(bot)
+    local botName = bot:GetUnitName()
+    local botHealthRegen = bot:GetHealthRegen()
 
     local tAllyHeroes = Fu.GetAlliesNearLoc(bot:GetLocation(), 1600)
 	local tEnemyHeroes = Fu.GetEnemiesNearLoc(bot:GetLocation(), 1600)
 
     local tAllyHeroes_all = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE)
     local tEnemyHeroes_all = bot:GetNearbyHeroes(1600, true, BOT_MODE_NONE)
+    local bOutnumbered = #tEnemyHeroes > #tAllyHeroes
 
-	local botTarget = Fu.GetProperTarget(bot)
-    local botName = bot:GetUnitName()
-	local isClockwerkInTeam = false
-
-	for i = 1, #GetTeamPlayers( GetTeam() )
-	do
-		local allyHero = GetTeamMember(i)
-		if allyHero ~= nil and allyHero:GetUnitName() == 'npc_dota_hero_rattletrap'
-		then
-			isClockwerkInTeam = true
-			break
-		end
-	end
-
-	for _, unit in pairs(GetUnitList(UNIT_LIST_ENEMIES))
+    local unitList = GetUnitList(UNIT_LIST_ALL)
+    for _, unit in pairs(unitList)
 	do
 		if Fu.IsValid(unit)
-        and Fu.CanBeAttacked(unit)
         and Fu.IsInRange(bot, unit, 1600)
 		then
-            targetUnit = unit
-            local unitName = unit:GetUnitName()
-            local botAttackDamage = X.GetUnitAttackDamageWithinTime(bot, 8.0)
-            local unitHP = Fu.GetHP(unit)
+            bot.special_unit_target = unit
+            local sUnitName = unit:GetUnitName()
+            local botAttackDamage = X.GetUnitAttackDamageWithinTime(bot, 5.0)
+            local unitHealth = unit:GetHealth()
+            local unitHealthRegen = unit:GetHealthRegen()
             local unitLocation = unit:GetLocation()
             local withinAttackRange = GetUnitToUnitDistance(bot, unit) <= botAttackRange
 
-            if string.find(unitName, 'rattletrap_cog')
+            if string.find(sUnitName, 'rattletrap_cog')
             then
                 -- Expanded Armature
                 -- seems? facet have a frame hit when inside
-                if string.find(botName, 'rattletrap') and withinAttackRange then
-                    if bGoingOnSomeone then
+                if string.find(botName, 'rattletrap') and withinAttackRange and false then
+                    if Fu.IsGoingOnSomeone(bot) then
                         if Fu.IsValidHero(botTarget)
                         and Fu.CanCastOnNonMagicImmune(botTarget)
                         and Fu.IsInRange(bot, botTarget, 800)
@@ -70,301 +57,211 @@ function X.GetDesire(bot__)
                         then
                             local tResult = PointToLineDistance(botLocation, botTarget:GetLocation(), unitLocation)
                             if tResult ~= nil and tResult.within and tResult.distance <= 185 then
-                                return 2
+                                return BOT_MODE_DESIRE_VERYHIGH * 1.5
                             end
                         end
                     end
 
-                    if bRetreating and bRealInvis then
+                    if Fu.IsRetreating(bot) and not Fu.IsRealInvisible(bot) then
                         for _, enemyHero in pairs(tEnemyHeroes) do
-                            if Fu.IsValidHero(enemyHero) and Fu.IsInRange(bot, enemyHero, 800) and not Fu.IsInRange(bot, botTarget, 400) and Fu.IsChasingTarget(enemyHero, bot) then
+                            if Fu.IsValidHero(enemyHero) and Fu.IsInRange(bot, enemyHero, 800) and not Fu.IsInRange(bot, enemyHero, 400) and Fu.IsChasingTarget(enemyHero, bot) then
                                 local tResult = PointToLineDistance(botLocation, botTarget:GetLocation(), unitLocation)
                                 if tResult ~= nil and tResult.within and tResult.distance <= 185 then
-                                    return 2
+                                    return BOT_MODE_DESIRE_VERYHIGH * 1.5
                                 end
                             end
                         end
                     end
                 else
-                    local cogsCount1 = Fu.GetPowerCogsCountInLoc(botLocation, 1000)
-                    local cogsCount2 = Fu.GetPowerCogsCountInLoc(botLocation, 216)
-
-                    if #tEnemyHeroes_all >= 1
-                    then
-                        local nInRangeEnemy = Fu.GetEnemiesNearLoc(botLocation, 800)
-
-                        -- Is stuck inside?
-                        if cogsCount1 == 8 and cogsCount2 >= 4 and withinAttackRange
-                        then
-                            if #nInRangeEnemy == 0
-                            or bGoingOnSomeone
-                            or (bRetreating and not bRealInvis and #nInRangeEnemy >= 1)
-                            or #tAllyHeroes < #tEnemyHeroes
-                            then
-                                return 0.95
-                            else
-                                return 0.55
+                    if bot:IsFacingLocation(unit:GetLocation(), 60) and Fu.IsInRange(bot, unit, 300) then
+                        if Fu.IsGoingOnSomeone(bot) then
+                            if Fu.IsValidHero(botTarget) and not Fu.IsInRange(bot, botTarget, botAttackRange) then
+                                return BOT_MODE_DESIRE_VERYHIGH * 1.5
                             end
                         end
-                    end
 
-                    if #tEnemyHeroes == 0 then
-                        if cogsCount1 == 8 and cogsCount2 >= 4 and withinAttackRange then
-                            return 0.90
-                        else
-                            if bot:GetTeam() ~= unit:GetTeam()
-                            and Fu.IsInRange(bot, unit, botAttackRange + 350)
-                            and not Fu.IsInLaningPhase()
-                            then
-                                return 0.75
-                            else
-                                return 0.50
-                            end
-                        end
+                        return BOT_MODE_DESIRE_ABSOLUTE
                     end
                 end
             end
 
-
             if bot:GetTeam() ~= unit:GetTeam()
             then
-                if string.find(unitName, 'juggernaut_healing_ward')
-                or string.find(unitName, 'roshans_banner')
-                or string.find(unitName, 'land_mine')
-                or string.find(unitName, 'ignis_fatuus')
+                if string.find(sUnitName, 'juggernaut_healing_ward')
+                or string.find(sUnitName, 'invoker_forged_spirit')
+                or string.find(sUnitName, 'venomancer_plague_ward')
+                or string.find(sUnitName, 'clinkz_skeleton_archer')
+                or string.find(sUnitName, 'tinker_turret')
                 then
-                    if Fu.IsInRange(bot, unit, botAttackRange) then return 1 end
-                    if Fu.IsInRange(bot, unit, botAttackRange + 200) then return RemapValClamped(nBotHP, 0.1, 0.9, 0, 0.96) end
-                    if #tEnemyHeroes_all == 0 then return RemapValClamped(nBotHP, 0.2, 0.9, 0, 0.9) end
-                    if #tAllyHeroes >= #tEnemyHeroes then return RemapValClamped(nBotHP, 0.2, 0.9, 0, 0.7) end
-                end
-
-                if string.find(unitName, 'siege') then
-                    if #tEnemyHeroes_all == 0 and Fu.GetDistanceFromAncient(bot, false) < 3000 then
-                        return 0.5
+                    if Fu.IsInRange(bot, unit, botAttackRange + 300) then
+                        return RemapValClamped(botLevel, 1, 6, BOT_MODE_DESIRE_MODERATE - 0.05, BOT_MODE_DESIRE_MODERATE + 0.05)
                     end
-                end
 
-                if string.find(unitName, 'shadow_shaman_ward')
-                or string.find(unitName, 'invoker_forged_spirit')
-                or string.find(unitName, 'venomancer_plague_ward')
-                or string.find(unitName, 'clinkz_skeleton_archer') then
-                    if nBotHP > 0.7 and Fu.IsInRange(bot, unit, botAttackRange) then
-                        if #tEnemyHeroes == 0 then return RemapValClamped(nBotHP, 0.3, 0.9, 0, 0.75) end
-                        if #tAllyHeroes >= #tEnemyHeroes then return 0.4 end
-                    end
-                    if nBotHP < 0.7 and Fu.IsStuck( bot ) then return RemapValClamped(nBotHP, 0.2, 0.8, 0.7, 0.3) end
-
-                    local tSerpents = X.GetUnitTypeAttackingBot(botLocation, 1600, unitName)
-                    local unitsAttackDamage = X.GetTotalAttackDamage(tSerpents, 8.0)
-                    botAttackDamage = X.GetUnitAttackDamageWithinTime(bot, 5.0)
-
-                    if not Fu.IsInTeamFight(bot, 900)
-                    and not (bRetreating and bRealInvis)
-                    then
-                        if unitsAttackDamage < botHealth
-                        or Fu.IsInRange(bot, unit, botAttackRange) and not Fu.IsInRange(bot, unit, unit:GetAttackRange()) then
-                            return 0.31
+                    if #tEnemyHeroes == 0 then
+                        if botHP > 0.6 then
+                            return BOT_MODE_DESIRE_VERYHIGH
+                        else
+                            return BOT_MODE_DESIRE_HIGH
                         end
                     end
-                end
+                elseif string.find(sUnitName, 'shadow_shaman_ward') and not bOutnumbered
+                then
+                    local tSerpents = Fu.GetSameUnitType(bot, 1600, sUnitName, false)
+                    local unitsAttackDamage = bot:GetActualIncomingDamage(Fu.GetUnitListTotalAttackDamage(bot, tSerpents, 5.0), DAMAGE_TYPE_PHYSICAL) - botHealthRegen * 5.0
 
-                if string.find(unitName, 'pugna_nether_ward')
+                    if not Fu.IsInTeamFight(bot, 1200) and not (Fu.IsRetreating(bot) and Fu.IsRealInvisible(bot)) then
+                        if unitsAttackDamage / botHealth < 0.4
+                        or Fu.IsInRange(bot, unit, botAttackRange) and not Fu.IsInRange(bot, unit, unit:GetAttackRange()) then
+                            return BOT_MODE_DESIRE_VERYHIGH + 0.05
+                        end
+                    end
+                elseif string.find(sUnitName, 'pugna_nether_ward') and not bOutnumbered
                 then
                     if Fu.IsInRange(bot, unit, botAttackRange + 150) then
-                        if (bGoingOnSomeone
-                        and Fu.IsValidHero(botTarget)
-                        and Fu.IsInRange(bot, botTarget, botAttackRange - 130)
-                        and Fu.GetHP(botTarget) < 0.5)
-                        or (X.IsBeingAttackedByHero(bot) and botHP < 0.5)
-                        then
-                            return 0.35
+                        if Fu.IsGoingOnSomeone(bot) and (not X.IsHeroWithinRadius(tEnemyHeroes, 800) or not X.IsBeingAttackedByHero(bot)) then
+                            return BOT_MODE_DESIRE_HIGH
                         else
                             if not X.IsBeingAttackedByHero(bot) then
-                                return 0.60
+                                return BOT_MODE_DESIRE_VERYHIGH
                             end
                         end
                     else
-                        return 0.35
+                        return BOT_MODE_DESIRE_MODERATE
                     end
-                end
-
-                if string.find(unitName, 'grimstroke_ink_creature')
-                or string.find(unitName, 'weaver_swarm')
-                or string.find(unitName, 'tidehunter_anchor')
+                elseif string.find(sUnitName, 'grimstroke_ink_creature')
+                    or string.find(sUnitName, 'weaver_swarm')
                 then
                     if #tEnemyHeroes == 0 then
-                        return 0.9
+                        return BOT_MODE_DESIRE_VERYHIGH + 0.05
                     end
-                    if (bGoingOnSomeone
-                        and Fu.IsValidHero(botTarget)
-                        and Fu.IsInRange(bot, botTarget, botAttackRange - 130)
-                        and Fu.GetHP(botTarget) < 0.5)
-                        or (X.IsBeingAttackedByHero(bot) and botHP < 0.5)
-                    then
-                        return 0.35
-                    end
-                    if not X.IsHeroWithinRadius(tEnemyHeroes, botAttackRange - 130)
-                    then
-                        return 0.96
-                    end
-                    if not X.IsBeingAttackedByHero(bot)
-                    then
-                        return 0.8
-                    else
-                    end
-                end
 
-                if string.find(unitName, 'gyrocopter_homing_missile')
+                    if Fu.IsGoingOnSomeone(bot) and (not X.IsHeroWithinRadius(tEnemyHeroes, 600) or not X.IsBeingAttackedByHero(bot))
+                    then
+                        return BOT_MODE_DESIRE_VERYHIGH
+                    else
+                        if not X.IsHeroWithinRadius(tEnemyHeroes, 600) then
+                            return BOT_MODE_DESIRE_HIGH
+                        end
+                    end
+                elseif string.find(sUnitName, 'gyrocopter_homing_missile')
                 then
-                    if not Fu.IsInTeamFight(bot, 900)
+                    if not Fu.IsInTeamFight(bot, 1200)
                     and withinAttackRange
-                    and not (bRetreating and bRealInvis)
+                    and not (Fu.IsRetreating(bot) and Fu.IsRealInvisible(bot))
+                    and not X.IsBeingAttackedByHero(bot)
                     then
                         if not Fu.IsRunning(unit)
                         or not Fu.IsInRange(bot, unit, 250)
                         then
-                            return 0.9
+                            return BOT_MODE_DESIRE_VERYHIGH
                         end
                     end
-                end
-
-                if string.find(unitName, 'zeus_cloud')
+                elseif string.find(sUnitName, 'ignis_fatuss')
+                    or string.find(sUnitName, 'zeus_cloud')
                 then
-                    if #tAllyHeroes >= #tEnemyHeroes or #tEnemyHeroes_all == 0
+                    if #tAllyHeroes > #tEnemyHeroes or #tEnemyHeroes_all == 0
                     then
-                        if withinAttackRange then return 0.7 end
-                        return RemapValClamped(nBotHP, 0.3, 0.9, 0, 0.65)
+                        if Fu.IsInRange(bot, unit, botAttackRange + 500) then return BOT_MODE_DESIRE_VERYHIGH end
+                        return BOT_MODE_DESIRE_HIGH
                     end
-                end
-
-                if string.find(unitName, 'lone_druid_bear')
-                or string.find(unitName, 'npc_dota_brewmaster')
+                elseif unit:HasModifier('modifier_dominated')
+                    or unit:HasModifier('modifier_chen_holy_persuasion')
+                    or unit:IsDominated()
+                    or string.find(sUnitName, 'visage_familiar')
+                    or string.find(sUnitName, 'chen_zealot_goodguys')
                 then
-                    if #tAllyHeroes >= 2 and #tAllyHeroes_all > #tEnemyHeroes_all
-                    then
-                        return 0.45
-                    end
+                    if not bOutnumbered and Fu.IsInRange(bot, unit, botAttackRange + 500) then
+                        local unitAttackDamage = bot:GetActualIncomingDamage(X.GetUnitAttackDamageWithinTime(unit, 5.0), DAMAGE_TYPE_PHYSICAL) - botHealthRegen * 5.0
+                        botAttackDamage = unit:GetActualIncomingDamage(botAttackDamage, DAMAGE_TYPE_PHYSICAL) - unitHealthRegen * 5.0
 
-                    if not X.IsUnitAfterUnit(unit, bot)
-                    then
-                        return BOT_ACTION_DESIRE_HIGH
-                    end
-
-                    if unitHP < 0.25
-                    then
-                        if X.IsUnitAfterUnit(unit, bot)
+                        if not Fu.IsInTeamFight(bot, 1200)
+                        and not (Fu.IsRetreating(bot) and not Fu.IsRealInvisible(bot))
+                        and botAttackDamage / unitHealth > 0.5 and unitAttackDamage / botHealth < 0.4
                         then
-                            return RemapValClamped(botHP, 0.25, 0.9, 0.2, 0.9)
-                        else
-                            return 0.45
+                            return BOT_MODE_DESIRE_VERYHIGH
                         end
                     end
-                end
-
-                if unit:HasModifier('modifier_dominated')
-                or unit:HasModifier('modifier_chen_holy_persuasion')
-                or string.find(unitName, 'visage_familiar') then
-                    local unitAttackDamage = X.GetUnitAttackDamageWithinTime(unit, 5.5)
-                    botAttackDamage = X.GetUnitAttackDamageWithinTime(bot, 5.0)
-
-                    if not Fu.IsInTeamFight(bot, 1200)
-                    and not (bRetreating and not bRealInvis)
-                    and withinAttackRange
-                    and botAttackDamage > unitHP and unitAttackDamage < botHealth
-                    then
-                        return 0.5
-                    end
-                end
-
-                if string.find(unitName, 'lycan_wolf')
-                or string.find(unitName, 'eidolon')
-                or string.find(unitName, 'beastmaster_boar')
-                or string.find(unitName, 'beastmaster_greater_boar')
-                or string.find(unitName, 'furion_treant')
-                or string.find(unitName, 'broodmother_spiderling')
-                or string.find(unitName, 'skeleton_warrior')
+                elseif string.find(sUnitName, 'lycan_wolf')
+                    or string.find(sUnitName, 'eidolon')
+                    or string.find(sUnitName, 'beastmaster_boar')
+                    or string.find(sUnitName, 'beastmaster_greater_boar')
+                    or string.find(sUnitName, 'furion_treant')
+                    or string.find(sUnitName, 'broodmother_spiderling')
+                    or string.find(sUnitName, 'skeleton_warrior')
                 then
-                    local tUnits = X.GetUnitTypeAttackingBot(botLocation, 1600, unitName)
-                    local unitAttackDamage = X.GetTotalAttackDamage(tUnits, 4.0)
-                    local totalUnitHP = X.GetTotalUnitHealth(tUnits)
-                    botAttackDamage = X.GetUnitAttackDamageWithinTime(bot, 4.0)
+                    if not bOutnumbered and Fu.IsInRange(bot, unit, botAttackRange + 300) and not Fu.IsRetreating(bot) then
+                        local tUnits = Fu.GetSameUnitType(bot, 1600, sUnitName, true)
+                        local unitsAttackDamage = bot:GetActualIncomingDamage(Fu.GetUnitListTotalAttackDamage(bot, tUnits, 5.0), DAMAGE_TYPE_PHYSICAL) - botHealthRegen * 5.0
+                        local totalUnitHealth = X.GetTotalUnitHealth(tUnits)
+                        local totalDmgToUnits = X.GetTotalAttackDamageToUnits(botAttackDamage, tUnits, DAMAGE_TYPE_PHYSICAL) - unitHealthRegen * 5.0
 
-                    if not Fu.IsInTeamFight(bot, 1200)
-                    and withinAttackRange
-                    and botAttackDamage > totalUnitHP and unitAttackDamage < botHealth
-                    then
-                        return RemapValClamped(botHP, 0.25, 0.9, 0.2, 0.5)
+                        if not Fu.IsInTeamFight(bot, 1200)
+                        and unitsAttackDamage / botHealth < 0.34
+                        and totalDmgToUnits / totalUnitHealth > 0.65
+                        then
+                            return BOT_MODE_DESIRE_VERYHIGH
+                        end
                     end
-                end
-
-                if (string.find(unitName, 'observer_wards')
-                or string.find(unitName, 'sentry_wards'))
-                and X.IsThereSentry(unit:GetLocation())
+                elseif string.find(sUnitName, 'observer_wards')
+                    or string.find(sUnitName, 'sentry_wards')
                 then
                     if not X.IsBeingAttackedByHero(bot) or #tEnemyHeroes <= 1
                     then
-                        if Fu.IsInRange(bot, unit, botAttackRange * 1.5) then return 0.6 end
-                        return 0.5
+                        if Fu.IsInRange(bot, unit, botAttackRange + 500) then return BOT_MODE_DESIRE_VERYHIGH + 0.05 end
+                        return BOT_MODE_DESIRE_HIGH
                     end
-                end
-
-                if string.find(unitName, 'phoenix_sun')
+                elseif string.find(sUnitName, 'phoenix_sun') and not bOutnumbered
                 then
                     if (#tAllyHeroes >= #tEnemyHeroes or Fu.WeAreStronger(bot, 1600))
                     and not bot:HasModifier('modifier_phoenix_fire_spirit_burn')
-                    and not bRetreating
+                    and not Fu.IsRetreating(bot)
+                    and botHP > 0.45
                     then
-                        local tCloseAllyHeroes = Fu.GetAlliesNearLoc(unit:GetLocation(), 900)
-                        if Fu.IsInRange(bot, unit, botAttackRange + 200) and #tCloseAllyHeroes >= 2 then return 1.2 end
-                        if Fu.IsInRange(bot, unit, botAttackRange + 300) and #tCloseAllyHeroes >= 2 then return 1.1 end
-                        if Fu.IsInRange(bot, unit, botAttackRange + 400) then return RemapValClamped(nBotHP, 0.2, 0.9, 0.4, 0.97) end
-                        return RemapValClamped(nBotHP, 0.2, 0.9, 0, 0.9)
+                        if Fu.IsInRange(bot, unit, botAttackRange + 300) then return BOT_MODE_DESIRE_VERYHIGH + 0.05 end
+                        return BOT_MODE_DESIRE_HIGH
                     end
-                end
-
-                if string.find(unitName, 'tombstone')
+                elseif string.find(sUnitName, 'ice_spire') and not bOutnumbered
                 then
-                    if #tAllyHeroes_all >= #tEnemyHeroes_all and not bRetreating
+                    if (#tAllyHeroes >= #tEnemyHeroes or Fu.WeAreStronger(bot, 1600))
+                    and (botHP > 0.80 or bMagicImmune)
+                    and not Fu.IsRetreating(bot)
+                    and not X.IsBeingAttackedByHero(bot)
                     then
-                        if Fu.IsInRange(bot, unit, botAttackRange + 200) then return RemapValClamped(nBotHP, 0.25, 0.9, 0.4, 0.96) end
-                        return 0.56
+                        if Fu.IsInRange(bot, unit, botAttackRange + 300) then return BOT_MODE_DESIRE_VERYHIGH end
+                        return BOT_MODE_DESIRE_HIGH
                     end
-                end
-
-                if string.find(unitName, 'undying_zombie')
+                elseif string.find(sUnitName, 'tombstone') and not bOutnumbered
                 then
-                    if #tAllyHeroes_all >= #tEnemyHeroes_all and not bRetreating
+                    if #tAllyHeroes_all >= #tEnemyHeroes_all and not Fu.IsRetreating(bot) and botHP > 0.45
                     then
-                        if withinAttackRange then return 0.6 end
-                        return 0.25
+                        if Fu.IsInRange(bot, unit, botAttackRange + 300) then return BOT_MODE_DESIRE_VERYHIGH + 0.05 end
+                        return BOT_MODE_DESIRE_HIGH
                     end
-                end
-
-                if string.find(unitName, 'warlock_golem')
+                elseif string.find(sUnitName, 'warlock_golem') and not bOutnumbered
                 then
-                    botAttackDamage = X.GetUnitAttackDamageWithinTime(bot, 5)
-                    local unitAttackDamage = X.GetUnitAttackDamageWithinTime(unit, 5)
+                    local tGolems = Fu.GetSameUnitType(bot, 1600, sUnitName, false)
+                    local unitAttackDamage = bot:GetActualIncomingDamage(Fu.GetUnitListTotalAttackDamage(bot, tGolems, 5.0), DAMAGE_TYPE_PHYSICAL) - botHealthRegen * 5.0
+                    botAttackDamage = unit:GetActualIncomingDamage(X.GetUnitAttackDamageWithinTime(bot, 5.0), DAMAGE_TYPE_PHYSICAL) - unitHealthRegen * 5.0
 
-                    if not Fu.IsInTeamFight(bot, 1600)
+                    if not Fu.IsInTeamFight(bot, 1200)
                     and #tAllyHeroes_all >= #tEnemyHeroes_all
+                    and not Fu.IsRetreating(bot)
                     then
-                        local canKillGolem = botAttackDamage > unitHP and unitAttackDamage * 1.2 < botHP
+                        local canKillGolem = botAttackDamage / unitHealth > 0.75 and unitAttackDamage / botHealth < 0.4
 
-                        if Fu.IsInRange(bot, unit, botAttackRange + 300)
-                        then
+                        if Fu.IsInRange(bot, unit, botAttackRange + 300) then
                             if not X.IsUnitAfterUnit(unit, bot)
                             or (X.IsUnitAfterUnit(unit, bot) and canKillGolem)
                             then
-                                return 0.35
+                                return BOT_MODE_DESIRE_VERYHIGH + 0.05
                             else
-                                return 0.25
+                                return BOT_MODE_DESIRE_HIGH
                             end
                         else
                             if not X.IsUnitAfterUnit(unit, bot)
                             or (X.IsUnitAfterUnit(unit, bot) and canKillGolem)
                             then
-                                return 0.25
+                                return BOT_MODE_DESIRE_HIGH
                             end
                         end
                     end
@@ -379,49 +276,18 @@ end
 function X.Think()
     if Fu.CanNotUseAction(bot) then return end
 
-    if Fu.IsValid(targetUnit) and not bot:IsDisarmed() then
-        bot:Action_AttackUnit(targetUnit, true)
+    if Fu.IsValid(bot.special_unit_target) and not bot:IsDisarmed() then
+        bot:Action_AttackUnit(bot.special_unit_target, true)
         return
     end
 end
 
-function X.IsUnitAfterUnit(unit_1, unit_2)
-    return unit_1:GetAttackTarget() == unit_2 or Fu.IsChasingTarget(unit_1, unit_2)
+function X.IsUnitAfterUnit(hUnit1, hUnit2)
+    return hUnit1:GetAttackTarget() == hUnit2 or Fu.IsChasingTarget(hUnit1, hUnit2)
 end
 
-function X.GetTotalAttackDamage(tUnits, nTime)
-    local dmg = 0
-
-	for _, unit in pairs(tUnits)
-	do
-		if Fu.IsValid(unit)
-		then
-            dmg = dmg + unit:GetAttackDamage() * unit:GetAttackSpeed() * nTime
-		end
-	end
-
-	return dmg
-end
-
-function X.GetUnitTypeAttackingBot(vLoc, nRadius, hName)
-    local tAttackingUnits = {}
-
-    for _, unit in pairs(GetUnitList(UNIT_LIST_ENEMIES))
-    do
-        if Fu.IsValid(unit)
-        and unit:GetUnitName() == hName
-        and GetUnitToLocationDistance(unit, vLoc) <= nRadius
-        and (unit:GetAttackTarget() == bot or Fu.IsChasingTarget(unit, bot))
-        then
-            table.insert(tAttackingUnits, unit)
-        end
-    end
-
-    return tAttackingUnits
-end
-
-function X.GetUnitAttackDamageWithinTime(unit, nTime)
-    return unit:GetAttackDamage() * unit:GetAttackSpeed() * nTime
+function X.GetUnitAttackDamageWithinTime(hUnit, fTimeInterval)
+    return hUnit:GetAttackDamage() * hUnit:GetAttackSpeed() * fTimeInterval
 end
 
 function X.GetTotalUnitHealth(tUnits)
@@ -434,11 +300,20 @@ function X.GetTotalUnitHealth(tUnits)
     return hp
 end
 
-function X.IsBeingAttackedByHero(unit)
-    for _, enemy in pairs(GetUnitList(UNIT_LIST_ENEMIES))
-    do
+function X.GetTotalAttackDamageToUnits(nDamage, hUnitList, nDamageType)
+    local damage = 0
+    for _, unit in pairs(hUnitList) do
+        damage = damage + unit:GetActualIncomingDamage(nDamage, nDamageType)
+    end
+    return damage
+end
+
+function X.IsBeingAttackedByHero(hUnit)
+    local nEnemyHeroes = Fu.GetEnemiesNearLoc(hUnit:GetLocation(), 1600)
+    for _, enemy in pairs(nEnemyHeroes) do
         if Fu.IsValidHero(enemy)
-        and enemy:GetAttackTarget() == unit
+        and not Fu.IsSuspiciousIllusion(enemy)
+        and (enemy:GetAttackTarget() == hUnit or Fu.IsChasingTarget(enemy, hUnit))
         then
             return true
         end
@@ -453,22 +328,6 @@ function X.IsHeroWithinRadius(tUnits, nRadius)
     end
 
     return false
-end
-
-function X.IsThereSentry(loc)
-	local nWardList = GetUnitList(UNIT_LIST_ALLIED_WARDS)
-
-	for _, ward in pairs(nWardList)
-    do
-		if ward ~= nil
-		and ward:GetUnitName() == "npc_dota_sentry_wards"
-        and GetUnitToLocationDistance(ward, loc) <= 600
-        then
-			return true
-		end
-	end
-
-	return false
 end
 
 return X
