@@ -36,9 +36,9 @@ function Request.RawPostRequest(self, url, callback, postData)
     local req = CreateRemoteHTTPRequest(url)
     req:SetHTTPRequestRawPostBody("application/json", reqData)
     req:Send(function(result)
-        print((("Raw " .. url) .. " Result: ") .. tostring(result))
+        log("Raw %s Result: %s", url, result)
         local resultData = JSON.decode(result)
-        print("Jsonified result: " .. tostring(resultData))
+        log("Jsonified result: %s", resultData)
         if callback then
             callback(result)
         end
@@ -48,7 +48,7 @@ end
 function Request.RawGetRequest(self, url, callback)
     local req = CreateRemoteHTTPRequest(url)
     req:Send(function(result)
-        print((("Raw " .. url) .. " Result: ") .. tostring(result))
+        log("Raw %s Result: %s", url, result)
         if callback then
             callback(result)
         end

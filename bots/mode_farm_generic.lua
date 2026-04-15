@@ -42,6 +42,7 @@ local beVeryHighFarmer = false;
 local team = GetTeam()
 local isChangePosMessageDone = false
 local nH, nB = Fu.Utils.NumHumanBotPlayersInTeam(GetOpposingTeam())
+local nH2, nB2 = Fu.Utils.NumHumanBotPlayersInTeam(team)
 local lastAnnouncePrintedTime = 0
 local numberAnnouncePrinted = 1
 local announcementGap = 6
@@ -157,6 +158,19 @@ function GetDesire()
 	-- 	res = res * farmBoost
 	-- end
 
+	-- Push_Frequency scaling: dampen farm desire when user wants more pushing.
+	-- 1 = default (no change) = max 0.6, 2 = farm * 0.65 = max 0.39, 3 = farm * 0.3 = max 0.18
+	local pushFreq = Customize.Push_Frequency or 1
+	if (nH > 0 or nH2 > 0) and pushFreq <= 1 then
+		-- set pushFreq to 2 for team with human.
+		pushFreq = 2
+	end
+	if pushFreq >= 3 then
+		res = res * 0.3
+	elseif pushFreq >= 2 then
+		res = res * 0.65
+	end
+
 	-- Farm commitment: once farming, maintain desire floor for 3 seconds
 	-- Prevents oscillation when walking between lane front (enemies visible) and jungle
 	if res > 0.15 then
@@ -200,6 +214,13 @@ function GetDesireHelper()
 		if bT2PlusUnderAttack then
 			bot._farmExitReason = 'defend_ping'; return BOT_MODE_DESIRE_VERYLOW
 		end
+	end
+
+	-- Enemies pushing our HG or at ancient: don't farm while base is threatened
+	local _farmAncient = GetAncient(GetTeam())
+	if Fu.Utils.CountEnemyHeroesOnHighGround(GetTeam()) >= 2
+		or (_farmAncient and Fu.Utils.CountEnemyHeroesNear(_farmAncient:GetLocation(), 2500) >= 1) then
+		bot._farmExitReason = 'enemies_on_hg'; return BOT_MODE_DESIRE_NONE
 	end
 
 	if not bInitDone
@@ -257,7 +278,7 @@ function GetDesireHelper()
 		or botActiveMode == BOT_MODE_OUTPOST) and botActiveModeDesire > 0)
 	or (#nInRangeAlly_tormentor >= 2 and bot.tormentor_state == true)
 	or (#nInRangeAlly_roshan_early >= 2 and bRoshanAliveEarly and bNotClone)
-	or (Fu.DoesTeamHaveAegis() and Fu.IsLateGame() and nAliveAllyCountEarly >= 4)
+	or (Fu.DoesTeamHaveAegis() and not Fu.IsEarlyGame() and nAliveAllyCountEarly >= 4)
 	or X.IsUnitAroundLocation(GetAncient(GetTeam()):GetLocation(), 3200)
 	or #nEnemyHeroes > 0
 	or (nAliveEnemyCountEarly <= 1 and networthAdvantage > 10000)
@@ -272,7 +293,7 @@ function GetDesireHelper()
 				tostring(Fu.IsDoingTormentor(bot) and bNotClone),
 				#nEnemyHeroes,
 				tostring(X.IsUnitAroundLocation(GetAncient(GetTeam()):GetLocation(), 3200)),
-				tostring(Fu.DoesTeamHaveAegis() and Fu.IsLateGame() and nAliveAllyCountEarly >= 4),
+				tostring(Fu.DoesTeamHaveAegis() and not Fu.IsEarlyGame() and nAliveAllyCountEarly >= 4),
 				tostring(nAliveEnemyCountEarly <= 1 and networthAdvantage > 10000),
 				nAliveAllyCountEarly, nAliveEnemyCountEarly))
 		end
@@ -373,7 +394,7 @@ function GetDesireHelper()
         end
     end
 	
-	if Fu.DoesTeamHaveAegis() and Fu.IsLateGame() and nAliveAllyCount >= 4 then
+	if Fu.DoesTeamHaveAegis() and not Fu.IsEarlyGame() and nAliveAllyCount >= 4 then
 		bot._farmExitReason = 'aegis_push'; return BOT_MODE_DESIRE_VERYLOW;
 	end
 		
@@ -642,6 +663,8 @@ function OnEnd()
 	preferedCamp = nil;
 	farmState = FARM_STATE_NONE;
 	hLaneCreepList  = {};
+	bot._farmCommitKind = nil;
+	bot._farmCommitAt   = 0;
 	bot:SetTarget(nil);
 end
 
@@ -725,9 +748,35 @@ function Think()
 		end
 	end
 
+	-- Commit timer: once we pick a farm kind ('lane' or 'camp'), stick with it
+	-- for FARM_COMMIT_HOLD seconds unless the target is gone. Prevents the bot
+	-- from flipping between lane creeps and a jungle camp every few ticks when
+	-- the walking path between them crosses both.
+	local FARM_COMMIT_HOLD = 4.0
+	bot._farmCommitKind = bot._farmCommitKind or nil
+	bot._farmCommitAt   = bot._farmCommitAt or 0
+	local tNow = GameTime()
+	local bLocked = bot._farmCommitKind ~= nil and (tNow - bot._farmCommitAt) < FARM_COMMIT_HOLD
+
 	-- Lane creep farming: attack lowest HP creep (consistent with last-hit priority)
 	local nEnemyLaneCreeps = bot:GetNearbyLaneCreeps(900, true)
-	if nEnemyLaneCreeps ~= nil and #nEnemyLaneCreeps > 0 and farmState ~= FARM_STATE_FARM then
+	-- Guard: if we have a camp target, only divert to lane creeps when the
+	-- lane is substantially closer than the camp (lane*1.3 < camp). Otherwise
+	-- we get pulled off the camp walk every time we pass a lane.
+	local bLaneIsBetterThanCamp = true
+	if preferedCamp ~= nil and nEnemyLaneCreeps ~= nil and #nEnemyLaneCreeps > 0 then
+		local _campLoc = preferedCamp.cattr.location
+		local _campDist = GetUnitToLocationDistance(bot, _campLoc)
+		local _laneDist = GetUnitToUnitDistance(bot, nEnemyLaneCreeps[1])
+		bLaneIsBetterThanCamp = (_laneDist * 1.3) < _campDist
+	end
+	-- Respect commit lock: if we've committed to 'camp', don't divert to lane.
+	if bLocked and bot._farmCommitKind == 'camp' then
+		bLaneIsBetterThanCamp = false
+	end
+	if nEnemyLaneCreeps ~= nil and #nEnemyLaneCreeps > 0 and farmState ~= FARM_STATE_FARM and bLaneIsBetterThanCamp then
+		bot._farmCommitKind = 'lane'
+		bot._farmCommitAt   = tNow
 		-- Tower safety
 		local nEnemyTowers = bot:GetNearbyTowers(1600, true)
 		if Fu.IsValidBuilding(nEnemyTowers[1]) then
@@ -879,6 +928,8 @@ function Think()
 			local target = farmTarget or fallbackTarget
 			if Fu.IsValid(target) then
 				farmState = FARM_STATE_FARM
+				bot._farmCommitKind = 'camp'
+				bot._farmCommitAt   = tNow
 				bot:SetTarget(target)
 				bot:Action_AttackUnit(target, false)
 				return
@@ -887,10 +938,13 @@ function Think()
 				if cDist < 300 then
 					-- Already at camp center, no valid targets: camp is empty or can't farm it
 					farmState = FARM_STATE_NONE
+					bot._farmCommitKind = nil
 					Fu.Role['availableCampTable'], preferedCamp = Fu.Site.UpdateAvailableCamp(bot, preferedCamp, Fu.Role['availableCampTable'])
 					availableCamp = Fu.Role['availableCampTable']
 					preferedCamp = Fu.Site.GetClosestNeutralSpwan(bot, availableCamp)
 				else
+					bot._farmCommitKind = 'camp'
+					bot._farmCommitAt   = tNow
 					bot:Action_MoveToLocation(targetFarmLoc)
 					return
 				end
@@ -898,6 +952,8 @@ function Think()
 		else
 			-- No neutrals detected: walk to camp (don't attack-move, which stops at wrong camps)
 			if cDist > 200 then
+				bot._farmCommitKind = 'camp'
+				bot._farmCommitAt   = tNow
 				bot:Action_MoveToLocation(targetFarmLoc)
 				return
 			end
@@ -1077,59 +1133,5 @@ function X.IsLocCanBeSeen(vLoc)
 		   and IsLocationVisible(tempLocDown)
 		   and IsRadiusVisible(vLoc,10)
 
-end
-
-function PickOneAnnouncer()
-	if not hasPickedOneAnnouncer then
-		for i, id in pairs(GetTeamPlayers(GetTeam())) do
-			local hero = GetTeamMember(i)
-			if hero ~= nil and hero.isAnnouncer then return end
-		end
-		bot.isAnnouncer = true
-		hasPickedOneAnnouncer = true
-		return
-	end
-end
-
-function AnnounceMessages()
-	if DotaTime() > 60 then return end
-
-	local welcome_msgs = Localization.Get('welcome_msgs')
-	if ((Fu.IsModeTurbo() and DotaTime() > -50 + team * 2) or (not Fu.IsModeTurbo() and DotaTime() > -75 + team * 2))
-	and numberAnnouncePrinted < #welcome_msgs + 1
-	and bot.isAnnouncer
-	and DotaTime() < 0
-	then
-		if GameTime() - lastAnnouncePrintedTime >= announcementGap then
-			local msg = welcome_msgs[numberAnnouncePrinted]
-			local isFirstLine = numberAnnouncePrinted == 1
-			if msg then
-				bot:ActionImmediate_Chat(isFirstLine and msg .. Version.number or msg, nB == 0 or isFirstLine)
-			end
-			numberAnnouncePrinted = numberAnnouncePrinted + 1
-			lastAnnouncePrintedTime = GameTime()
-		end
-	end
-
-	if GetGameMode() ~= GAMEMODE_1V1MID and GetGameState() == GAME_STATE_PRE_GAME and bot.isBear == nil
-	and (bot.announcedRole == nil or bot.announcedRole ~= Fu.GetPosition(bot)) then
-		bot.announcedRole = Fu.GetPosition(bot)
-		-- if GetTeam() == TEAM_DIRE then
-		-- 	-- broken for 7.38 for now.
-		-- 	return
-		-- end
-		bot:ActionImmediate_Chat(Localization.Get('say_play_pos')..Fu.GetPosition(bot), false)
-	end
-	if GetGameMode() ~= GAMEMODE_1V1MID
-	and not isChangePosMessageDone
-	and bot.isAnnouncer
-	then
-		local nH, nB = Fu.NumHumanBotPlayersInTeam()
-		if DotaTime() >= 0 and nH > 0 and nB > 0
-		then
-			bot:ActionImmediate_Chat(Localization.Get('pos_select_closed'), true)
-			isChangePosMessageDone = true
-		end
-	end
 end
 

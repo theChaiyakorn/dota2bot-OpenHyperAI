@@ -142,6 +142,8 @@ local lastAbilityQTime = 0
 local lastAbilityQLocation = Vector( 0, 0 )
 local botTarget
 
+local hAllyList
+
 function X.SkillsComplement()
 
 

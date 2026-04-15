@@ -153,6 +153,7 @@ local aetherRange = 0
 local bAttacking
 local botHP, botTarget
 local nAllyHeroes, nEnemyHeroes
+local nLV, nKeepMana
 
 function X.SkillsComplement()
 	bot = GetBot()
@@ -166,11 +167,15 @@ function X.SkillsComplement()
 	abilityW = SafeAbility(bot:GetAbilityByName('razor_static_link'), 'static_link', 'razor')
 	abilityR = SafeAbility(bot:GetAbilityByName('razor_eye_of_the_storm'), 'eye_of_the_storm', 'razor')
 
+	local ctx = AbilityCtx.Build(bot)
+	nKeepMana = 300
+	aetherRange = ctx.aetherRange
+	nLV = ctx.level
+	botHP = ctx.hp
+	botTarget = ctx.target
 	bAttacking = Fu.IsAttacking(bot)
-	botHP = Fu.GetHP(bot)
-	botTarget = Fu.GetProperTarget(bot)
-	nAllyHeroes = bot:GetNearbyHeroes(1600, false, BOT_MODE_NONE)
-	nEnemyHeroes = bot:GetNearbyHeroes(1600, true, BOT_MODE_NONE)
+	nAllyHeroes = ctx.allies
+	nEnemyHeroes = ctx.enemies
 
 	-- Q first: Plasma Field is Razor's bread-and-butter
 	castQDesire = X.ConsiderQ()
@@ -214,6 +219,9 @@ function X.ConsiderQ()
 	local nDamageMax = abilityQ:GetSpecialValueInt( 'damage_max' )
 	local nDamageType = DAMAGE_TYPE_MAGICAL
 	local nInRangeEnemyList = Fu.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
+	local hEnemyList = Fu.GetNearbyHeroes(bot, 1200, true, BOT_MODE_NONE )
+	local hAllyList = Fu.GetNearbyHeroes(bot, 1200, false, BOT_MODE_NONE )
+	local botTarget = Fu.GetProperTarget(bot)
 
 	--团战和击杀
 	for _, npcEnemy in pairs( nInRangeEnemyList )
@@ -377,6 +385,9 @@ function X.ConsiderW()
 	local nDamage = abilityW:GetAbilityDamage()
 	local nDamageType = DAMAGE_TYPE_MAGICAL
 	local nInRangeEnemyList = Fu.GetNearbyHeroes(bot, nCastRange, true, BOT_MODE_NONE )
+	local hEnemyList = Fu.GetNearbyHeroes(bot, 1200, true, BOT_MODE_NONE )
+	local hAllyList = Fu.GetNearbyHeroes(bot, 1200, false, BOT_MODE_NONE )
+	local botTarget = Fu.GetProperTarget(bot)
 
 
 	local nInRangeEnemyCount = 0

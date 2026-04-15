@@ -129,11 +129,13 @@ modifier_medusa_stone_gaze_stone
 
 --]]
 
-local abilityQ = SafeAbility(bot:GetAbilityByName(sAbilityList[1]), 'sAbilityList[1]', 'medusa')
-local abilityW = SafeAbility(bot:GetAbilityByName(sAbilityList[2]), 'sAbilityList[2]', 'medusa')
-local abilityE = SafeAbility(bot:GetAbilityByName(sAbilityList[3]), 'sAbilityList[3]', 'medusa')
-local abilityR = SafeAbility(bot:GetAbilityByName(sAbilityList[6]), 'sAbilityList[6]', 'medusa')
-local abilityM = nil
+-- Use hardcoded ability names (resilient against re-indexing from aghs/shard)
+-- and re-fetch each tick in SkillsComplement so handles can't go stale.
+-- mana_shield / cold_blooded are innate/hidden in current patches — don't cast.
+local abilityQ    = SafeAbility(bot:GetAbilityByName('medusa_split_shot'),   'medusa_split_shot',   'medusa')
+local abilityW    = SafeAbility(bot:GetAbilityByName('medusa_mystic_snake'), 'medusa_mystic_snake', 'medusa')
+local abilityR    = SafeAbility(bot:GetAbilityByName('medusa_stone_gaze'),   'medusa_stone_gaze',   'medusa')
+local abilityM    = nil
 local GorgonGrasp = SafeAbility(bot:GetAbilityByName('medusa_gorgon_grasp'), 'medusa_gorgon_grasp', 'medusa')
 
 local castQDesire
@@ -153,6 +155,13 @@ function X.SkillsComplement()
 	Fu.ConsiderTarget()
 
 	if Fu.CanNotUseAbility( bot ) or bot:IsInvisible() then return end
+
+	-- Rebind ability handles every tick — aghs/shard can re-index abilities
+	-- and stale handles silently misbehave.
+	abilityQ    = SafeAbility(bot:GetAbilityByName('medusa_split_shot'),   'medusa_split_shot',   'medusa')
+	abilityW    = SafeAbility(bot:GetAbilityByName('medusa_mystic_snake'), 'medusa_mystic_snake', 'medusa')
+	abilityR    = SafeAbility(bot:GetAbilityByName('medusa_stone_gaze'),   'medusa_stone_gaze',   'medusa')
+	GorgonGrasp = SafeAbility(bot:GetAbilityByName('medusa_gorgon_grasp'), 'medusa_gorgon_grasp', 'medusa')
 
 	local ctx = AbilityCtx.Build(bot)
 	nKeepMana = 400
@@ -199,12 +208,7 @@ function X.SkillsComplement()
 		return
 	end
 
-	castEDesire = X.ConsiderE()
-	if castEDesire > 0
-	then
-		bot:Action_UseAbility( abilityE )
-		return
-	end
+	-- Mana Shield (E) is innate in current patches; no UseAbility needed.
 
 end
 
@@ -259,6 +263,8 @@ function X.ConsiderGorgonGrasp()
 
 	if Fu.IsGoingOnSomeone(bot)
 	then
+		-- Require either a slowed target or a close target — without this gate
+		-- the bot spams GorgonGrasp every time it's attacking anyone in range.
 		if Fu.IsValidHero(botTarget)
 		and Fu.CanCastOnNonMagicImmune(botTarget)
 		and Fu.IsInRange(bot, botTarget, nCastRange)
@@ -266,6 +272,8 @@ function X.ConsiderGorgonGrasp()
 		and not botTarget:HasModifier('modifier_enigma_black_hole_pull')
 		and not botTarget:HasModifier('modifier_faceless_void_chronosphere_freeze')
 		and not botTarget:HasModifier('modifier_necrolyte_reapers_scythe')
+		and (botTarget:GetCurrentMovementSpeed() <= 250
+			 or Fu.IsInRange(bot, botTarget, nCastRange * 0.55))
 		then
 			return BOT_ACTION_DESIRE_HIGH, botTarget:GetLocation()
 		end
@@ -278,7 +286,8 @@ function X.ConsiderGorgonGrasp()
 		do
 			if Fu.IsValidHero(enemyHero)
 			and Fu.IsInRange(bot, enemyHero, nCastRange)
-			and bot:WasRecentlyDamagedByHero(enemyHero, 2.5)
+			and not Fu.IsInRange(bot, enemyHero, nCastRange * 0.3)
+			and bot:WasRecentlyDamagedByHero(enemyHero, 3.0)
 			and (Fu.IsChasingTarget(enemyHero, bot) or Fu.GetHP(bot) < 0.5)
 			and Fu.CanCastOnNonMagicImmune(enemyHero)
 			and not Fu.IsDisabled(enemyHero)
@@ -290,30 +299,6 @@ function X.ConsiderGorgonGrasp()
 			end
 		end
 	end
-
-	for _, allyHero in pairs(tAllyHeroes)
-    do
-        if Fu.IsValidHero(allyHero)
-        and Fu.IsRetreating(allyHero)
-        and allyHero:GetActiveModeDesire() >= 0.7
-        and allyHero:WasRecentlyDamagedByAnyHero(3)
-        and not allyHero:IsIllusion()
-        then
-            local nAllyInRangeEnemy = allyHero:GetNearbyHeroes(1600, true, BOT_MODE_NONE)
-
-            if Fu.IsValidHero(nAllyInRangeEnemy[1])
-            and Fu.CanCastOnNonMagicImmune(nAllyInRangeEnemy[1])
-            and Fu.IsInRange(bot, nAllyInRangeEnemy[1], nCastRange)
-            and Fu.IsChasingTarget(nAllyInRangeEnemy[1], allyHero)
-            and not Fu.IsDisabled(nAllyInRangeEnemy[1])
-            and not nAllyInRangeEnemy[1]:HasModifier('modifier_enigma_black_hole_pull')
-            and not nAllyInRangeEnemy[1]:HasModifier('modifier_faceless_void_chronosphere_freeze')
-            and not nAllyInRangeEnemy[1]:HasModifier('modifier_necrolyte_reapers_scythe')
-            then
-                return BOT_ACTION_DESIRE_HIGH, Fu.GetCorrectLoc(nAllyInRangeEnemy[1], eta)
-            end
-        end
-    end
 
 	return BOT_ACTION_DESIRE_NONE, 0
 end
@@ -355,30 +340,7 @@ function X.ConsiderQ()
 end
 
 
-function X.ConsiderE()
-
-	if not abilityE:IsFullyCastable() then return 0 end
-
-	if nHP > 0.8 and nMP < 0.88 and nLV < 15
-	  and Fu.GetEnemyCount( bot, 1600 ) <= 1
-	  and lastToggleTime + 3.0 < DotaTime()
-	then
-		if abilityE:GetToggleState()
-		then
-			return BOT_ACTION_DESIRE_HIGH
-		end
-	else
-		if not abilityE:GetToggleState()
-		then
-			lastToggleTime = DotaTime()
-			return BOT_ACTION_DESIRE_HIGH
-		end
-	end
-
-	return BOT_ACTION_DESIRE_NONE
-
-
-end
+-- ConsiderE removed: Mana Shield is innate in current patches, not castable.
 
 -- Calculate the best target for Mystic Snake
 local function GetBestSnakeTarget(nCastRange, nSnakeJumpRadius, nSnakeJumps)

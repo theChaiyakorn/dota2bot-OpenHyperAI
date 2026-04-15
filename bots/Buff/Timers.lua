@@ -97,7 +97,7 @@ if Timers == nil then
 end
 
 function Timers:HandleEventError(name, event, err)
-    print(err)
+    log(err)
 
     -- Ensure we have data
     name = tostring(name or 'unknown')
@@ -130,7 +130,7 @@ function Timers:CreateTimer(name, args, context)
       name = DoUniqueString("timer")
     end
     if not args.callback then
-      print("Invalid timer created: "..name)
+      log("Invalid timer created: %s", name)
       return
     end
 

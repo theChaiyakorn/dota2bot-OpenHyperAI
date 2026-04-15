@@ -1,6 +1,6 @@
 local X = {}
 local Fu = require(GetScriptDirectory()..'/FuncLib/func_utils')
-local Customize = require(GetScriptDirectory()..'/Customize/general')
+local Customize = require(GetScriptDirectory()..'/FuncLib/systems/custom_loader')
 Customize.ThinkLess = Customize.Enable and Customize.ThinkLess or 1
 
 local bot = GetBot()
@@ -95,6 +95,10 @@ function GetDesireRaw()
 	end
 	local enemiesAtAncient = Fu.Utils.CountEnemyHeroesNear(GetAncient(GetTeam()):GetLocation(), 3200)
 	if enemiesAtAncient >= 1 then
+		return BOT_MODE_DESIRE_NONE
+	end
+	-- Enemies pushing our HG: don't leave the base for runes
+	if Fu.Utils.CountEnemyHeroesOnHighGround(GetTeam()) >= 2 then
 		return BOT_MODE_DESIRE_NONE
 	end
 

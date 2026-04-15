@@ -3,7 +3,7 @@ local botName = bot:GetUnitName();
 if bot == nil or bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
 
 local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
-local Customize = require( GetScriptDirectory()..'/Customize/general' )
+local Customize = require( GetScriptDirectory()..'/FuncLib/systems/custom_loader' )
 
 local killTime = 0.0
 local shouldKillRoshan = false
@@ -130,6 +130,14 @@ end
 
 function GetDesireHelper()
 	if bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return BOT_MODE_DESIRE_NONE end
+
+	-- Enemies pushing our HG or at ancient: base defense dominates Roshan.
+	local _roshAncient = GetAncient(GetTeam())
+	if Fu.Utils.CountEnemyHeroesOnHighGround(GetTeam()) >= 2
+		or (_roshAncient and Fu.Utils.CountEnemyHeroesNear(_roshAncient:GetLocation(), 2500) >= 1) then
+		return BOT_MODE_DESIRE_NONE
+	end
+
 	if not Fu.Utils.IsValidUnit(Roshan) then
 		FindRoshan()
 	end
@@ -237,7 +245,7 @@ function GetDesireHelper()
 		local mul = RemapValClamped(DotaTime(), sinceRoshAliveTime, sinceRoshAliveTime + (2.5 * 60), 1, 2)
 		local nRoshanDesire = RemapValClamped(GetRoshanDesire() * mul, 0, 1, 0, BOT_MODE_DESIRE_ABSOLUTE)
 
-		-- 4+ allies near pit: override to high desire (like reference)
+		-- 4+ allies near pit: override to high desire
 		local nAlliesNearRosh = Fu.GetAlliesNearLoc(roshLoc, 1600)
 		if #nAlliesNearRosh >= 4 then
 			nRoshanDesire = 0.9
@@ -257,7 +265,7 @@ end
 
 local ROSH_GATHER_RADIUS = 1000  -- how close counts as "gathered"
 local ROSH_GATHER_DIST   = 900 -- wait this far from pit center (outside pit)
-local ROSH_PIT_RADIUS    = 200   -- must be within this distance of roshLoc to count as "inside pit"
+local ROSH_PIT_RADIUS    = 300   -- must be within this distance of roshLoc to count as "inside pit"
 
 function Think()
 	if not bot:IsAlive() or Fu.CanNotUseAction(bot) then return end

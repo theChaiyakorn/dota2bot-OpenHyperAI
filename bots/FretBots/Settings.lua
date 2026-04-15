@@ -195,7 +195,7 @@ function IsTimeToVoteForAllyBonusScale()
 				table.insert(humans[team], player)
 				allyTeam = team
 			else
-				print('Cannot start voting for ally bonus. Invalid player team: '..team)
+				log('Cannot start voting for ally bonus. Invalid player team: %s', team)
 			end
 		end
 	end
@@ -340,7 +340,7 @@ function StartCallback(resJsonObj)
 	if resJsonObj.allowed_diff and resJsonObj.allowed_diff > 0 then
 		local diffNum = tonumber(resJsonObj.allowed_diff)
 		if diffNum < Settings.difficulty then
-			print('Host is not allowed to host this difficulty level. Max allowed: '.. diffNum)
+			log('Host is not allowed to host this difficulty level. Max allowed: %s', diffNum)
 			Utilities:Print(string.format(Localization.Get('fret_default_diff_limit'), diffNum, diffNum, resJsonObj.needed_wins, Settings.difficulty, diffNum), MSG_WARNING)
 			Settings.difficulty = diffNum
 			Settings.difficultyScale = Settings:CalculateDifficultyScale(diffNum)
@@ -381,7 +381,7 @@ function Settings:RegisterChatEvent()
 		-- set max number of vote
 		maxVotes = Utilities:GetNumberOfHumans()
 		ListenToGameEvent("player_chat", Dynamic_Wrap(Settings, 'OnPlayerChat'), Settings)
-		print('Settings: PlayerChat event listener registered.')
+		log('Settings: PlayerChat event listener registered.')
 		Flags.isPlayerChatRegistered = true
 	end
 end
@@ -1041,7 +1041,7 @@ function Settings:SetValue(objectText, value)
 			Settings.difficulty = value
 			Settings.difficultyScale = Settings:CalculateDifficultyScale(value)
 			NeutralItems:InitializeFindTimings()
-			print('New difficulty: ' .. tostring(Settings.difficulty) .. '. New difficultyScale: ' .. tostring(Settings.difficultyScale))
+			log('New difficulty: %s. New difficultyScale: %s', Settings.difficulty, Settings.difficultyScale)
 		end
 	elseif #tokens == 2 then
 		Settings[tokens[1]][tokens[2]] = value

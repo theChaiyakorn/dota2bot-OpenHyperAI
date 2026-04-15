@@ -374,7 +374,7 @@ function NeutralItems:InitializeFindTimings()
 				local msg = bot.stats.name..' (pos'..pos..'): Initialized Neutral Timing for Tier 1: '..bot.stats.neutralTiming..' (shift: '..difficultyShift..', var: '..variance..')'
 				Debug:Print(msg)
 			else
-				print('[ERROR] failed to process bot: '..tostring(bot)..', team: '..team)
+				log('[ERROR] failed to process bot: %s, team: %s', bot, team)
 			end
 		end
 	end

@@ -190,6 +190,8 @@ local aetherRange = 0
 local talent4Damage = 0
 
 
+local nLV, nKeepMana, nMP, nHP, hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 	local isPhysicalBody = bot:HasModifier('modifier_dazzle_nothl_projection_physical_body_debuff')

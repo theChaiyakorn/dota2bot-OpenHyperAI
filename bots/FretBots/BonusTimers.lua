@@ -400,7 +400,7 @@ end
 function BonusTimers:PerMinuteTimer()
 	-- inform we've registered
 	if not inits.perMinuteTimer then
-		print('PerMinuteTimer method registered')
+		log('PerMinuteTimer method registered')
 		inits.perMinuteTimer = true
 	end
 	-- if no bots, unregister
@@ -417,7 +417,7 @@ function BonusTimers:PerMinuteTimer()
 	for _, bot in pairs(AllBots[team]) do
 		if bot ~= nil then
 			if bot.stats == nil then
-				print('[ERROR]. Bot has no stats:')
+				log('[ERROR]. Bot has no stats:')
 				DeepPrintTable(bot)
 				return
 			end
@@ -521,14 +521,14 @@ function BonusTimers:Register()
 		if isDebug then
 			DeepPrintTable(Settings.neutralItems)
 		end
-		print('Registering NeutralItemFindTimer.')
+		log('Registering NeutralItemFindTimer.')
 		Timers:CreateTimer(names.neutralItemFindTimer, {callback =  BonusTimers['NeutralItemFindTimer']} )
 		inits.neutralItemFindTimer = true
 	end
 	-- Register per minute timer (first executed one minute after game start so we're
 	-- not dividing by a decimal and inflating GPM/XPM
 	if not inits.perMinuteTimer then
-		print('Registering PerMinuteTimer.')
+		log('Registering PerMinuteTimer.')
 		Timers:CreateTimer(names.perMinuteTimer, {endTime = perMinuteTimerInterval, callback =  BonusTimers['PerMinuteTimer']} )
 		inits.perMinuteTimer = true
 	end
@@ -551,7 +551,7 @@ function BonusTimers:Initialize()
 		if state == DOTA_GAMERULES_STATE_GAME_IN_PROGRESS then
 			 -- then immediately register listeners
 			 BonusTimers:Register()
-			 print('Game already in progress.  Registering BonusTimers.')
+			 log('Game already in progress.  Registering BonusTimers.')
 		-- is game over? Return if so
 		elseif state == DOTA_GAMERULES_STATE_POST_GAME or state == DOTA_GAMERULES_STATE_DISCONNECT then
 			return
@@ -559,7 +559,7 @@ function BonusTimers:Initialize()
 		-- that will register once the horn sounds
 		else
 			ListenToGameEvent( "game_rules_state_change", Dynamic_Wrap( BonusTimers, "OnGameRulesStateChange" ), self)
-			print('Game not in progress.  Registering BonusTimer GameState Listener.')
+			log('Game not in progress.  Registering BonusTimer GameState Listener.')
 		end
 		Flags.isBonusTimersInitialized = true
 	end

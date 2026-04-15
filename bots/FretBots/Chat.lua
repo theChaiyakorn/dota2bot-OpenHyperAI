@@ -60,7 +60,7 @@ end
 
 function Chat.StartCallback(resJsonObj)
 	if resJsonObj.updates_behind and resJsonObj.updates_behind > 0 then
-        print('Script is out of date.')
+        log('Script is out of date.')
         Timers:CreateTimer(chatUpdateTimerName, {endTime = 1, callback = Chat['NotifyUpdate']} )
     end
 end
@@ -145,7 +145,7 @@ function Chat:HandleFailMessage(message, isBotSay)
             Utilities:Print(message, MSG_WARNING)
         end
     else
-        print("[ERROR] Cannot get valid repsonse from Chat server. Hide the errors to avoid spams.")
+        log("[ERROR] Cannot get valid repsonse from Chat server. Hide the errors to avoid spams.")
     end
     if countErrorMsg >= 6 then
         -- Reset count every 5 times so users can get re-notified about the error.

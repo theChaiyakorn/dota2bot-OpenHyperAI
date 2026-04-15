@@ -215,6 +215,8 @@ local talent4Damage = 0
 
 
 
+local nLV, nKeepMana, nMP, nHP, hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 
@@ -306,40 +308,36 @@ function X.ConsiderQ()
 	end
 
 
-	--对线消耗或补刀
-	if Fu.IsLaning( bot )
+	--对线消耗或补刀 — only when can hit closest enemy hero, mana > 30%
+	if Fu.IsLaning( bot ) and nMP > 0.3 and not Fu.IsRetreating( bot )
 	then
-		-- Best case: hit enemy hero AND last-hit creeps with one spell
-		if nMP > 0.3 then
-			local locationAoEKill = bot:FindAoELocation( true, false, bot:GetLocation(), nCastRange, nRadius + 50, 0, nDamage )
-			if locationAoEKill.count >= 2 then
-				-- Check if any enemy hero is also in the line
-				for _, npcEnemy in pairs( nInRangeEnemyList ) do
-					if Fu.IsValidHero( npcEnemy )
-					and Fu.CanCastOnNonMagicImmune( npcEnemy )
-					and GetUnitToLocationDistance( npcEnemy, locationAoEKill.targetloc ) < nRadius + 100
-					then
-						nTargetLocation = locationAoEKill.targetloc
-						return BOT_ACTION_DESIRE_HIGH, nTargetLocation, 'Q补刀+消耗'
-					end
+		local closestEnemy = nil
+		local minDist = 99999
+		for _, npcEnemy in pairs( nInRangeEnemyList ) do
+			if Fu.IsValidHero( npcEnemy )
+			and Fu.CanCastOnNonMagicImmune( npcEnemy )
+			then
+				local d = GetUnitToUnitDistance( bot, npcEnemy )
+				if d < minDist then
+					minDist = d
+					closestEnemy = npcEnemy
 				end
-				-- No hero in line — still last-hit if enough creeps
-				nTargetLocation = locationAoEKill.targetloc
-				return BOT_ACTION_DESIRE_HIGH, nTargetLocation, "Q对线补刀"..locationAoEKill.count
 			end
 		end
 
-		-- Harass: hit enemy hero (even just 1) when have mana
-		if nMP > 0.35 then
-			for _, npcEnemy in pairs( nInRangeEnemyList ) do
-				if Fu.IsValidHero( npcEnemy )
-				and Fu.CanCastOnNonMagicImmune( npcEnemy )
-				and not Fu.IsRetreating( bot )
-				and Fu.GetHP( npcEnemy ) < 0.7
-				then
-					nTargetLocation = npcEnemy:GetExtrapolatedLocation( nCastPoint )
-					return BOT_ACTION_DESIRE_HIGH, nTargetLocation, 'Q对线消耗'
-				end
+		if closestEnemy ~= nil then
+			-- Best case: hit closest hero AND last-hit creeps with one spell
+			local locationAoEKill = bot:FindAoELocation( true, false, bot:GetLocation(), nCastRange, nRadius + 50, 0, nDamage )
+			if locationAoEKill.count >= 2
+			and GetUnitToLocationDistance( closestEnemy, locationAoEKill.targetloc ) < nRadius + 100
+			then
+				return BOT_ACTION_DESIRE_HIGH, locationAoEKill.targetloc, 'Q补刀+消耗'..Fu.Chat.GetNormName( closestEnemy )
+			end
+
+			-- Pure harass: closest hero, HP not topped off
+			if Fu.GetHP( closestEnemy ) < 0.7 then
+				nTargetLocation = closestEnemy:GetExtrapolatedLocation( nCastPoint )
+				return BOT_ACTION_DESIRE_HIGH, nTargetLocation, 'Q对线消耗'..Fu.Chat.GetNormName( closestEnemy )
 			end
 		end
 	end

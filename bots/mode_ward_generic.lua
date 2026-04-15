@@ -7,7 +7,7 @@ local X = {}
 local bot = GetBot()
 local Fu = require(GetScriptDirectory()..'/FuncLib/func_utils')
 local W = require(GetScriptDirectory() ..'/FuncLib/systems/ward')
-local Customize = require(GetScriptDirectory()..'/Customize/general')
+local Customize = require(GetScriptDirectory()..'/FuncLib/systems/custom_loader')
 Customize.ThinkLess = Customize.Enable and Customize.ThinkLess or 1
 
 local nObserverWardCastRange = 500
@@ -42,6 +42,7 @@ function GetDesireHelper()
     if enemiesAtAncient >= 1 then
         return BOT_MODE_DESIRE_NONE
     end
+    local _wardEnemiesOnHG = Fu.Utils.CountEnemyHeroesOnHighGround(GetTeam()) >= 2
 
     for i = 0, 5 do
         local hItem = bot:GetItemInSlot(i)
@@ -59,7 +60,11 @@ function GetDesireHelper()
         local hAvailabeObserverWardSpots = W.GetAvailabeObserverWardSpots(bot)
         hTargetSpot = W.GetClosestObserverWardSpot(bot, hAvailabeObserverWardSpots)
 		if hTargetSpot and (not X.IsEnemyCloserToWardLocation(hTargetSpot.location) or Fu.IsRealInvisible(bot)) then
-			if DotaTime() > 0 and GetUnitToLocationDistance(bot, hTargetSpot.location) > 4000 then
+			-- Enemies on our HG: only allow warding if spot is defensive (near base HG) or already close to bot.
+			local _skipForHG = _wardEnemiesOnHG and not X.IsWardSpotDefensiveOrNearby(hTargetSpot.location)
+			if _skipForHG then
+				-- fall through, don't ward for this spot
+			elseif DotaTime() > 0 and GetUnitToLocationDistance(bot, hTargetSpot.location) > 4000 then
 				-- Too far from ward spot, don't walk across the map
 			elseif DotaTime() < 0 and DotaTime() > (Fu.IsModeTurbo() and -45 or -60) then
 				return BOT_MODE_DESIRE_ABSOLUTE
@@ -85,7 +90,10 @@ function GetDesireHelper()
         local hPossibleSentryWardSpots = W.GetPossibleSentryWardSpots(bot)
         hTargetSpot = W.GetClosestSentryWardSpot(bot, hPossibleSentryWardSpots)
 		if hTargetSpot and (not X.IsEnemyCloserToWardLocation(hTargetSpot.location) or Fu.IsRealInvisible(bot)) then
-			if DotaTime() > 0 and GetUnitToLocationDistance(bot, hTargetSpot.location) > 4000 then
+			local _skipForHG = _wardEnemiesOnHG and not X.IsWardSpotDefensiveOrNearby(hTargetSpot.location)
+			if _skipForHG then
+				-- fall through
+			elseif DotaTime() > 0 and GetUnitToLocationDistance(bot, hTargetSpot.location) > 4000 then
 				-- Too far from ward spot, don't walk across the map
 			elseif DotaTime() > fLastWardPlantTime + 1.0 then
 				return BOT_MODE_DESIRE_VERYHIGH
@@ -179,6 +187,23 @@ function X.IsIBecameTheTarget(unitList)
 		end
 	end
 
+	return false
+end
+
+-- Allow warding during HG pressure if the spot is near our base HG or close to bot
+function X.IsWardSpotDefensiveOrNearby(vLocation)
+	-- Near bot: quick drop, no walking required
+	if GetUnitToLocationDistance(bot, vLocation) <= 1500 then
+		return true
+	end
+	-- Near our ancient / base area: defensive ward that helps the teamfight
+	local ancient = GetAncient(GetTeam())
+	if ancient and ancient:IsAlive() then
+		local dist = Fu.GetDistance(ancient:GetLocation(), vLocation)
+		if dist <= 3500 then
+			return true
+		end
+	end
 	return false
 end
 

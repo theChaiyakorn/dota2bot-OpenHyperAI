@@ -183,7 +183,7 @@ export function UpdateEnemyHeroPositions() {
         UpdateEnemyHeroData(enemyHeroes);
         AssignPositions();
 
-        // print("Enemy roles:");
+        // log("Enemy roles:");
         // PrintTable(cachedPositions);
     }
 }

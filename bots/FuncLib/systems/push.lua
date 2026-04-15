@@ -162,6 +162,7 @@ function ____exports.GetPushDesireHelper(bot, lane)
     if bot.laneToPush == nil then
         bot.laneToPush = lane
     end
+    nMaxDesire = 0.525
     autoCleanupCache()
     local gameState = getGlobalGameState()
     local locationState = getGlobalLocationState()
@@ -185,14 +186,16 @@ function ____exports.GetPushDesireHelper(bot, lane)
     if _pushCacheLaneBlocked[lane] then
         return BotModeDesire.None
     end
-    do
-        local i = 1
-        while i <= 5 do
-            local member = GetTeamMember(i)
-            if member ~= nil and member:GetLevel() < 6 then
-                return BotModeDesire.None
+    if gameState.isLaningPhase then
+        do
+            local i = 1
+            while i <= 5 do
+                local member = GetTeamMember(i)
+                if member ~= nil and member:GetLevel() < 6 then
+                    return BotModeDesire.None
+                end
+                i = i + 1
             end
-            i = i + 1
         end
     end
     local nInRangeAlly = Fu.GetAlliesNearLoc(
@@ -260,6 +263,16 @@ function ____exports.GetPushDesireHelper(bot, lane)
             5
         )
         if isPinged and lane == pingedLane and GameTime() < humanPing.time + pingTimeDelta then
+            return 0.6
+        end
+    end
+    local ourAncient = gameState.ourAncient
+    if Fu.IsValidBuilding(ourAncient) and ____exports.IsHealthyInsideFountain(bot) then
+        local enemiesAroundAncient = Fu.GetEnemiesNearLoc(
+            ourAncient:GetLocation(),
+            1000
+        )
+        if gameState.aliveAllyCount >= #enemiesAroundAncient and gameState.aliveAllyCoreCount >= gameState.aliveEnemyCoreCount then
             return 0.6
         end
     end
@@ -377,6 +390,7 @@ function ____exports.GetPushDesireHelper(bot, lane)
     if not gameState.isEarlyGame then
         if gameState.hasAegis and aAliveCount >= 4 then
             nPushDesire = nPushDesire + 0.25
+            nMaxDesire = math.max(nMaxDesire, 0.6)
         end
         if aAliveCount >= eAliveCount and gameState.averageLevel >= 12 then
             local networthAdvantage = gameState.teamNetworth - gameState.enemyNetworth
@@ -540,12 +554,24 @@ function ____exports.WhichLaneToPush(_bot, _lane)
     local vTop = locationState.laneFronts[Lane.Top]
     local vMid = locationState.laneFronts[Lane.Mid]
     local vBot = locationState.laneFronts[Lane.Bot]
+    local topBuilding = GetNextEnemyBuildingOnLane(Lane.Top)
+    local midBuilding = GetNextEnemyBuildingOnLane(Lane.Mid)
+    local botBuilding = GetNextEnemyBuildingOnLane(Lane.Bot)
     local teamMembers = GetUnitList(UnitType.AlliedHeroes)
     for ____, member in ipairs(teamMembers) do
         if Fu.IsValidHero(member) then
-            local topDist = GetUnitToLocationDistance(member, vTop)
-            local midDist = GetUnitToLocationDistance(member, vMid)
-            local botDist = GetUnitToLocationDistance(member, vBot)
+            local topDist = GetUnitToLocationDistance(member, vTop) * 0.9 * 0.6
+            local midDist = GetUnitToLocationDistance(member, vMid) * 0.6
+            local botDist = GetUnitToLocationDistance(member, vBot) * 0.9 * 0.6
+            if topBuilding ~= nil then
+                topDist = topDist + GetUnitToUnitDistance(member, topBuilding) * 0.9 * 0.4
+            end
+            if midBuilding ~= nil then
+                midDist = midDist + GetUnitToUnitDistance(member, midBuilding) * 0.4
+            end
+            if botBuilding ~= nil then
+                botDist = botDist + GetUnitToUnitDistance(member, botBuilding) * 0.9 * 0.4
+            end
             if Fu.IsCore(member) and member and not member:IsBot() then
                 topDist = topDist * 0.2
                 midDist = midDist * 0.2
@@ -668,6 +694,9 @@ function ____exports.GetSpecialUnitsNearby(bot, hUnitList, nRadius)
     end
     return hCreepList
 end
+function ____exports.IsHealthyInsideFountain(hUnit)
+    return hUnit:HasModifier("modifier_fountain_aura_buff") and Fu.GetHP(hUnit) > 0.9 and Fu.GetMP(hUnit) > 0.85
+end
 function ____exports.GetAllyHeroesAttackingUnit(hUnit)
     local unitState = updateUnitStateCache()
     local out = {}
@@ -747,15 +776,8 @@ function ____exports.IsAnyTargetBackdooredAt(_bot, lane)
     end
     return not not (nearest and ____exports.HasBackdoorProtect(nearest))
 end
-local Customize = require(GetScriptDirectory().."/Customize/general")
-local ____Customize_1 = Customize
-local ____Customize_Enable_0
-if Customize.Enable then
-    ____Customize_Enable_0 = Customize.ThinkLess
-else
-    ____Customize_Enable_0 = 1
-end
-____Customize_1.ThinkLess = ____Customize_Enable_0
+local Customize = require(GetScriptDirectory().."/FuncLib/systems/custom_loader")
+Customize.ThinkLess = Customize.Enable and Customize.ThinkLess or 1
 pingTimeDelta = 5
 hEnemyAncient = nil
 _pushCacheTick = -1
@@ -1248,24 +1270,24 @@ function ____exports.PushThink(bot, lane)
     end
     for ____, creep in ipairs(nCreeps) do
         do
-            local __continue231
+            local __continue237
             repeat
                 if not Fu.IsValid(creep) or not Fu.CanBeAttacked(creep) then
-                    __continue231 = true
+                    __continue237 = true
                     break
                 end
                 if Fu.IsTormentor(creep) or Fu.IsRoshan(creep) then
-                    __continue231 = true
+                    __continue237 = true
                     break
                 end
                 if bTowerNearby and GetUnitToLocationDistance(creep, vTeamFountain) >= towerDistanceToFountain + 500 then
-                    __continue231 = true
+                    __continue237 = true
                     break
                 end
                 bot:Action_AttackUnit(creep, true)
                 return
             until true
-            if not __continue231 then
+            if not __continue237 then
                 break
             end
         end
@@ -1383,9 +1405,6 @@ function ____exports.IsInDangerWithinTower(hUnit, fThreshold, fDuration)
         end
     end
     return totalDamage / hUnit:GetHealth() * 1.2 > fThreshold
-end
-function ____exports.IsHealthyInsideFountain(hUnit)
-    return hUnit:HasModifier("modifier_fountain_aura_buff") and Fu.GetHP(hUnit) > 0.9 and Fu.GetMP(hUnit) > 0.85
 end
 function ____exports.ShouldWaitForImportantItemsSpells(_vLocation)
     return false

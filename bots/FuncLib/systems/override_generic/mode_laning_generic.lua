@@ -59,17 +59,29 @@ function X.GetDesire()
 end
 
 function GetBotTargetLane()
-	if assignedLane then return assignedLane end
+	-- LAN: trust engine-assigned lane (reflects !pos in sandbox). Online:
+	-- trust position-derived lane (stable against Valve's dynamic balancer,
+	-- and correct post-!pos because shared scope sees the RoleAssignment
+	-- update). Re-computed each tick — no sticky cache — so !pos swaps
+	-- that reach us via position change are picked up promptly.
+	if IsLanMode and IsLanMode() then
+		local engineLane = bot:GetAssignedLane()
+		if engineLane == LANE_TOP or engineLane == LANE_MID or engineLane == LANE_BOT then
+			assignedLane = engineLane
+			return assignedLane
+		end
+	end
 
+	local pos = Fu.GetPosition(bot)
 	if GetTeam() == TEAM_RADIANT then
-		if Fu.GetPosition(bot) == 2 then assignedLane = LANE_MID
-		elseif Fu.GetPosition(bot) == 1 or Fu.GetPosition(bot) == 5 then assignedLane = LANE_BOT
-		elseif Fu.GetPosition(bot) == 3 or Fu.GetPosition(bot) == 4 then assignedLane = LANE_TOP
+		if pos == 2 then assignedLane = LANE_MID
+		elseif pos == 1 or pos == 5 then assignedLane = LANE_BOT
+		elseif pos == 3 or pos == 4 then assignedLane = LANE_TOP
 		end
 	else
-		if Fu.GetPosition(bot) == 2 then assignedLane = LANE_MID
-		elseif Fu.GetPosition(bot) == 1 or Fu.GetPosition(bot) == 5 then assignedLane = LANE_TOP
-		elseif Fu.GetPosition(bot) == 3 or Fu.GetPosition(bot) == 4 then assignedLane = LANE_BOT
+		if pos == 2 then assignedLane = LANE_MID
+		elseif pos == 1 or pos == 5 then assignedLane = LANE_TOP
+		elseif pos == 3 or pos == 4 then assignedLane = LANE_BOT
 		end
 	end
 	return assignedLane

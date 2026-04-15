@@ -125,6 +125,8 @@ local castRDesire
 local nKeepMana, nMP, nHP, nLV, hEnemyHeroList
 local botTarget
 
+local hAllyList
+
 function X.SkillsComplement()
 
 

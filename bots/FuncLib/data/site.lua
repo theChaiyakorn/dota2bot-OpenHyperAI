@@ -391,6 +391,43 @@ end
 ____exports.IsEnemyCamp = function(camp)
     return camp.team ~= GetTeam()
 end
+local gatedCampCache = {}
+____exports.IsCampBehindEnemyGates = function(camp)
+    local key = camp.idx ~= nil and String(nil, camp.idx) or (camp.cattr and camp.cattr.idx ~= nil and String(nil, camp.cattr.idx) or nil)
+    if key ~= nil and gatedCampCache[key] ~= nil then
+        return gatedCampCache[key]
+    end
+    local ____camp_cattr_0
+    if camp.cattr then
+        ____camp_cattr_0 = camp.cattr.location
+    else
+        ____camp_cattr_0 = camp.location
+    end
+    local loc = ____camp_cattr_0
+    if not loc then
+        return false
+    end
+    local enemyTeam = GetTeam() == Team.Radiant and Team.Dire or Team.Radiant
+    local enemyAncient = GetAncient(enemyTeam)
+    if not enemyAncient then
+        return false
+    end
+    local ancLoc = enemyAncient:GetLocation()
+    local dx = loc.x - ancLoc.x
+    local dy = loc.y - ancLoc.y
+    local result
+    if dx * dx + dy * dy > 5000 * 5000 then
+        result = false
+    elseif GetTeam() == Team.Radiant then
+        result = loc.x > 6500 or loc.y > 6000
+    else
+        result = loc.x < -6500 or loc.y < -6500
+    end
+    if key ~= nil then
+        gatedCampCache[key] = result
+    end
+    return result
+end
 ____exports.IsAncientCamp = function(camp)
     return camp.type == "ancient"
 end
@@ -408,15 +445,28 @@ ____exports.RefreshCamp = function(bot)
     local allCampList = {}
     local botLevel = bot:GetLevel()
     for ____, aCamp in ipairs(__TS__ObjectValues(camps)) do
-        local camp = aCamp
-        if (botLevel <= 7 or bot:GetAttackDamage() <= 80) and not ____exports.IsEnemyCamp(camp) and not ____exports.IsLargeCamp(camp) and not ____exports.IsAncientCamp(camp) then
-            allCampList[#allCampList + 1] = {idx = camp.idx, cattr = camp}
-        elseif botLevel <= 11 and not ____exports.IsEnemyCamp(camp) and not ____exports.IsAncientCamp(camp) then
-            allCampList[#allCampList + 1] = {idx = camp.idx, cattr = camp}
-        elseif botLevel <= 14 and not ____exports.IsEnemyCamp(camp) then
-            allCampList[#allCampList + 1] = {idx = camp.idx, cattr = camp}
-        else
-            allCampList[#allCampList + 1] = {idx = camp.idx, cattr = camp}
+        do
+            local __continue66
+            repeat
+                local camp = aCamp
+                if ____exports.IsCampBehindEnemyGates({cattr = camp}) then
+                    __continue66 = true
+                    break
+                end
+                if (botLevel <= 7 or bot:GetAttackDamage() <= 80) and not ____exports.IsEnemyCamp(camp) and not ____exports.IsLargeCamp(camp) and not ____exports.IsAncientCamp(camp) then
+                    allCampList[#allCampList + 1] = {idx = camp.idx, cattr = camp}
+                elseif botLevel <= 11 and not ____exports.IsEnemyCamp(camp) and not ____exports.IsAncientCamp(camp) then
+                    allCampList[#allCampList + 1] = {idx = camp.idx, cattr = camp}
+                elseif botLevel <= 14 and not ____exports.IsEnemyCamp(camp) then
+                    allCampList[#allCampList + 1] = {idx = camp.idx, cattr = camp}
+                else
+                    allCampList[#allCampList + 1] = {idx = camp.idx, cattr = camp}
+                end
+                __continue66 = true
+            until true
+            if not __continue66 then
+                break
+            end
         end
     end
     return allCampList, #allCampList

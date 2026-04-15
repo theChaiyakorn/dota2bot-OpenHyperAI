@@ -95,7 +95,7 @@ function ____exports.PickCaptain()
         if GetCMCaptain() == -1 then
             local CaptBot = ____exports.GetFirstBot()
             if CaptBot ~= nil and CaptBot ~= nil then
-                print("CAPTAIN PID : " .. tostring(CaptBot))
+                log("CAPTAIN PID : %s", CaptBot)
                 SetCMCaptain(CaptBot)
             end
         end
@@ -126,7 +126,7 @@ function BansHero()
         return
     end
     local BannedHero = RandomHero()
-    print(BannedHero .. " is banned")
+    log("%s is banned", BannedHero)
     CMBanHero(BannedHero)
     BanCycle = BanCycle + 1
 end
@@ -162,7 +162,7 @@ function PicksHero()
         end
         ____exports.PairsHeroNameNRole[sTeamName][PickedHero] = "carry"
     end
-    print(PickedHero .. " is picked")
+    log("%s is picked", PickedHero)
     CMPickHero(PickedHero)
     PickCycle = PickCycle + 1
 end
@@ -216,7 +216,7 @@ function SelectsHero()
             local hero_name = GetSelectedHeroName(id)
             if hero_name ~= nil and hero_name ~= "" then
                 UpdateSelectedHeroes(hero_name)
-                print(hero_name .. " Removed")
+                log("%s Removed", hero_name)
             else
                 RestBotPlayers[#RestBotPlayers + 1] = id
             end

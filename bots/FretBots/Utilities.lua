@@ -739,7 +739,7 @@ end
 
 -- Sets internal data and registers a game state listener
 function GameStateListener:Register(o, initializer, initState)
-	print('Registering GameStateListener')
+	log('Registering GameStateListener')
 	-- set internal pointers
 	self.object = o
 	self.initializer = initializer

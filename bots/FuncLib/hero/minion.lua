@@ -12,7 +12,7 @@ local Illusion = require(GetScriptDirectory()..'/FuncLib/hero/minion_lib/illusio
 local MinionWithSkill = require(GetScriptDirectory()..'/FuncLib/hero/minion_lib/minion_with_skill')
 local VengefulSprit = require(GetScriptDirectory()..'/FuncLib/hero/minion_lib/vengeful_spirit')
 local Jugg = require(GetScriptDirectory()..'/FuncLib/hero/minion_lib/jugg')
-local Customize = require(GetScriptDirectory()..'/Customize/general')
+local Customize = require(GetScriptDirectory()..'/FuncLib/systems/custom_loader')
 
 --------------------------------------------------------------------
 -- Tiered think frequency for minions.
@@ -22,9 +22,9 @@ local Customize = require(GetScriptDirectory()..'/Customize/general')
 --------------------------------------------------------------------
 
 local TIER_HIGH    = 0.3   -- Primal Split, VS scepter illusion, hero illusions with skills
-local TIER_MEDIUM  = 0.6   -- Familiars, attacking wards, minions with skills
-local TIER_LOW     = 1.1   -- Generic hero illusions, no-skill minions
-local TIER_LOWEST  = 1.5   -- Everything else (dominated creeps, etc.)
+local TIER_MEDIUM  = 0.5   -- Familiars, attacking wards, minions with skills
+local TIER_LOW     = 0.7   -- Generic hero illusions, no-skill minions
+local TIER_LOWEST  = 1.0   -- Everything else (dominated creeps, etc.)
 
 -- Classify a minion into a think-frequency tier
 local function GetMinionTier(hMinionUnit)
@@ -68,30 +68,58 @@ end
 
 -- Quick fallback action for low-tier minions: attack what the owner attacks,
 -- or the nearest enemy hero, or the nearest enemy unit.
+local function IsAttackable(unit)
+	return unit ~= nil
+		and not unit:IsNull()
+		and unit:IsAlive()
+		and not unit:IsInvulnerable()
+		and not unit:IsAttackImmune()
+end
+
 local function QuickAttack(owner, hMinionUnit)
-	-- Follow owner's attack target
-	local ownerTarget = owner:GetAttackTarget()
-	if ownerTarget and not ownerTarget:IsNull() and ownerTarget:IsAlive()
-	and not ownerTarget:IsInvulnerable() and not ownerTarget:IsAttackImmune() then
-		local dist = GetUnitToUnitDistance(hMinionUnit, ownerTarget)
-		if dist < 1200 then
-			hMinionUnit:Action_AttackUnit(ownerTarget, false)
-			return
+	-- If already attacking a still-valid hero in range, don't reissue (avoids
+	-- breaking the attack animation each tick).
+	local cur = hMinionUnit:GetAttackTarget()
+	if IsAttackable(cur) and cur:IsHero()
+	and GetUnitToUnitDistance(hMinionUnit, cur) < 1200 then
+		return
+	end
+
+	-- Prefer enemy hero in range — minions should focus heroes over the
+	-- owner's creep target.
+	local enemies = hMinionUnit:GetNearbyHeroes(1000, true, BOT_MODE_NONE)
+	if enemies then
+		for i = 1, #enemies do
+			if IsAttackable(enemies[i]) then
+				if cur ~= enemies[i] then
+					hMinionUnit:Action_AttackUnit(enemies[i], false)
+				end
+				return
+			end
 		end
 	end
 
-	-- Attack nearest enemy hero
-	local enemies = hMinionUnit:GetNearbyHeroes(1000, true, BOT_MODE_NONE)
-	if enemies and #enemies > 0 and enemies[1] and not enemies[1]:IsInvulnerable() then
-		hMinionUnit:Action_AttackUnit(enemies[1], false)
+	-- Follow owner's attack target
+	local ownerTarget = owner:GetAttackTarget()
+	if IsAttackable(ownerTarget)
+	and GetUnitToUnitDistance(hMinionUnit, ownerTarget) < 1200 then
+		if cur ~= ownerTarget then
+			hMinionUnit:Action_AttackUnit(ownerTarget, false)
+		end
 		return
 	end
 
 	-- Attack nearest enemy creep
 	local creeps = hMinionUnit:GetNearbyCreeps(800, true)
-	if creeps and #creeps > 0 and creeps[1] then
-		hMinionUnit:Action_AttackUnit(creeps[1], false)
-		return
+	if creeps then
+		for i = 1, #creeps do
+			if IsAttackable(creeps[i]) then
+				if cur ~= creeps[i] then
+					hMinionUnit:Action_AttackUnit(creeps[i], false)
+				end
+				return
+			end
+		end
 	end
 
 	-- Nothing to attack — follow owner
@@ -127,11 +155,24 @@ function X.MinionThink(hMinionUnit)
 		hMinionUnit._minionThinkTime = 0
 	end
 
-	-- Throttle by tier
+	-- Throttle by tier — but bypass throttle if the minion's current target
+	-- is dead/invalid or out of leash range. Otherwise minions stand idle for
+	-- the full interval after their target dies or moves away.
 	local lastThink = hMinionUnit._minionThinkTime or 0
 	local thinkInterval = tier * (1 + (Customize.ThinkLess or 0))
-	if DotaTime() - lastThink < thinkInterval then
-		return
+	local elapsed = DotaTime() - lastThink
+	if elapsed < thinkInterval then
+		local curTarget = hMinionUnit:GetAttackTarget()
+		local targetStale = curTarget == nil
+			or curTarget:IsNull()
+			or not curTarget:IsAlive()
+			or curTarget:IsInvulnerable()
+			or curTarget:IsAttackImmune()
+			or GetUnitToUnitDistance(hMinionUnit, curTarget) > 1600
+		-- Allow at minimum a 0.2s re-tick when stale, to avoid hammering every frame
+		if not targetStale or elapsed < 0.2 then
+			return
+		end
 	end
 	hMinionUnit._minionThinkTime = DotaTime()
 

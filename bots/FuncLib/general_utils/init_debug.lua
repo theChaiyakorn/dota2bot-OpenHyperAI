@@ -7,10 +7,10 @@ function Fu.SetUserHeroInit( nAbilityBuildList, nTalentBuildList, sBuyList, sSel
 	local bot = GetBot()
 	local botName = bot:GetUnitName()
 	local sBotDir, tBotSet = "game/Customize/hero/" .. string.gsub(botName, "npc_dota_hero_", ""), nil
-	local status, _ = xpcall(function() tBotSet = require( sBotDir ) end, function( err ) log( '[WARN] When loading customized game file: '..err ) end )
+	local status, _ = xpcall(function() tBotSet = require( sBotDir ) end, function( err ) log( '[WARN] When loading customized game file: %s', err ) end )
 	if not (status and tBotSet) then
 		sBotDir = GetScriptDirectory() .. "/Customize/hero/" .. string.gsub(botName, "npc_dota_hero_", "")
-		status, _ = xpcall(function() tBotSet = require( sBotDir ) end, function( err ) log( '[WARN] When loading customized file: '..err ) end )
+		status, _ = xpcall(function() tBotSet = require( sBotDir ) end, function( err ) log( '[WARN] When loading customized file: %s', err ) end )
 	end
 	if status and tBotSet and tBotSet.Enable then
 		nAbilityBuildList = tBotSet.AbilityUpgrade
@@ -53,7 +53,7 @@ function Fu.SetBotPrint( sMessage, vLoc, bReport, bPing )
 	local sTeam = GetTeam() == TEAM_DIRE and "夜魇" or "天辉"
 	if bDebugMode
 	then
-		log( sTeam..sTime.." "..Fu.Chat.GetNormName( bot ).." "..sMessage )
+		log( "%s%s %s %s", sTeam, sTime, Fu.Chat.GetNormName( bot ), sMessage )
 		if bReport then bot:ActionImmediate_Chat( sTime.."_"..sMessage, true ) end
 		if bPing then bot:ActionImmediate_Ping( vLoc.x, vLoc.y, false ) end
 	end
@@ -66,7 +66,7 @@ function Fu.SetReportMotive( bDebugFile, sMotive )
 		local sTime = ( Fu.GetOne( nTime / 600 ) * 10 )..":"..( nTime%60 )
 		local sTeam = GetTeam() == TEAM_DIRE and "夜魇 " or "天辉 "
 		GetBot():ActionImmediate_Chat( sTime.."_"..sMotive, true )
-		log( sTeam..sTime.." "..Fu.Chat.GetNormName( GetBot() ).." "..sMotive )
+		log( "%s%s %s %s", sTeam, sTime, Fu.Chat.GetNormName( GetBot() ), sMotive )
 	end
 end
 
@@ -83,7 +83,7 @@ function Fu.IsStuck( bot )
 			and DotaTime() > bot.stuckTime + 5.0
 			and GetUnitToLocationDistance( bot, bot.stuckLoc ) < 25
 		then
-			log( bot:GetUnitName().." is stuck" )
+			log( "%s is stuck", bot:GetUnitName() )
 			return true
 		end
 	end
@@ -117,15 +117,15 @@ function Fu.CheckBotIdleState()
 					if nActions > 0 then
 						for i=1, nActions do
 							local aType = bot:GetQueuedActionType(i)
-							log('Bot '..botName.." has enqueued actions i="..i..", type="..tostring(aType))
+							log('Bot %s has enqueued actions i=%s, type=%s', botName, i, aType)
 						end
 					end
 					bot:Action_ClearActions(true);
 					local frontLoc = GetLaneFrontLocation(GetTeam(), bot:GetAssignedLane(), 0);
 					bot:ActionQueue_AttackMove(frontLoc)
-					log('[ERROR] Relocating the idle bot: '..botName..'. Sending it to the lane# it was originally assigned: '..tostring(bot:GetAssignedLane()))
+					log('[ERROR] Relocating the idle bot: %s. Sending it to the lane# it was originally assigned: %s', botName, bot:GetAssignedLane())
 				else
-					log('Bot '..botName..' is in idle state for unknown reasons. N/A.')
+					log('Bot %s is in idle state for unknown reasons. N/A.', botName)
 				end
 				return true
 			else

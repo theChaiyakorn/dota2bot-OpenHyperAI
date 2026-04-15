@@ -53,7 +53,31 @@ function GetDesireRaw()
 	if local_mode_laning_generic then
 		botAssignedLane = local_mode_laning_generic.GetBotTargetLane()
 	else
-		botAssignedLane = bot:GetAssignedLane()
+		-- Online (shared scope): derive lane from position. Fu.GetPosition
+		-- already sees !pos updates via the shared RoleAssignment, and Valve's
+		-- dynamic balancer (especially in turbo) can flip bot:GetAssignedLane()
+		-- mid-game, which made non-swapped bots walk to the wrong lane and
+		-- bounce back. LAN sandboxes keep GetAssignedLane as the source of
+		-- truth since RoleAssignment mutations don't cross sandbox boundaries.
+		if IsLanMode and IsLanMode() then
+			botAssignedLane = bot:GetAssignedLane()
+		else
+			local pos = Fu.GetPosition(bot)
+			if GetTeam() == TEAM_RADIANT then
+				if pos == 2 then botAssignedLane = LANE_MID
+				elseif pos == 1 or pos == 5 then botAssignedLane = LANE_BOT
+				elseif pos == 3 or pos == 4 then botAssignedLane = LANE_TOP
+				end
+			else
+				if pos == 2 then botAssignedLane = LANE_MID
+				elseif pos == 1 or pos == 5 then botAssignedLane = LANE_TOP
+				elseif pos == 3 or pos == 4 then botAssignedLane = LANE_BOT
+				end
+			end
+			if botAssignedLane == nil then
+				botAssignedLane = bot:GetAssignedLane() or LANE_MID
+			end
+		end
 	end
 	attackDamage = bot:GetAttackDamage()
 	if bot:GetItemSlotType(bot:FindItemSlot("item_quelling_blade")) == ITEM_SLOT_TYPE_MAIN then
@@ -398,14 +422,25 @@ end
 
 
 function PickOneAnnouncer()
-	if not hasPickedOneAnnouncer then
-		for i, _ in pairs(GetTeamPlayers(GetTeam())) do
-			local member = GetTeamMember(i)
-			if member ~= nil and member.isAnnouncer then return end
+	if hasPickedOneAnnouncer then return end
+	-- Deterministic election via engine-backed PID queries. GetTeamMember()
+	-- returns only self in LAN per-bot sandboxes, which made every bot elect
+	-- itself. GetTeamForPlayer() and IsPlayerBot() are visible across
+	-- sandboxes, so every bot's scan converges on the same lowest-PID bot.
+	local myPid = bot:GetPlayerID()
+	local myTeam = bot:GetTeam()
+	local lowestBotPid = myPid
+	for pid = 0, 63 do
+		if pid ~= myPid then
+			local ok1, isBot = pcall(IsPlayerBot, pid)
+			local ok2, team = pcall(GetTeamForPlayer, pid)
+			if ok1 and ok2 and isBot and team == myTeam and pid < lowestBotPid then
+				lowestBotPid = pid
+			end
 		end
-		bot.isAnnouncer = true
-		hasPickedOneAnnouncer = true
 	end
+	bot.isAnnouncer = (myPid == lowestBotPid)
+	hasPickedOneAnnouncer = true
 end
 
 function AnnounceMessages()
@@ -433,19 +468,10 @@ function AnnounceMessages()
 		end
 	end
 
-	-- Announce role during pre-game
-	if GetGameMode() ~= GAMEMODE_1V1MID
-	   and GetGameState() == GAME_STATE_PRE_GAME
-	   and (bot.announcedRole == nil or bot.announcedRole ~= Fu.GetPosition(bot))
-	then
-		bot.announcedRole = Fu.GetPosition(bot)
-		bot:ActionImmediate_Chat(Localization.Get('say_play_pos') .. Fu.GetPosition(bot), false)
-	end
-
 	-- Close position selection after horn if humans and bots mixed
 	if GetGameMode() ~= GAMEMODE_1V1MID and not isChangePosMessageDone then
 		if DotaTime() >= 0 and teamHumans > 0 and teamBots > 0 then
-			bot:ActionImmediate_Chat(Localization.Get('pos_select_closed'), true)
+			bot:ActionImmediate_Chat(Localization.Get('pos_select_closed') .. ' (' .. tostring(Fu.GetPosition(bot)) .. ')', true)
 			isChangePosMessageDone = true
 		end
 	end

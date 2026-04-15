@@ -188,7 +188,7 @@ function Generic.GetDesire()
 	end
 
 	------------------------------------------------------------
-	-- 3) Main engagement evaluation (reference-style continuous formula)
+	-- 3) Main engagement evaluation
 	------------------------------------------------------------
 	if Fu.IsValidHero(botTarget.unit)
 	and not Fu.IsSuspiciousIllusion(botTarget.unit)

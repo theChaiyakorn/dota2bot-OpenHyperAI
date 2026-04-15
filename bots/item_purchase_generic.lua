@@ -39,7 +39,7 @@ local sItemSellList = BotBuild['sSellList']
 
 
 if sPurchaseList == nil then
-	log("[ERROR] Can't load purchase list for: " .. botName)
+	log("[ERROR] Can't load purchase list for: %s", botName)
 	log("Stack Trace:", debug.traceback())
 	return
 end
@@ -354,7 +354,8 @@ local function GeneralPurchase()
 						ClearCurrBuyingBasicItemList()
 						bot.SecretShop = false
 					else
-						log( botName.." 未能购买物品 "..bot.currBuyingBasicItem.." : "..tostring( bot:ActionImmediate_PurchaseItem( bot.currBuyingBasicItem ) ) )
+						local purchaseResult = bot:ActionImmediate_PurchaseItem( bot.currBuyingBasicItem )
+						log( "%s 未能购买物品 %s : %s", botName, bot.currBuyingBasicItem, purchaseResult )
 					end
 				end
 			end
@@ -432,7 +433,8 @@ local function TurboModeGeneralPurchase()
 				-- out of stock, skip that item.
 				ClearCurrBuyingBasicItemList()
 			else
-				log( botName.." 未能购买物品 "..bot.currBuyingBasicItem.." : "..tostring( bot:ActionImmediate_PurchaseItem( bot.currBuyingBasicItem ) ) )
+				local purchaseResult = bot:ActionImmediate_PurchaseItem( bot.currBuyingBasicItem )
+				log( "%s 未能购买物品 %s : %s", botName, bot.currBuyingBasicItem, purchaseResult )
 			end
 		end
 	end
@@ -446,7 +448,7 @@ function ItemPurchaseThink()
 	if isStale then return end
 	if freshName ~= botName then
 		if not freshBot:IsAlive() then return end
-		log("[ARDM] Item purchase: hero changed from "..botName.." to "..freshName)
+		log("[ARDM] Item purchase: hero changed from %s to %s", botName, freshName)
 		bot = freshBot
 		botName = freshName
 
@@ -533,7 +535,7 @@ function ItemPurchaseThink()
 			if item ~= nil then
 				if string.find(entry.name, 'recipe') or entry.cost < 1000 then
 					bot:ActionImmediate_SellItem(item)
-					log("[ARDM] Sold: "..entry.name.." (cost: "..entry.cost..")")
+					log("[ARDM] Sold: %s (cost: %s)", entry.name, entry.cost)
 				end
 			end
 		end
@@ -550,7 +552,7 @@ function ItemPurchaseThink()
 				local item = bot:GetItemInSlot(entry.slot)
 				if item ~= nil then
 					bot:ActionImmediate_SellItem(item)
-					log("[ARDM] Sold (full inv): "..entry.name.." (cost: "..entry.cost..")")
+					log("[ARDM] Sold (full inv): %s (cost: %s)", entry.name, entry.cost)
 					nFreeSlots = nFreeSlots + 1
 				end
 			end
@@ -570,7 +572,7 @@ function ItemPurchaseThink()
 	if bot.needPurchaseRebuild then
 		bot.needPurchaseRebuild = nil
 		local nNewPos = Fu.GetPosition(bot)
-		log("[PosSwap] Item purchase rebuild for "..botName.." -> pos"..nNewPos)
+		log("[PosSwap] Item purchase rebuild for %s -> pos%s", botName, nNewPos)
 
 		-- Reload BotBuild to get new role's item list
 		local heroFile = string.gsub(botName, "npc_dota_", "")
@@ -629,7 +631,7 @@ function ItemPurchaseThink()
 		bot.currBuyingRequiredCounts = nil
 		bot.rebuildCount = 0
 		bot.countInvCheck = 0
-		log("[PosSwap] Purchase list rebuilt with "..#bot.purchaseListInReverseOrder.." items")
+		log("[PosSwap] Purchase list rebuilt with %s items", #bot.purchaseListInReverseOrder)
 	end
 
 	if bot.lastItemPurchaseFrameProcessTime == nil then bot.lastItemPurchaseFrameProcessTime = currentTime end
@@ -1125,7 +1127,7 @@ function ItemPurchaseThink()
 			local slot = bot:FindItemSlot(lotusName)
 			if slot >= 0 then
 				bot:Action_DropItem(bot:GetItemInSlot(slot), bot:GetLocation())
-				log("[Item] Core "..botName.." dropped "..lotusName.." (past 30min)")
+				log("[Item] Core %s dropped %s (past 30min)", botName, lotusName)
 			end
 		end
 	end
@@ -1155,7 +1157,7 @@ function ItemPurchaseThink()
 				or Item.HasItem(bot, 'item_travel_boots_2')
 				or Item.HasItem(bot, 'item_boots_of_bearing'))
 			then
-				log("[Purchase] Skipping "..nextItem.." — already have boots")
+				log("[Purchase] Skipping %s — already have boots", nextItem)
 				bot.purchaseListInReverseOrder[#bot.purchaseListInReverseOrder] = nil
 			else
 				break

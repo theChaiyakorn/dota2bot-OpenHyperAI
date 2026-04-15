@@ -119,6 +119,8 @@ local castASDesire, castASTarget
 
 local lastSkillCreep
 
+local nLV, nKeepMana, nMP, nHP, hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 	if Fu.CanNotUseAbility( bot ) then return end

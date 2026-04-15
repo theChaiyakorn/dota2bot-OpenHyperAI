@@ -71,7 +71,7 @@ end
 
 function Fu.GetDefendLaneDesire(lane)
 	local defaultDefDesire, newDefDesire = GetDefendLaneDesire(lane), GetBot().DefendLaneDesire
-	if newDefDesire ~= nil and newDefDesire[lane] > defaultDefDesire
+	if newDefDesire ~= nil and newDefDesire[lane] ~= nil and newDefDesire[lane] > defaultDefDesire
 	then
 		return newDefDesire[lane]
 	end

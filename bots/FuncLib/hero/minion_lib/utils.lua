@@ -62,10 +62,10 @@ end
 function U.GetWeakestHero(nRadius, thisUnit)
     if U.IsValidUnit(thisUnit)
     then
-        local nEnemyHeroes = thisUnit:GetNearbyHeroes(nRadius * 0.5, true, BOT_MODE_NONE)
+        local nEnemyHeroes = thisUnit:GetNearbyHeroes(nRadius * 0.5, true, BOT_MODE_NONE) or {}
         if #nEnemyHeroes == 0
         then
-            nEnemyHeroes = thisUnit:GetNearbyHeroes(nRadius, true, BOT_MODE_NONE)
+            nEnemyHeroes = thisUnit:GetNearbyHeroes(nRadius, true, BOT_MODE_NONE) or {}
         end
 
         return U.GetWeakest(nEnemyHeroes)
@@ -77,11 +77,11 @@ end
 function U.GetWeakestCreep(nRadius, hMinionUnit)
     if U.IsValidUnit(hMinionUnit)
     then
-        local nCreeps = hMinionUnit:GetNearbyCreeps(nRadius * 0.5, true)
+        local nCreeps = hMinionUnit:GetNearbyCreeps(nRadius * 0.5, true) or {}
 
         if #nCreeps == 0
         then
-            nCreeps = hMinionUnit:GetNearbyCreeps(nRadius, true)
+            nCreeps = hMinionUnit:GetNearbyCreeps(nRadius, true) or {}
         end
 
         return U.GetWeakest(nCreeps)
@@ -109,7 +109,7 @@ function U.GetWeakestTower(nRadius, hMinionUnit)
             end
         end
 
-        return U.GetWeakest(nTowers)
+        return U.GetWeakest(nTowers or {})
     end
 
 	return nil

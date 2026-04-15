@@ -175,21 +175,24 @@ function GetDesireHelper()
     end
 
     -- Ancient under threat: reduce retreat desire so bots stay and defend.
-    -- If 2+ allies alive nearby, only retreat at very low HP. Outnumbered or not,
-    -- running away means losing the ancient — better to fight together.
+    -- But allow retreat when severely outnumbered — feeding doesn't save the ancient.
     local nEnemiesAtAncient = Fu.GetEnemiesAroundAncient(bot, 3200)
     if nEnemiesAtAncient > 0 then
         local ancientLoc = GetAncient(bot:GetTeam()):GetLocation()
         local distToAncient = GetUnitToLocationDistance(bot, ancientLoc)
         if distToAncient < 4000 then
             local aliveAllyCount = Fu.GetNumOfAliveHeroes(false)
-            -- With 2+ allies alive, only retreat if HP is critically low
-            if aliveAllyCount >= 2 and botHP > 0.15 then
-                return BOT_MODE_DESIRE_NONE
-            end
-            -- Solo defender: still reduce retreat so defend mode can compete
-            if aliveAllyCount >= 1 and botHP > 0.25 then
-                return BOT_MODE_DESIRE_LOW
+            local aliveEnemyCount = Fu.GetNumOfAliveHeroes(true)
+            -- Severely outnumbered (e.g. 2v4+): don't force stay, let desire formula decide
+            if aliveEnemyCount <= aliveAllyCount + 1 then
+                -- With 2+ allies alive and not heavily outnumbered, only retreat if HP is critically low
+                if aliveAllyCount >= 2 and botHP > 0.15 then
+                    return BOT_MODE_DESIRE_NONE
+                end
+                -- Solo defender: still reduce retreat so defend mode can compete
+                if aliveAllyCount >= 1 and botHP > 0.25 then
+                    return BOT_MODE_DESIRE_LOW
+                end
             end
         end
     end
@@ -418,7 +421,7 @@ function GetDesireHelper()
             nDesire = nDesire + (nEnemyNearbyCount - nAllyNearbyCount) * (GetAdjustedDesireValue(BOT_MODE_DESIRE_HIGH) / 4)
         end
 
-        if not bWeAreStronger and nEnemyNearbyCount >= nAllyNearbyCount and botHP < 0.7 then nDesire = nDesire + GetAdjustedDesireValue(0.25) end
+        if not bWeAreStronger and nEnemyNearbyCount >= nAllyNearbyCount then nDesire = nDesire + GetAdjustedDesireValue(0.25) end
         if nAllyNearbyCount >= nEnemyNearbyCount or bWeAreStronger then
             if bot:HasModifier('modifier_oracle_false_promise_timer') and Fu.GetModifierTime(bot, 'modifier_oracle_false_promise_timer') > 2.0 and Fu.IsUnitNearby(bot, nAllyHeroes, 1200, 'npc_dota_hero_oracle', true) then
                 nDesire = nDesire - GetAdjustedDesireValue(0.25)
@@ -436,6 +439,24 @@ function GetDesireHelper()
                 or (bot:HasModifier('modifier_slark_shadow_dance') and Fu.GetModifierTime(bot, 'modifier_slark_shadow_dance') > 1.5)
             then
                 nDesire = nDesire - GetAdjustedDesireValue(0.3)
+            end
+        end
+    end
+
+    -- Enemies on/near friendly high ground: boost retreat when outnumbered or weaker
+    -- Skip if all 5 allies are nearby and ready to fight
+    local nEnemiesOnHG = Fu.Utils.CountEnemyHeroesOnHighGround(GetTeam())
+    if nEnemiesOnHG > 0 and nAllyNearbyCount < 5 then
+        local distToAncient = GetUnitToUnitDistance(bot, hTeamAncient)
+        -- Bot is in/near base area (within 5000 of ancient)
+        if distToAncient < 5000 then
+            local aliveAllies = Fu.GetNumOfAliveHeroes(false)
+            local aliveEnemies = Fu.GetNumOfAliveHeroes(true)
+            -- Outnumbered globally or locally not stronger
+            if aliveEnemies > aliveAllies or not bWeAreStronger then
+                -- Scale boost by how badly outnumbered: +0.15 base, +0.05 per extra enemy
+                local nHGBoost = 0.15 + Max(0, nEnemiesOnHG - aliveAllies) * 0.05
+                nDesire = nDesire + GetAdjustedDesireValue(nHGBoost)
             end
         end
     end

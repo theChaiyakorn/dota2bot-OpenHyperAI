@@ -12,12 +12,15 @@ local DOTA_ITEM_NEUTRAL_SLOT = 16
 
 -- Derive tier lists from FretBots/SettingsNeutralItemTable (single source of truth).
 -- No more maintaining two separate item lists.
-local ok, neutralItemTable = pcall(require, 'bots.FretBots.SettingsNeutralItemTable')
-if not ok then neutralItemTable = {} end
+local ok, settingsTable = pcall(require, 'bots.FretBots.SettingsNeutralItemTable')
+if not ok then settingsTable = {} end
+-- SettingsNeutralItemTable returns { items = {...}, enhancements = {...} }.
+-- Fall back to treating the value itself as the item list for older layouts.
+local neutralItemList = (settingsTable and settingsTable.items) or settingsTable or {}
 
 local function ExtractTierNames(tier)
     local names = {}
-    for _, item in ipairs(neutralItemTable) do
+    for _, item in ipairs(neutralItemList) do
         if item.tier == tier then
             table.insert(names, item.name)
         end
@@ -201,10 +204,18 @@ function NeutralItems.GiveNeutralItems(TeamRadiant, TeamDire)
 end
 
 function NeutralItems.GiveItem(itemName, hero, isTierDone, nTier)
+    if itemName == nil then
+        log('[Buff][NeutralItems] tier %s: nil itemName (empty tier list?)', tostring(nTier))
+        return
+    end
     NeutralItems:RemoveEnhan(hero)
     if hero:HasRoomForItem(itemName, true, true)
     then
         local item = CreateItem(itemName, hero, hero)
+        if item == nil then
+            log('[Buff][NeutralItems] tier %s: CreateItem("%s") returned nil -- invalid/renamed in this patch', tostring(nTier), tostring(itemName))
+            return
+        end
         item:SetPurchaseTime(0)
 
         if NeutralItems.HasNeutralItem(hero)
@@ -219,8 +230,12 @@ function NeutralItems.GiveItem(itemName, hero, isTierDone, nTier)
         local enhancement = NeutralItems:GetRandomEnhanByTier(nTier)
         if enhancement then
             local enha = CreateItem(enhancement.name, hero, hero)
-            enha:SetPurchaseTime(0)
-            hero:AddItem(enha)
+            if enha == nil then
+                log('[Buff][NeutralItems] tier %s: CreateItem enhancement "%s" returned nil', tostring(nTier), tostring(enhancement.name))
+            else
+                enha:SetPurchaseTime(0)
+                hero:AddItem(enha)
+            end
         end
     end
 end

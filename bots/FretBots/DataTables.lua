@@ -107,8 +107,8 @@ function DataTables:Initialize()
 			nProcessed[unit] = true
 		end
 	end
-	print('There are '..#AllBots[RADIANT]..' Radiant bots!')
-	print('There are '..#AllBots[DIRE]..' Dire bots!')
+	log('There are %s Radiant bots!', #AllBots[RADIANT])
+	log('There are %s Dire bots!', #AllBots[DIRE])
 
 	-- Purge human side bots
 	-- DataTables:PurgeHumanSideBots()
@@ -126,18 +126,18 @@ function DataTables:Initialize()
 	if isDebug then
 		if AllHumanPlayers ~= nil then
 			for i, unit in pairs(AllHumanPlayers) do
-				print('Stats table for Player '.. i)
+				log('Stats table for Player %s', i)
 				DeepPrintTable(unit.stats)
 			end
 		end
 		
 		for i,unit in pairs(AllBots[RADIANT]) do
-			print('Stats table for Bot '.. i)
+			log('Stats table for Bot %s', i)
 			DeepPrintTable(unit.stats)
 		end
 		
 		for i,unit in pairs(AllBots[DIRE]) do
-			print('Stats table for Bot '.. i)
+			log('Stats table for Bot %s', i)
 			DeepPrintTable(unit.stats)
 		end
 
@@ -151,13 +151,13 @@ function DataTables:FixBuggedHeroAbilities()
 	if unit:IsHero() then
 		if unit:GetUnitName() == "npc_dota_hero_faceless_void" then
 			if not unit:HasAbility("faceless_void_chronosphere") then
-				print("Fix Faceless void's Chronosphere in 7.37")
+				log("Fix Faceless void's Chronosphere in 7.37")
 				unit:AddAbility("faceless_void_chronosphere")
 				DataTables:MoveAbilityByName(unit, 'faceless_void_chronosphere', 6)
 			end
 		elseif unit:GetUnitName() == "npc_dota_hero_life_stealer" then
 			if not unit:HasAbility("life_stealer_rage") then
-				print("Fix LifeStealer's Rage in 7.37")
+				log("Fix LifeStealer's Rage in 7.37")
 				unit:AddAbility("life_stealer_rage")
 				DataTables:MoveAbilityByName(unit, 'life_stealer_rage', 1)
 			end
@@ -168,14 +168,14 @@ function DataTables:FixBuggedHeroAbilities()
 end
 
 function DataTables:PrintAllAbilities(unit)
-    print('Get all abilities of unit '..unit:GetUnitName())
-    print('Abilities Count = '..tostring(unit:GetAbilityCount()))
+    log('Get all abilities of unit %s', unit:GetUnitName())
+    log('Abilities Count = %s', unit:GetAbilityCount())
     for i = 0, unit:GetAbilityCount() - 1 do
         local ability = unit:GetAbilityByIndex(i)
         if ability ~= nil and not ability:IsNull() then
-			print('Ability at index '..tostring(i)..': '..ability:GetName())
+			log('Ability at index %s: %s', i, ability:GetName())
         else
-			print('Ability at index '..tostring(i)..' is nil.')
+			log('Ability at index %s is nil.', i)
         end
     end
 end
@@ -195,13 +195,13 @@ function DataTables:MoveAbilityByName(unit, abilityName, toIndex)
 				break
 			end
 		else
-			print('Ability at index '..tostring(i)..' is nil.')
+			log('Ability at index %s is nil.', i)
 		end
     end
 
     -- Ensure the ability was found
     if fromIndex == nil then
-        print("Ability not found")
+        log("Ability not found")
         return
     end
 
@@ -440,7 +440,7 @@ function DataTables:GenerateStatsTables(unit)
 		end
 	end
 	if (isDebug) then
-		print('Data tables initialized for ' ..thisName .. '. Unit ID: ' .. tostring(stats.id))
+		log('Data tables initialized for %s. Unit ID: %s', thisName, stats.id)
 	end
 	-- Warn humans about bot skill if enabled and skill is high
 	if Settings.skill.isWarn and stats.skill > Settings.skill.warningThreshold and thisIsBot then
@@ -478,7 +478,7 @@ function DataTables:DoDeathUpdate(victim, killer)
 	victim.stats.teamNetWorth = DataTables:GetTeamNetWorth(victim.stats.team)
 	victim.stats.enemyTeamNetWorth = DataTables:GetTeamNetWorth(killer.stats.team)
 	if isDebug then
-		print('Updated stats table for ' .. victim.stats.name)
+		log('Updated stats table for %s', victim.stats.name)
 		DeepPrintTable(victim.stats.chance)
 		DeepPrintTable(victim.stats.awards)
 	end
@@ -524,7 +524,7 @@ function DataTables:GetRoleGPM(bot)
 	end
 	Utilities:SortHighToLow(data)
 	if isVerboseDebug then
-		print('GPM Table:')
+		log('GPM Table:')
 		DeepPrintTable(data)
 	end
 	if data[bot.stats.role] ~= nil then
@@ -549,7 +549,7 @@ function DataTables:GetRoleXPM(bot)
 	end
 	Utilities:SortHighToLow(data)
 	if isVerboseDebug then
-		print('XPM Table:')
+		log('XPM Table:')
 		DeepPrintTable(data)
 	end
 	-- edge case: bot mid is pos2 but the human mid will probably be 1st in this chart
@@ -622,7 +622,7 @@ function DataTables:PurgeHumanSideBots()
 		end
 	end
 	if isDebug then
-		print('Radiant Humans: '..radiant..' Dire Humans: '..dire)
+		log('Radiant Humans: %s Dire Humans: %s', radiant, dire)
 	end
 	local team
 	local countToRemove
@@ -638,7 +638,7 @@ function DataTables:PurgeHumanSideBots()
 		countToRemove = 5 - dire
 		end
 	if isDebug then
-		print('Removing '..countToRemove..' bots from the human side.')
+		log('Removing %s bots from the human side.', countToRemove)
 	end
 	local attempts = 0
 	local removed = 0
@@ -648,7 +648,7 @@ function DataTables:PurgeHumanSideBots()
 			if unit.stats.team == team then
 				table.remove(AllBots,i)
 				removed = removed + 1
-				print('Removing '..unit.stats.name..' from the bots list.')
+				log('Removing %s from the bots list.', unit.stats.name)
 				table.insert(PlayerBots, unit)
 				break
 			end
@@ -689,25 +689,25 @@ function DataTables:GetRole(hero)
 				bestRole = pos
 			end
 		end
-		if isDebug then print(hero..': role (from weights): '..bestRole..' (weight: '..bestWeight..')') end
+		if isDebug then log('%s: role (from weights): %s (weight: %s)', hero, bestRole, bestWeight) end
 		return bestRole
 	end
 
 	-- Fallback to hardcoded lists
 	if role.CanBeSafeLaneCarry(hero) then
-		if isDebug then print(hero..': role: '..1) end
+		if isDebug then log('%s: role: %s', hero, 1) end
 		return 1
 	elseif role.CanBeMidlaner(hero) then
-		if isDebug then print(hero..': role: '..2) end
+		if isDebug then log('%s: role: %s', hero, 2) end
 		return 2
 	elseif role.CanBeOfflaner(hero) then
-		if isDebug then print(hero..': role: '..3) end
+		if isDebug then log('%s: role: %s', hero, 3) end
 		return 3
 	elseif role.CanBeSupport(hero) then
-		if isDebug then print(hero..': role: '..4) end
+		if isDebug then log('%s: role: %s', hero, 4) end
 		return 4
 	else
-		if isDebug then print(hero..': role: '..5) end
+		if isDebug then log('%s: role: %s', hero, 5) end
 		return 5
 	end
 end

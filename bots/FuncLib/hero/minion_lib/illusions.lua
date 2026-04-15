@@ -10,8 +10,6 @@ local nLanes = {
     LANE_BOT,
 }
 
-local nNextMoveTime = 0
-
 function X.Think(ownerBot, hMinionUnit)
     if not U.IsValidUnit(hMinionUnit) then return end
 
@@ -27,12 +25,14 @@ function X.Think(ownerBot, hMinionUnit)
     if X.ConsiderRetreat(hMinionUnit, hMinionUnit.attack_target) then return end
 
     if hMinionUnit.attack_desire > 0 then
-        if U.IsValidUnit(hMinionUnit.attack_target) then
+        if U.IsValidTarget(hMinionUnit.attack_target) then
             hMinionUnit:Action_AttackUnit(hMinionUnit.attack_target, false)
             return
         end
     end
 
+    -- Per-minion move throttle (was module-level, which cross-pollinated in shared-scope)
+    local nNextMoveTime = hMinionUnit._nextMoveTime or 0
     if DotaTime() >= nNextMoveTime then
         hMinionUnit.move_desire, hMinionUnit.move_location = X.ConsiderMove(hMinionUnit)
         if hMinionUnit.move_desire > 0 then
@@ -41,7 +41,7 @@ function X.Think(ownerBot, hMinionUnit)
             else
                 hMinionUnit:Action_AttackMove(Fu.GetRandomLocationWithinDist(hMinionUnit.move_location, 0, 300))
             end
-            nNextMoveTime = DotaTime() + 0.2
+            hMinionUnit._nextMoveTime = DotaTime() + 0.2
             return
         end
 
@@ -52,7 +52,7 @@ function X.Think(ownerBot, hMinionUnit)
         else
             hMinionUnit:Action_MoveToLocation(Fu.GetClosestTeamLane(hMinionUnit))
         end
-        nNextMoveTime = DotaTime() + 0.2
+        hMinionUnit._nextMoveTime = DotaTime() + 0.2
     end
 end
 

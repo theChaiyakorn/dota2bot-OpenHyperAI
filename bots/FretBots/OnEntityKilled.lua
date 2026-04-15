@@ -221,7 +221,7 @@ function EntityKilled:RegisterEvents()
 		end
 		Flags.isEntityKilledRegistered = true;
 		if true then
-			print('EntityKilled Event Listener Registered.')
+			log('EntityKilled Event Listener Registered.')
 		end
 	end
 end

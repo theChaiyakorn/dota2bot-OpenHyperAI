@@ -7,6 +7,13 @@ import { Lane, Team, UnitType } from ".";
 
 declare global {
     function print(...args: any[]): void;
+    /**
+     * Debug logger defined in bots/FuncLib/systems/global_overrides.lua.
+     * No-ops when Utils.DebugMode is false. Prefer this over print().
+     * - log("plain message") — prints as-is
+     * - log("count=%d", n)   — uses string.format when extra args are passed
+     */
+    function log(fmt: string, ...args: any[]): void;
     function pcall(func: any, path?: string): LuaMultiReturn<[boolean, any]>;
 
     function GetBot(): Unit;

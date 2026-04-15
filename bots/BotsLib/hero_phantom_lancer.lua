@@ -137,6 +137,8 @@ local aetherRange = 0
 local boostRange = 0
 
 
+local nLV, nKeepMana, nMP, nHP, hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 

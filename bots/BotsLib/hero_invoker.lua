@@ -700,7 +700,7 @@ function X.ConsiderClearActions()
 
         for i=1, nActions do
             local aType = bot:GetQueuedActionType(i)
-            log("Enqueued actions i="..i..", type="..tostring(aType))
+            log("Enqueued actions i=%s, type=%s", i, aType)
             if aType == -1 then
                 log("Invokers has queued invalid action (-1). Clear action queue.")
                 bot:Action_ClearActions(false)
@@ -726,14 +726,14 @@ function X.CastInvokerSpell(ability, target)
         sAbility = ability:GetName()
     end
     
-    log(DotaTime()..' - Invoker checking to cast '..sAbility) -- can be annoying since this line gets printed a lot if e.g. no enough mana or before invoker trains all elements
+    log('%s - Invoker checking to cast %s', DotaTime(), sAbility) -- can be annoying since this line gets printed a lot if e.g. no enough mana or before invoker trains all elements
 
     if X.IsAbilityReadyForInvoke(ability) then
         X.InvokeActualSpell(ability)
     end
     if X.IsAbilityReadyForCast(ability)
     then
-        log(DotaTime()..' - Invoker has it on slot, going to cast '..sAbility)
+        log('%s - Invoker has it on slot, going to cast %s', DotaTime(), sAbility)
         bot:Action_ClearActions(false)
 
         -- bot:ActionQueue_Delay(ability:GetCastPoint())
@@ -756,10 +756,10 @@ function X.CastInvokerSpell(ability, target)
             or ability == ColdSnap then
                 bot:ActionQueue_UseAbilityOnEntity(ability, target)
         else
-            log(DotaTime()..' - [ERROR] Tried to cast unsupported spell: '..sAbility)
+            log('%s - [ERROR] Tried to cast unsupported spell: %s', DotaTime(), sAbility)
             log("Stack Trace:", debug.traceback())
         end
-        log(DotaTime()..' - Invoker tried to cast '..sAbility)
+        log('%s - Invoker tried to cast %s', DotaTime(), sAbility)
     else
         -- log(DotaTime()..' - Invoker trying to cast a spell that is not ready: '..abilityName..', '.. tostring(X.IsAbilityAvailableOnSlots(ability)) ..', '..tostring(ability:IsFullyCastable()))
     end
@@ -1376,7 +1376,7 @@ function X.CheckTempModifiers(modifierNames, botTarget, nDelay)
         if botTarget:HasModifier(mName) then
             countMo = countMo + 1
             local remaining = Fu.GetModifierTime(botTarget, mName)
-            log(DotaTime().." - Target has modifier "..mName..", the remaining time: " .. tostring(remaining) .. " seconds, delay: "..tostring(nDelay))
+            log("%s - Target has modifier %s, the remaining time: %s seconds, delay: %s", DotaTime(), mName, remaining, nDelay)
             if remaining > 0 and remaining <= nDelay
             then
                 return BOT_ACTION_DESIRE_HIGH
@@ -1827,7 +1827,7 @@ function X.InvokeActualSpell(ability)
         abilityName = ability:GetName()
     end
 
-    log(DotaTime()..' - Invoker going to invoke '..abilityName)
+    log('%s - Invoker going to invoke %s', DotaTime(), abilityName)
 
     if abilityName == Cataclysm or ability == Sunstrike then
         X.InvokeSpell(Exort, Exort, Exort)
@@ -1850,10 +1850,10 @@ function X.InvokeActualSpell(ability)
     elseif ability == ColdSnap then
         X.InvokeSpell(Quas, Quas, Quas)
     else
-        log('[ERROR] Tried to invoke unsupported ability: '..abilityName)
+        log('[ERROR] Tried to invoke unsupported ability: %s', abilityName)
 		log("Stack Trace:", debug.traceback())
     end
-    log(DotaTime()..' - Invoker tried to invoke '..abilityName)
+    log('%s - Invoker tried to invoke %s', DotaTime(), abilityName)
 end
 
 function X.InvokeSpell(Orb1, Orb2, Orb3)
@@ -1948,7 +1948,7 @@ function CheckAbilityUsage()
                     if ability == Sunstrike and ability:GetCooldownTimeRemaining() > 50 then
                         sAbility = 'Cataclysm'
                     end
-                    log(DotaTime()..' - Invoker just used ability ' .. sAbility .. ', reset the cooldown tracking time.')
+                    log('%s - Invoker just used ability %s, reset the cooldown tracking time.', DotaTime(), sAbility)
                     AbilityCastedTimes[sAbility] = DotaTime()
                 end
             end

@@ -412,7 +412,7 @@ function RoleDetermination:Initialize()
 		-- that will register once the horn sounds
 		else
 			ListenToGameEvent( "game_rules_state_change", Dynamic_Wrap( RoleDetermination, "OnGameRulesStateChange" ), self)
-			print('Game not in progress.  Registering RoleDetermination GameState Listener.')
+			log('Game not in progress.  Registering RoleDetermination GameState Listener.')
 		end
 		Flags.isRoleDeterminationTimerInitialized = true
 	end

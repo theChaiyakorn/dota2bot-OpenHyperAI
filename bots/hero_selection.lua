@@ -684,9 +684,9 @@ local function PickHeroForBotSlot(i, id)
 		local scored = ScoreCandidatesForTeam(team, rolePool, enemyNames, i)
 
 		local teamName = (team == TEAM_RADIANT and 'Radiant' or 'Dire')
-		log('==== top 5 heroes for team: '..teamName..' pos: '..i..' id: '..id..' ====')
+		log('==== top 5 heroes for team: %s pos: %s id: %s ====', teamName, i, id)
 		for k = 1, math.min(5, #scored) do
-			log(k, scored[k].score, scored[k].name)
+			log('%d: score=%s name=%s', k, scored[k].score, scored[k].name)
 		end
 
 		pick = SelectTopWithFuzz(scored)
@@ -721,8 +721,13 @@ end
 local function AllPickHeros()
 	local teamPlayers = GetTeamPlayers(GetTeam(), true)
 
-	-- Shuffle internal pick order when all-bot team to mix patterns
-	if not ShuffledPickOrder[sTeamName] and not Utils.IsHumanPlayerInTeam(GetTeam()) then
+	-- Shuffle internal pick order when all-bot team to mix patterns.
+	-- Skip in LAN: per-bot sandboxes don't share state with hero_selection,
+	-- so a shuffle here desynchronizes bot scopes' default RoleAssignment
+	-- from what hero_selection picked per slot. In online custom lobbies
+	-- (shared scope) the shuffle is kept so enemy bots can't predict
+	-- positions.
+	if not ShuffledPickOrder[sTeamName] and not Utils.IsHumanPlayerInTeam(GetTeam()) and not IsLanMode() then
 		X.ShufflePickOrder(teamPlayers)
 		ShuffledPickOrder[sTeamName] = true
 	end
@@ -762,13 +767,66 @@ local userSwitchedRole = false
 local function handleCommand(inputStr, PlayerID, bTeamOnly)
     local actionKey, actionVal = parseCommand(inputStr)
 	if actionKey == nil then
-		log('[WARN] Invalid command: '..tostring(inputStr))
+		log('[WARN] Invalid command: %s', inputStr)
 		return
 	end
 
 	local teamPlayers = GetTeamPlayers(GetTeam())
+	-- LAN/Dire fallback chain: GetTeamPlayers(GetTeam()) can return empty on
+	-- Dire's hero_selection scope during draft. Try, in order:
+	--   1. GetTeamPlayers(senderTeam) — sometimes populated when (GetTeam())
+	--      isn't (PRE_GAME only).
+	--   2. GetTeamMember(1..5) — populated once bots have unit handles
+	--      (post-PRE_GAME); empty during HERO_SELECTION.
+	--   3. Raw PID scan 0..9 + GetTeamForPlayer filter — works in any state,
+	--      including HERO_SELECTION when !pick is typed and no other roster
+	--      source is populated yet.
+	if (teamPlayers == nil or #teamPlayers == 0) and PlayerID ~= nil then
+		local senderTeam = GetTeamForPlayer(PlayerID)
+		if senderTeam ~= nil then
+			teamPlayers = GetTeamPlayers(senderTeam) or {}
+		end
+		if #teamPlayers == 0 then
+			local rebuilt = {}
+			for i = 1, 5 do
+				local member = GetTeamMember(i)
+				if member ~= nil then
+					local pid = member:GetPlayerID()
+					if pid ~= nil then rebuilt[i] = pid end
+				end
+			end
+			if #rebuilt > 0 then teamPlayers = rebuilt end
+		end
+		if #teamPlayers == 0 and senderTeam ~= nil then
+			-- Widest-net scan: IsPlayerInHeroSelectionControl is the only
+			-- probe that returned true for PID 10 in LAN Dire scope during
+			-- HERO_SELECTION. Collect any PID that passes that check OR is
+			-- recognized as a bot OR matches sender's team. Broad upper
+			-- bound to catch custom-lobby PID allocations.
+			local rebuilt = {}
+			local seen = {}
+			for pid = 0, 63 do
+				local pt = GetTeamForPlayer(pid)
+				local okCtrl = false
+				pcall(function() okCtrl = IsPlayerInHeroSelectionControl(pid) end)
+				local okBot = false
+				pcall(function() okBot = IsPlayerBot(pid) end)
+				if (okCtrl or okBot or pt == senderTeam) and not seen[pid] then
+					seen[pid] = true
+					rebuilt[#rebuilt + 1] = pid
+				end
+			end
+			if #rebuilt > 0 then
+				teamPlayers = rebuilt
+				log('[CHAT] roster rebuilt by PID scan (#%s): first=[%s,%s,%s,%s,%s]',
+					tostring(#rebuilt),
+					tostring(rebuilt[1]), tostring(rebuilt[2]), tostring(rebuilt[3]),
+					tostring(rebuilt[4]), tostring(rebuilt[5]))
+			end
+		end
+	end
 
-	log('Handling command starting with: '..tostring(actionKey)..', text: '..tostring(actionVal))
+	log('Handling command starting with: %s, text: %s', actionKey, actionVal)
 
 	local commands = {}
     for command in inputStr:gmatch("[^;]+") do
@@ -779,31 +837,32 @@ local function handleCommand(inputStr, PlayerID, bTeamOnly)
 		local subKey, subVal = command:match("(!%w+)%s*(.*)")
 
 		if subKey == "!pick" and GetGameMode() ~= GAMEMODE_CM and GetGameMode() ~= GAMEMODE_REVERSE_CM then
-			log("Picking hero " .. subVal .. ', is-for-ally: ' .. tostring(bTeamOnly))
+			log("Picking hero %s, is-for-ally: %s", subVal, bTeamOnly)
 			local hero = GetHumanChatHero(subVal);
+			log('Actual picking hero %s ', hero)
 			if hero ~= "" then
 				if not X.CanPickHero(GetTeam(), hero) then
-					log('Hero '..hero..' cannot be picked now (banned/repeat/weakcap)')
+					log('Hero %s cannot be picked now (banned/repeat/weakcap)', hero)
 					return
 				end
-				if bTeamOnly then
+				-- Unified picker. Previously two identical loops gated on bTeamOnly
+				-- / opposing-team all-chat; this collapses them and logs why each
+				-- candidate slot is rejected so LAN failures are visible.
+				local shouldPickForOwnTeam = (bTeamOnly == true) or
+					(bTeamOnly == false and GetTeamForPlayer(PlayerID) ~= GetTeam())
+				if shouldPickForOwnTeam then
+					-- Note: in LAN hero_selection scope, the engine refuses
+					-- SelectHero for every PID (even PIDs that report
+					-- IsPlayerInHeroSelectionControl=true), so !pick is
+					-- effectively unsupported there. Online lobbies grant
+					-- the right and this loop works normally.
 					for _, id in pairs(teamPlayers) do
 						if IsPlayerBot(id) and IsPlayerInHeroSelectionControl(id) and GetSelectedHeroName(id) == "" then
-							SelectHero(id, hero);
+							SelectHero(id, hero)
 							if Utils.HasValue(WeakHeroes, hero) then
 								WeakHeroCount[GetTeam()] = WeakHeroCount[GetTeam()] + 1
 							end
-							break;
-						end
-					end
-				elseif bTeamOnly == false and GetTeamForPlayer(PlayerID) ~= GetTeam() then
-					for _, id in pairs(teamPlayers) do
-						if IsPlayerBot(id) and IsPlayerInHeroSelectionControl(id) and GetSelectedHeroName(id) == "" then
-							SelectHero(id, hero);
-							if Utils.HasValue(WeakHeroes, hero) then
-								WeakHeroCount[GetTeam()] = WeakHeroCount[GetTeam()] + 1
-							end
-							break;
+							break
 						end
 					end
 				end
@@ -813,22 +872,22 @@ local function handleCommand(inputStr, PlayerID, bTeamOnly)
 			end
 
 		elseif subKey == "!ban" and GetGameState() == GAME_STATE_HERO_SELECTION then
-			log("Banning hero " .. subVal)
+			log("Banning hero %s", subVal)
 			local hero = GetHumanChatHero(subVal);
 			if hero ~= "" then
 				if AlreadyPickedOnTeam(hero) then
-					log('Hero  ' .. hero .. ' has already been picked')
+					log('Hero  %s has already been picked', hero)
 					return
 				end
 				X.SetChatHeroBan( hero )
-				log("Banned hero " .. hero.. '. Banned list:')
+				log("Banned hero %s. Banned list:", hero)
 				Utils.PrintTable(sBanList)
 			else
 				log("Hero name not found or not supported! See: https://github.com/forest0xia/dota2bot-OpenHyperAI/discussions/71");
 			end
 
 		elseif subKey == "!pos" and GetGameState() == GAME_STATE_PRE_GAME then
-			log("Selecting pos " .. subVal)
+			log("Selecting pos %s", subVal)
 			local sTeamNameLocal = GetTeamForPlayer(PlayerID) == TEAM_RADIANT and 'TEAM_RADIANT' or 'TEAM_DIRE'
 			local remainingPos = RemainingPos[sTeamNameLocal]
 			if Utils.HasValue(remainingPos, subVal) then
@@ -842,13 +901,15 @@ local function handleCommand(inputStr, PlayerID, bTeamOnly)
 						if IsPlayerBot(id) then
 							Role.RoleAssignment[sTeamNameLocal][playerIndex], Role.RoleAssignment[sTeamNameLocal][index] = role, Role.RoleAssignment[sTeamNameLocal][playerIndex]
 							if GetTeamForPlayer(PlayerID) == TEAM_DIRE then
-								tLaneAssignList[sTeamNameLocal][CorrectDirePlayerIndexToLaneIndex[playerIndex]], tLaneAssignList[sTeamNameLocal][CorrectDirePlayerIndexToLaneIndex[index]] =
-									tLaneAssignList[sTeamNameLocal][CorrectDirePlayerIndexToLaneIndex[index]], tLaneAssignList[sTeamNameLocal][CorrectDirePlayerIndexToLaneIndex[playerIndex]]
+								local laneIdxA = CorrectDirePlayerIndexToLaneIndex[playerIndex] or playerIndex
+								local laneIdxB = CorrectDirePlayerIndexToLaneIndex[index] or index
+								tLaneAssignList[sTeamNameLocal][laneIdxA], tLaneAssignList[sTeamNameLocal][laneIdxB] =
+									tLaneAssignList[sTeamNameLocal][laneIdxB], tLaneAssignList[sTeamNameLocal][laneIdxA]
 							else
 								tLaneAssignList[sTeamNameLocal][playerIndex], tLaneAssignList[sTeamNameLocal][index] = tLaneAssignList[sTeamNameLocal][index], tLaneAssignList[sTeamNameLocal][playerIndex]
 							end
-							log('Switch role ok. Team: '..sTeamNameLocal.. ' PID: '..PlayerID..', idx: '..playerIndex..', new role: '..Role.RoleAssignment[sTeamNameLocal][playerIndex])
-							log('Switch role ok. Team: '..sTeamNameLocal.. ' PID: '..id..', idx: '..index..', new role: '..Role.RoleAssignment[sTeamNameLocal][index])
+							log('Switch role ok. Team: %s PID: %s, idx: %s, new role: %s', sTeamNameLocal, PlayerID, playerIndex, Role.RoleAssignment[sTeamNameLocal][playerIndex])
+							log('Switch role ok. Team: %s PID: %s, idx: %s, new role: %s', sTeamNameLocal, id, index, Role.RoleAssignment[sTeamNameLocal][index])
 						else
 							log('Switch role failed: target role belongs to human.')
 						end
@@ -856,13 +917,13 @@ local function handleCommand(inputStr, PlayerID, bTeamOnly)
 					end
 				end
 			else
-				log("Cannot select pos: " .. subVal..' (not available).')
+				log("Cannot select pos: %s (not available).", subVal)
 			end
 
 		elseif subKey:match("^!(%d+)pos$") ~= nil and GetGameState() == GAME_STATE_PRE_GAME then
 			local x, y = inputStr:match("^!(%d+)pos (%d+)$")
 			if x and y then
-				log("Swap position for #" .. x .. " to play pos " .. y)
+				log("Swap position for #%s to play pos %s", x, y)
 			else
 				log("Invalid command format for swapping pos")
 				return
@@ -879,32 +940,34 @@ local function handleCommand(inputStr, PlayerID, bTeamOnly)
 					if Role.RoleAssignment[sTeamNameLocal][index] == role then
 						Role.RoleAssignment[sTeamNameLocal][playerIndex], Role.RoleAssignment[sTeamNameLocal][index] = role, Role.RoleAssignment[sTeamNameLocal][playerIndex]
 						if GetTeamForPlayer(PlayerID) == TEAM_DIRE then
-							tLaneAssignList[sTeamNameLocal][CorrectDirePlayerIndexToLaneIndex[playerIndex]], tLaneAssignList[sTeamNameLocal][CorrectDirePlayerIndexToLaneIndex[index]] =
-								tLaneAssignList[sTeamNameLocal][CorrectDirePlayerIndexToLaneIndex[index]], tLaneAssignList[sTeamNameLocal][CorrectDirePlayerIndexToLaneIndex[playerIndex]]
+							local laneIdxA = CorrectDirePlayerIndexToLaneIndex[playerIndex] or playerIndex
+							local laneIdxB = CorrectDirePlayerIndexToLaneIndex[index] or index
+							tLaneAssignList[sTeamNameLocal][laneIdxA], tLaneAssignList[sTeamNameLocal][laneIdxB] =
+								tLaneAssignList[sTeamNameLocal][laneIdxB], tLaneAssignList[sTeamNameLocal][laneIdxA]
 						else
 							tLaneAssignList[sTeamNameLocal][playerIndex], tLaneAssignList[sTeamNameLocal][index] =
 								tLaneAssignList[sTeamNameLocal][index], tLaneAssignList[sTeamNameLocal][playerIndex]
 						end
-						log('Switch role ok. Team: '..sTeamNameLocal.. ' PID: '..PlayerID..', idx: '..playerIndex..', new role: '..Role.RoleAssignment[sTeamNameLocal][playerIndex])
-						log('Switch role ok. Team: '..sTeamNameLocal.. ' PID: '..id..', idx: '..index..', new role: '..Role.RoleAssignment[sTeamNameLocal][index])
+						log('Switch role ok. Team: %s PID: %s, idx: %s, new role: %s', sTeamNameLocal, PlayerID, playerIndex, Role.RoleAssignment[sTeamNameLocal][playerIndex])
+						log('Switch role ok. Team: %s PID: %s, idx: %s, new role: %s', sTeamNameLocal, id, index, Role.RoleAssignment[sTeamNameLocal][index])
 						break;
 					end
 				end
 			else
-				log("Cannot select pos: " .. y..' (not available).')
+				log("Cannot select pos: %s (not available).", y)
 			end
 
 		elseif subKey == "!sp" or subKey == "!speak" then
 			HandleLocaleSetting(subVal)
 		else
-			log("Unknown action: " .. subKey .. ', command text: '..tostring(inputStr))
+			log("Unknown action: %s, command text: %s", subKey, inputStr)
 		end
 	end
 end
 
 function HandleLocaleSetting(locale)
 	Customize.Localization = locale
-	log("Set to speak: ".. locale)
+	log("Set to speak: %s", locale)
 end
 
 -- Initialize a clean, staggered per-slot schedule once we’re allowed to pick.
@@ -973,17 +1036,17 @@ function GetHumanChatHero(name)
 	name = name:lower()
 	for _, hero in pairs(SupportedHeroes) do
 		if heroUnitNames['en'][hero]:lower() == name then
-			log('Found hero ' .. hero .. ' for '..name)
+			log('Found hero %s for %s', hero, name)
 			return hero;
 		end
 	end
 	for _, hero in pairs(SupportedHeroes) do
 		if string.find(hero, name) then
-			log('Found hero ' .. hero .. ' for '..name)
+			log('Found hero %s for %s', hero, name)
 			return hero;
 		end
 	end
-	log('Hero not supported with name: '..name)
+	log('Hero not supported with name: %s', name)
 	return "";
 end
 
@@ -1030,6 +1093,8 @@ end
 -- Lane assignment plumbing
 --==============================================================================
 
+local bSelectHeroChatCallbackInstalled = false
+
 function UpdateLaneAssignments()
 	local team = GetTeam() == TEAM_RADIANT and 'TEAM_RADIANT' or 'TEAM_DIRE'
 
@@ -1045,8 +1110,14 @@ function UpdateLaneAssignments()
 		tLaneAssignList[team] = CaptainMode.CMLaneAssignment(Role.RoleAssignment, userSwitchedRole)
 	end
 
-	if GetGameState() == GAME_STATE_HERO_SELECTION or GetGameState() == GAME_STATE_STRATEGY_TIME or GetGameState() == GAME_STATE_PRE_GAME then
-		InstallChatCallback(function (attr) SelectHeroChatCallback(attr.player_id, attr.string, attr.team_only); end);
+	if not bSelectHeroChatCallbackInstalled
+		and (GetGameState() == GAME_STATE_HERO_SELECTION
+			or GetGameState() == GAME_STATE_STRATEGY_TIME
+			or GetGameState() == GAME_STATE_PRE_GAME) then
+		InstallChatCallback(function (attr)
+			SelectHeroChatCallback(attr.player_id, attr.string, attr.team_only)
+		end)
+		bSelectHeroChatCallbackInstalled = true
 	end
 
 	CorrectPotentialLaneAssignment()

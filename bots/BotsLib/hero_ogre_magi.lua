@@ -210,6 +210,8 @@ local talent8Damage = 0
 
 
 local bAttacking
+local nLV, nKeepMana, nMP, nHP, hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 

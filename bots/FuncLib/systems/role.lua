@@ -341,14 +341,14 @@ ____exports.GetPositionForCM = function(bot)
     end
     if role == nil then
         role = 1
-        print((((("[ERROR] Failed to determine role for bot " .. heroName) .. " in CM. It got assigned lane#: ") .. tostring(lane)) .. ". Set it to pos: ") .. tostring(role))
+        log("[ERROR] Failed to determine role for bot %s in CM. It got assigned lane#: %s. Set it to pos: %s", heroName, lane, role)
     end
     return role
 end
 ____exports.GetRoleFromId = function(bot)
-    local heroID = GetTeamPlayers(GetTeam())
+    local heroID = GetTeamPlayers(bot:GetTeam())
     local heroName = bot:GetUnitName()
-    local team = GetTeam() == Team.Radiant and "TEAM_RADIANT" or "TEAM_DIRE"
+    local team = bot:GetTeam() == Team.Radiant and "TEAM_RADIANT" or "TEAM_DIRE"
     do
         local i = 0
         while i < #heroID do
@@ -362,6 +362,10 @@ ____exports.GetRoleFromId = function(bot)
 end
 ____exports.HeroPositions = {}
 ____exports.GetPosition = function(bot)
+    if bot ~= nil and bot:GetTeam() ~= GetTeam() then
+        local eRole = GetEnemyPosition(bot:GetPlayerID())
+        return eRole ~= nil and eRole or 3
+    end
     local role = bot.assignedRole
     if role == nil and (GetGameMode() == GameMode.Cm or GetGameMode() == GameMode.ReverseCm) then
         local nH, _ = NumHumanBotPlayersInTeam(bot:GetTeam())
@@ -371,42 +375,50 @@ ____exports.GetPosition = function(bot)
     end
     local playerId = bot:GetPlayerID()
     local unitName = bot:GetUnitName()
+    local currentLane = bot:GetAssignedLane()
+    if bot.lastAssignedLane ~= nil and bot.lastAssignedLane ~= currentLane then
+        role = nil
+        bot.assignedRole = nil
+        if playerId ~= nil then
+            ____exports.HeroPositions[playerId] = nil
+        end
+    end
+    bot.lastAssignedLane = currentLane
     if (role == nil or GetGameState() == GameState.PreGame) and playerId ~= nil then
         local cRole = ____exports.HeroPositions[playerId]
         if cRole ~= nil then
             role = cRole
         else
-            local heroID = GetTeamPlayers(GetTeam())
-            local team = GetTeam() == Team.Radiant and "TEAM_RADIANT" or "TEAM_DIRE"
-            do
-                local i = 0
-                while i < #heroID do
-                    if heroID[i + 1] == playerId then
-                        role = ____exports.RoleAssignment[team][i + 1]
+            local heroID = GetTeamPlayers(bot:GetTeam())
+            local team = bot:GetTeam() == Team.Radiant and "TEAM_RADIANT" or "TEAM_DIRE"
+            local heroName = bot:GetUnitName()
+            if #heroID >= 5 then
+                do
+                    local i = 0
+                    while i < #heroID do
+                        if GetSelectedHeroName(heroID[i + 1]) == heroName then
+                            role = ____exports.RoleAssignment[team][i + 1]
+                            break
+                        end
+                        i = i + 1
                     end
-                    i = i + 1
                 end
+            end
+            if role == nil then
+                local slot = bot:GetTeam() == Team.Radiant and playerId + 1 or playerId - 4
+                if slot >= 1 and slot <= 5 then
+                    role = ____exports.RoleAssignment[team][slot]
+                end
+            end
+            if role ~= nil then
+                ____exports.HeroPositions[playerId] = role
             end
         end
     end
     bot.assignedRole = role
-    if GetTeam() ~= bot:GetTeam() then
-        role = GetEnemyPosition(bot:GetPlayerID())
-        if role ~= nil then
-            return role
-        end
-        return 3
-    end
     if role == nil and GetGameState() ~= GameState.PreGame then
-        if ____exports.HeroPositions[playerId] == nil then
-            ____exports.HeroPositions[playerId] = ____exports.GetRoleFromId(bot)
-        end
-        role = ____exports.HeroPositions[playerId] ~= nil and ____exports.HeroPositions[playerId] or ____exports.GetPositionForCM(bot)
-        print((((("[ERROR] Failed to match bot role for bot: " .. unitName) .. ", PlayerID: ") .. tostring(playerId)) .. ", set it to play pos: ") .. tostring(role))
-        print(
-            "Stack Trace:",
-            debug.traceback()
-        )
+        role = ____exports.GetPositionForCM(bot)
+        log("[ERROR] Failed to match bot role for bot: %s, PlayerID: %s, fallback pos: %s", unitName, playerId, role)
         bot.assignedRole = role
     end
     if role == nil then

@@ -269,21 +269,21 @@ export const EstimatedEnemyRoles = {
 
 export function PrintTable(tbl: any | null, indent: number = 0) {
     if (tbl === null) {
-        print("nil");
+        log("nil");
         return;
     }
 
     for (const [key, value] of Object.entries(tbl)) {
-        const prefix = string.rep("  ", indent) + key + ": ";
+        const indentStr = string.rep("  ", indent);
         if (type(value) == "table") {
             if (indent < 3) {
-                print(prefix);
+                log("%s%s: ", indentStr, key);
                 PrintTable(value, indent + 1);
             } else {
-                print(prefix + "[WARN] Table has deep nested tables in it, stop printing more nested tables.");
+                log("%s%s: [WARN] Table has deep nested tables in it, stop printing more nested tables.", indentStr, key);
             }
         } else {
-            print(prefix + value);
+            log("%s%s: %s", indentStr, key, value);
         }
     }
 }
@@ -293,7 +293,7 @@ export function PrintUnitModifiers(unit: Unit) {
     for (let i = 0; i < modifierCount; i++) {
         const modifierName = unit.GetModifierName(i);
         const stackCount = unit.GetModifierStackCount(i);
-        print(`Unit ${unit.GetUnitName()} has modifier ${modifierName} with stack count ${stackCount}`);
+        log("Unit %s has modifier %s with stack count %s", unit.GetUnitName(), modifierName, stackCount);
     }
 }
 
@@ -316,14 +316,20 @@ export function PrintPings(pingTimeGap: number): void {
 
             // Print ping location coordinates
             const loc = ping.location;
-            print(
-                `[PING] Player ${i} pinged at (${math.floor(loc.x)}, ${math.floor(loc.y)}, ${math.floor(loc.z)}) normal=${tostring(ping.normal_ping)} time=${string.format("%.1f", ping.time)}`
+            log(
+                "[PING] Player %d pinged at (%d, %d, %d) normal=%s time=%.1f",
+                i,
+                math.floor(loc.x),
+                math.floor(loc.y),
+                math.floor(loc.z),
+                tostring(ping.normal_ping),
+                ping.time
             );
 
             // Print units near ping
             for (const unit of GetUnitList(UnitType.All)) {
                 if (GetLocationToLocationDistance(ping.location, unit.GetLocation()) < 400) {
-                    print(`  nearby: ${unit.GetUnitName()}`);
+                    log("  nearby: %s", unit.GetUnitName());
                 }
             }
         }
@@ -334,13 +340,13 @@ export function PrintPings(pingTimeGap: number): void {
 }
 
 export function PrintAllAbilities(unit: Unit) {
-    print(`Get all abilities of bot ${unit.GetUnitName()}`);
+    log("Get all abilities of bot %s", unit.GetUnitName());
     for (let index of $range(0, 10)) {
         const ability = unit.GetAbilityInSlot(index);
         if (ability && !ability.IsNull()) {
-            print(`Ability At Index ${index}: ${ability.GetName()}`);
+            log("Ability At Index %d: %s", index, ability.GetName());
         } else {
-            print(`Ability At Index ${index} is nil`);
+            log("Ability At Index %d is nil", index);
         }
     }
 }
@@ -435,7 +441,7 @@ export function IsPingedByAnyPlayer(bot: Unit, pingTimeGap: number, minDistance:
             withinTimeRange
             // && ping.player_id != -1
         ) {
-            print(`Bot ${bot.GetUnitName()} noticed the ping`);
+            log("Bot %s noticed the ping", bot.GetUnitName());
             return ping;
         }
     }
@@ -513,6 +519,8 @@ export function CountEnemyHeroesOnHighGround(team: Team): number {
         const bb = GetBarracks(team, b);
         if (IsValidBuilding(bb)) anchors.push(bb as Unit);
     }
+    const anc = GetAncient(team);
+    if (IsValidBuilding(anc)) anchors.push(anc as Unit);
     let maxSeen = 0;
     for (const a of anchors) {
         const c = CountEnemyHeroesNear(a.GetLocation(), 1600);
@@ -873,7 +881,7 @@ export function DetermineEnemyBotRole(bot: Unit): number {
     const botName = bot.GetUnitName();
     const estimatedRole = EstimatedEnemyRoles[botName];
     if (estimatedRole == null) {
-        print(`Enemy bot ${botName} role not cached yet.`);
+        log("Enemy bot %s role not cached yet.", botName);
         return 3;
     }
 
@@ -882,14 +890,14 @@ export function DetermineEnemyBotRole(bot: Unit): number {
 
 // TODO: Just trying. Does not work.
 export function QueryCounters(heroId: number) {
-    print("heroId=" + heroId);
+    log("heroId=%s", heroId);
     Request.RawGetRequest(`https://api.opendota.com/api/heroes/${heroId}/matchups`, function (res) {
         PrintTable(res);
     });
 }
 export function InitiStats() {
     Request.GetUUID(function (uuid) {
-        print("uuid=" + uuid);
+        log("uuid=%s", uuid);
     });
 }
 
@@ -1292,7 +1300,7 @@ export function GetNumOfAliveHeroes(bEnemy: boolean): number {
         }
     }
 
-    // print(`count alive hero for enemy: ${bEnemy} is ${count}`);
+    // log(`count alive hero for enemy: ${bEnemy} is ${count}`);
     return count;
 }
 
@@ -1332,7 +1340,7 @@ export function CountMissingEnemyHeroes(): number {
  */
 export function FindAllyWithAtLeastDistanceAway(bot: Unit, nDistance: number) {
     if (bot.GetTeam() !== GetTeam()) {
-        print("[ERROR] Wrong usage of the method");
+        log("[ERROR] Wrong usage of the method");
         return null;
     }
 
@@ -1724,7 +1732,7 @@ export function ConsiderTPToTarget(bot: Unit, targetLoc: Vector, isDefend: boole
         const dy = fountainLoc.y - bldLoc.y;
         const len = math.max(1, math.sqrt(dx * dx + dy * dy));
         const tpLoc = Vector(bldLoc.x + (dx / len) * 200, bldLoc.y + (dy / len) * 200, 0);
-        print(string.format("[TP] %s t=%.0f DEFEND tp to building at (%.0f,%.0f)", bot.GetUnitName(), DotaTime(), tpLoc.x, tpLoc.y));
+        log("[TP] %s t=%.0f DEFEND tp to building at (%.0f,%.0f)", bot.GetUnitName(), DotaTime(), tpLoc.x, tpLoc.y);
         bot.Action_UseAbilityOnLocation(tp as any, tpLoc);
         return true;
     }

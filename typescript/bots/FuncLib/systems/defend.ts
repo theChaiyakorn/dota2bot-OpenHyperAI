@@ -7,7 +7,7 @@ let [okLoc, Localization] = pcall(require, GetScriptDirectory() + "/FuncLib/syst
 if (!okLoc) Localization = { Get: (_: string) => "Defend here!" };
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-import Customize = require("bots/Customize/general");
+import Customize = require("bots/FuncLib/systems/custom_loader");
 
 import { Barracks, BotMode, BotModeDesire, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import { add } from "bots/ts_libs/utils/native-operators";
@@ -20,7 +20,7 @@ Customize.ThinkLess = Customize.Enable ? Customize.ThinkLess : 1;
 const PING_DELTA = 5.0;
 const SEARCH_RANGE_DEFAULT = 1600;
 // const CLOSE_RANGE = 1200;
-const MAX_DESIRE_CAP = 0.5; // Hardcode: BotModeDesire.VeryHigh can resolve to 0.9 if enums load before global_overrides
+const MAX_DESIRE_CAP = 0.6; // VERYHIGH —  beats Valve's farm (~0.55)
 
 // Base threat (Ancient defense)
 const BASE_THREAT_RADIUS = 2600;
@@ -539,7 +539,7 @@ export function ShouldDefend(bot: Unit, hBuilding: Unit | null, nRadius: number)
 
     let result = false;
     if (nNearby === 1) {
-        if (pos === 2 || pos === GetClosestAllyPos([4, 5], hBuilding.GetLocation())) {
+        if (pos === 2 || pos === 3 || pos === GetClosestAllyPos([4, 5], hBuilding.GetLocation())) {
             result = true;
         }
     } else if (nNearby === 2) {
@@ -650,12 +650,32 @@ export function GetDefendDesire(bot: Unit, lane: Lane): BotModeDesire {
     const defendLoc = getDefendState(bot).defendLoc || GetLaneFrontLocation(nTeam, lane, 0);
     const alliesHere = Fu.GetAlliesNearLoc(defendLoc, 2000);
     const enemiesHere = Fu.GetEnemiesNearLoc(defendLoc, 2000);
-    const teamStronger = alliesHere.length >= 3 && enemiesHere.length >= 1 && alliesHere.length > enemiesHere.length && Fu.WeAreStronger(bot, 2000);
+    const teamStronger = alliesHere.length >= 3 && enemiesHere.length >= 1 && alliesHere.length > enemiesHere.length && Fu.WeAreStronger(bot, 2500);
 
     // Cap: team is stronger at defend point, lower defend so Valve's attack mode (0.6) takes over.
     // Cap at 0.55 — high enough to beat farm/push/other modes, low enough for attack to win.
     if (teamStronger && res < 0.9) {
         res = math.min(res, 0.55) as BotModeDesire;
+    }
+
+    // Enemy in fight range → cut defend by 90% so attack mode can win.
+    // "Nearby" = within 1200, within our attack range, or within 1600 and able to attack us.
+    // Skip during base siege — ancient defense must not yield to attack mode when the
+    // building itself is taking hits.
+    const gsForNear = updateDefendGameStateCache();
+    const baseUnderSiege = gsForNear.enemiesAtAncient >= 1 || gsForNear.enemiesOnHG >= 2;
+    if (!baseUnderSiege) {
+        const botLocForNear = bot.GetLocation();
+        const botAtkRangeForNear = bot.GetAttackRange();
+        const scanRange = math.max(1600, botAtkRangeForNear);
+        for (const e of Fu.GetLastSeenEnemiesNearLoc(botLocForNear, scanRange)) {
+            if (!Fu.IsValidHero(e)) continue;
+            const dist = GetUnitToUnitDistance(bot, e);
+            if (dist <= 1200 || dist <= botAtkRangeForNear || (dist <= 1600 && dist <= e.GetAttackRange())) {
+                res = (res * 0.1) as BotModeDesire;
+                break;
+            }
+        }
     }
 
     (bot as any).defendDesire = res;
@@ -800,12 +820,41 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
         return BotModeDesire.None;
     }
 
+    // --- Hopeless defend: team-wide outnumber check ---
+    // Computed once, used by all defend paths (panic, T4 early return, etc.)
+    // to prevent solo bots from walking into a group of enemies.
+    const ancientDyingEarly = ancient && ancient.IsAlive() && gameState.ancientHP < 0.4;
+    const hopelessFight = !ancientDyingEarly && gameState.aliveEnemyCount >= 3 && gameState.aliveEnemyCount > gameState.aliveAllyCount + 1;
+    const HOPELESS_DESIRE = (MAX_DESIRE_CAP * 0.5) as BotModeDesire; // 0.25: hold position, don't charge
+
+    // Enemies already on our HG, bot is close to them, weaker, and outnumbered:
+    // defending would just feed. Drop desire so retreat wins.
+    if (enemiesOnHG >= 1) {
+        const nearbyEnemies = Fu.GetLastSeenEnemiesNearLoc(bot.GetLocation(), 2000);
+        if (nearbyEnemies.length >= 2) {
+            let nearbyAllyHeroes = 0;
+            for (const a of Fu.GetAlliesNearLoc(bot.GetLocation(), 1600)) {
+                if (Fu.IsValidHero(a) && a !== bot) nearbyAllyHeroes++;
+            }
+            const weAreStronger = Fu.WeAreStronger(bot, 2500);
+            if (!weAreStronger && nearbyEnemies.length >= nearbyAllyHeroes) {
+                return (lane === threatenedLane ? MAX_DESIRE_CAP * 0.2 : MAX_DESIRE_CAP * 0.1) as BotModeDesire;
+            }
+        }
+    }
+
     let panic: PanicHint = { active: false, floor: 0 };
 
-    // ANCIENT UNDER DIRECT ATTACK: use cached values
+    // ANCIENT UNDER DIRECT ATTACK: use cached values.
+    // Tiered floor — threatened lane gets MAX_DESIRE_CAP, non-threatened lanes
+    // get a smaller floor so they still beat farm/push (bot stays engaged with
+    // base defense even if GetThreatenedLane flickers) but lose to the
+    // threatened lane. Only threatened lane owns laneToDefend.
     if (ancient && ancient.IsAlive()) {
         const ancientHP = gameState.ancientHP;
         const defenderCount = gameState.defendersAtAncient;
+        const panicFloor = lane === threatenedLane ? (hopelessFight ? HOPELESS_DESIRE : MAX_DESIRE_CAP) : hopelessFight ? HOPELESS_DESIRE * 0.7 : MAX_DESIRE_CAP * 0.7;
+        const panicFloorCreeps = lane === threatenedLane ? MAX_DESIRE_CAP * 0.9 : MAX_DESIRE_CAP * 0.6;
 
         if (enemiesAtAncient >= 2 || (enemiesAtAncient >= 1 && ancientHP < 0.95)) {
             const neededDefenders = enemiesAtAncient + 1;
@@ -813,10 +862,10 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
                 baseThreatUntil = DotaTime() + BASE_THREAT_HOLD;
                 panic = {
                     active: true,
-                    floor: MAX_DESIRE_CAP,
+                    floor: panicFloor,
                     forceLoc: Fu.AdjustLocationWithOffsetTowardsFountain(ancient.GetLocation(), 300),
                 };
-                (bot as any).laneToDefend = lane;
+                if (lane === threatenedLane) (bot as any).laneToDefend = lane;
             }
         } else if (ancientHP < 0.95 && enemiesAtAncient === 0 && defenderCount === 0) {
             // Creeps hitting ancient with no defenders: send 1 bot (closest support/offlane)
@@ -825,22 +874,26 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
             if (pos === closestPos) {
                 panic = {
                     active: true,
-                    floor: MAX_DESIRE_CAP * 0.9,
+                    floor: panicFloorCreeps,
                     forceLoc: Fu.AdjustLocationWithOffsetTowardsFountain(ancient.GetLocation(), 300),
                 };
-                (bot as any).laneToDefend = lane;
+                if (lane === threatenedLane) (bot as any).laneToDefend = lane;
             }
         }
     }
 
-    // If more than 1 enemy hero on our high ground → force everyone to defend the threatened lane
+    // Enemies on our HG → everyone defends, but threatened lane gets the higher
+    // floor so it wins Valve's mode-selection tie.
     if (enemiesOnHG >= 2 && !recentlyHit) {
-        if (lane !== threatenedLane && !panic.active) return BotModeDesire.None;
         baseThreatUntil = DotaTime() + BASE_THREAT_HOLD;
+        const hgFloor = hopelessFight ? HOPELESS_DESIRE : lane === threatenedLane ? MAX_DESIRE_CAP : MAX_DESIRE_CAP * 0.7;
+        const forceLoc = ancient ? Fu.AdjustLocationWithOffsetTowardsFountain(ancient.GetLocation(), 300) : ds.defendLoc;
         if (!panic.active) {
-            panic = { active: true, floor: MAX_DESIRE_CAP, forceLoc: ancient ? Fu.AdjustLocationWithOffsetTowardsFountain(ancient.GetLocation(), 300) : ds.defendLoc };
+            panic = { active: true, floor: hgFloor, forceLoc };
+        } else {
+            panic.floor = math.max(panic.floor, hgFloor);
         }
-        (bot as any).laneToDefend = lane;
+        if (lane === threatenedLane) (bot as any).laneToDefend = lane;
     }
 
     // Base threat detection (sticky): heroes start, creeps can only extend
@@ -856,17 +909,21 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
         }
     }
 
-    // If panic wants to force a safer anchor, do it before distance-dependent math
+    // If panic wants to force a safer anchor, do it before distance-dependent math.
+    // Only redirect to ancient for the threatened lane — non-threatened lanes keep
+    // their natural lane front so bots don't TP home while safely pushing another lane.
     if (panic.active && panic.forceLoc) {
         ds.defendLoc = panic.forceLoc;
-    } else if (isBaseThreatActive && ancient) {
+    } else if (isBaseThreatActive && ancient && lane === threatenedLane) {
         ds.defendLoc = Fu.AdjustLocationWithOffsetTowardsFountain(ancient.GetLocation(), 300);
     }
 
     if (isBaseThreatActive) {
-        // defend near Ancient but only on the threatened lane
+        // Non-threatened lanes: halve desire so threatened lane dominates,
+        // but bot still has some defend awareness instead of ignoring base entirely.
+        // Threatened lane: fall through with ancient-anchored defendLoc.
         if (lane !== threatenedLane) {
-            return BotModeDesire.None;
+            (bot as any)._defendDesireHalved = true;
         }
     } else {
         // Opportunistically use enemy lanefront ONLY if not in base threat
@@ -921,9 +978,14 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     }
 
     // immediate high desire when enemies at base buildings (T4/ancient).
-    // Bypasses all complex gating — base defense is non-negotiable.
+    // Tiered: threatened lane = MAX_DESIRE_CAP, non-threatened = MAX_DESIRE_CAP*0.7
+    // so the threatened lane wins mode-selection while others still beat farm/push.
+    // When hopeless (outnumbered team-wide), use low desire to hold position not charge.
     if (buildingTier >= 4 && ancient && ancient.IsAlive() && enemiesAtAncient >= 2) {
-        return MAX_DESIRE_CAP as BotModeDesire;
+        if (hopelessFight) {
+            return HOPELESS_DESIRE;
+        }
+        return (lane === threatenedLane ? MAX_DESIRE_CAP : MAX_DESIRE_CAP * 0.7) as BotModeDesire;
     }
 
     // Can we get there fast enough?
@@ -977,8 +1039,24 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     // T1: send +1 extra (enemies usually push T1 with few heroes, easy to contest)
     // T2: match enemy count +1
     // T3+: match enemy count +2 (must hold)
-    const neededTotal = isHighTier ? lEnemies.length + 2 : buildingTier <= 1 ? lEnemies.length + 1 : lEnemies.length <= 1 ? 1 : lEnemies.length + 1;
+    const neededTotal = lEnemies.length + 2;
     const stillNeeded = neededTotal - nEffAllies;
+
+    // Hopeless fight guard: don't trickle into a lost fight at T3+.
+    // When enemy heroes at hub clearly outnumber our realistic force, keep a low
+    // desire so bots hold position near base (Think positions them safely) rather
+    // than wandering off to farm. High enough to beat farm/push, low enough that
+    // retreat wins if the bot is actually in danger.
+    if (isHighTier && lEnemies.length >= 3 && !panic.active) {
+        const thisBotsContribution = distToHub < 3000 || hasTpScroll ? 1 : 0;
+        const realisticForce = nEffAllies + thisBotsContribution;
+        if (lEnemies.length > realisticForce + 1) {
+            const ancientDying = ancient && ancient.IsAlive() && gameState.ancientHP < 0.4;
+            if (!ancientDying) {
+                return (MAX_DESIRE_CAP * 0.3) as BotModeDesire;
+            }
+        }
+    }
 
     // Already enough defenders (including TPing allies) → only nearby bots stay
     if (stillNeeded <= 0 && !panic.active) {
@@ -1009,19 +1087,12 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     }
 
     // --- Role/distance gates ---
-    // When 4+ enemies detected OR 3+ allies already defending (serious fight), skip gates
+    // uses ONLY canGetThereFast + ShouldDefend for gating.
+    // Hard distance cutoffs previously here caused carries/mids to ignore T2 pushes
+    // even with Travel Boots
     if (lEnemies.length >= 4 || alliesAlreadyDefending >= 3) {
-        // Everyone comes, no role/distance gates
-    } else if (isHighTier) {
-        // Cores: TP to defend high tier, don't walk far
-        if ((botPos === 1 || botPos === 2) && distToHub > 3000 && !hasTpScroll) {
-            return BotModeDesire.None;
-        }
-    } else {
-        // T1/T2: cores avoid unless nearby
-        if (botPos === 1 && distToHub > 2000) return BotModeDesire.None;
-        if (botPos === 2 && distToHub > 3000 && !hasTpScroll) return BotModeDesire.None;
-
+        // Everyone comes
+    } else if (!isHighTier) {
         // Prefer closest threatened lane — don't walk cross-map for T1/T2
         if (distToHub > 4000) {
             for (const otherLane of [Lane.Top, Lane.Mid, Lane.Bot] as Lane[]) {
@@ -1085,7 +1156,8 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     if (pingFloor > 0) nDefendDesire = math.max(nDefendDesire, pingFloor);
 
     // Serious fight: 4+ enemies or 3+ allies already defending → floor desire to beat farm
-    if (lEnemies.length >= 4 || alliesAlreadyDefending >= 3) {
+    // But not when hopeless — don't force bots into a fight they can't win.
+    if ((lEnemies.length >= 4 || alliesAlreadyDefending >= 3) && !hopelessFight) {
         nDefendDesire = math.max(nDefendDesire, MAX_DESIRE_CAP);
     }
 
@@ -1118,6 +1190,35 @@ export function GetDefendDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
         nDefendDesire = math.min(nDefendDesire, 0.55);
     }
 
+    // Bot already on-site with enemies in fight range — halve defend so attack mode (0.6) wins.
+    if (distToHub < 900 && !panic.active) {
+        const nearbyEnemies = Fu.GetLastSeenEnemiesNearLoc(bot.GetLocation(), 1200);
+        if (nearbyEnemies.length > 0) {
+            nDefendDesire = nDefendDesire * 0.5;
+        }
+    }
+
+    // Non-threatened lane during base threat: halve desire so threatened lane wins
+    if ((bot as any)._defendDesireHalved) {
+        nDefendDesire = nDefendDesire * 0.5;
+        (bot as any)._defendDesireHalved = false;
+    }
+
+    // if this bot is the closest
+    // to this lane, ensure SOME defend desire so a responder always exists.
+    // Only lifts very-low desires up to VERYLOW (0.05) — not an override, a nudge.
+    {
+        const dTop = GetUnitToLocationDistance(bot, locationState.laneFronts[Lane.Top]);
+        const dMid = GetUnitToLocationDistance(bot, locationState.laneFronts[Lane.Mid]);
+        const dBot2 = GetUnitToLocationDistance(bot, locationState.laneFronts[Lane.Bot]);
+        let closestLane: Lane = Lane.Mid;
+        if (dTop < dMid && dTop < dBot2) closestLane = Lane.Top;
+        else if (dBot2 < dMid && dBot2 < dTop) closestLane = Lane.Bot;
+        if (closestLane === lane && nDefendDesire > 0 && nDefendDesire < 0.35) {
+            nDefendDesire = math.max(0.05, nDefendDesire);
+        }
+    }
+
     // Final clamp: defend must never exceed MAX_DESIRE_CAP
     return math.min(math.max(nDefendDesire, 0), MAX_DESIRE_CAP) as BotModeDesire;
 }
@@ -1132,8 +1233,11 @@ export function DefendThink(bot: Unit, lane: Lane) {
     const safeRally = Fu.AdjustLocationWithOffsetTowardsFountain(ds.defendLoc, 300);
 
     // --- TP to defend location (shared helper handles safety/coordination) ---
-    // During laning phase: only TP to defend assigned lane, not cross-map
-    const bCanTPDefend = !Fu.IsInLaningPhase() || bot.GetAssignedLane() === lane;
+    // During laning phase: only TP to defend expected lane, not cross-map.
+    // Use Fu.GetExpectedLane (position-based online) because Valve's dynamic
+    // balancer can flip bot.GetAssignedLane() mid-game, previously causing
+    // e.g. a Dire pos1 top-laner to TP to bot lane on defend_tower_bot.
+    const bCanTPDefend = !Fu.IsInLaningPhase() || Fu.GetExpectedLane(bot) === lane;
     if (bCanTPDefend && !(bot as any)._roshDipActive && ConsiderTPToTarget(bot, ds.defendLoc, true)) {
         return;
     }
@@ -1274,26 +1378,35 @@ export function DefendThink(bot: Unit, lane: Lane) {
         return;
     }
 
-    // --- Engagement logic (simplified — let Valve handle combat) ---
+    // --- Engagement logic  ---
     const enemiesAtHub = Fu.GetEnemiesNearLoc(hub, SEARCH_RANGE_DEFAULT);
     const enemyCountHere = enemiesAtHub.length;
     const botDistToHub = GetUnitToLocationDistance(bot, hub);
+    const alliesAtHub = Fu.GetAlliesNearLoc(hub, SEARCH_RANGE_DEFAULT);
 
-    // If enemies are present: attack the nearest one directly.
-    // Don't try to coordinate formation — Valve's attack mode handles positioning.
     if (enemyCountHere >= 1) {
-        if (Fu.IsValidHero(enemiesAtHub[0]) && Fu.IsInRange(bot, enemiesAtHub[0], nSearchRange)) {
-            bot.Action_AttackUnit(enemiesAtHub[0], true);
+        const ancientUnit = GetAncient(nTeam);
+        const ancientDying = ancientUnit && Fu.CanBeAttacked(ancientUnit) && Fu.GetHP(ancientUnit) < 0.5;
+
+        if (alliesAtHub.length >= enemyCountHere || ancientDying || Fu.WeAreStronger(bot, 2500)) {
+            // We have numbers (or ancient dying) — engage
+            if (Fu.IsValidHero(enemiesAtHub[0]) && Fu.IsInRange(bot, enemiesAtHub[0], nSearchRange)) {
+                bot.Action_AttackUnit(enemiesAtHub[0], true);
+                return;
+            }
+            const nEnemyHeroes = bot.GetNearbyHeroes(SEARCH_RANGE_DEFAULT, true, BotMode.None);
+            if (Fu.IsValidHero(nEnemyHeroes[0]) && Fu.IsInRange(bot, nEnemyHeroes[0], nSearchRange)) {
+                bot.Action_AttackUnit(nEnemyHeroes[0], true);
+                return;
+            }
+            bot.Action_MoveToLocation(add(hub, Fu.RandomForwardVector(200)));
+            return;
+        } else {
+            // Outnumbered — position behind building toward fountain, don't fight
+            const saferPos = Fu.AdjustLocationWithOffsetTowardsFountain(hub, 400);
+            bot.Action_MoveToLocation(add(saferPos, Fu.RandomForwardVector(100)));
             return;
         }
-        const nEnemyHeroes = bot.GetNearbyHeroes(SEARCH_RANGE_DEFAULT, true, BotMode.None);
-        if (Fu.IsValidHero(nEnemyHeroes[0]) && Fu.IsInRange(bot, nEnemyHeroes[0], nSearchRange)) {
-            bot.Action_AttackUnit(nEnemyHeroes[0], true);
-            return;
-        }
-        // Enemies detected but not in range — move toward hub to engage
-        bot.Action_MoveToLocation(add(hub, Fu.RandomForwardVector(200)));
-        return;
     }
 
     // NO ENEMIES: clear creeps or patrol at gather position

@@ -483,7 +483,7 @@ function Fu.ConsiderForMkbDisassembleMask( bot )
 				and ( ( reaver >= 0 and reaver <= 8 ) or ( claymore >= 0 and claymore <= 8 ) )
 				and ( bot:GetGold() >= 1400 or bot:GetStashValue() >= 1400 or bot:GetCourierValue() >= 1400 )
 			then
-				if bDebugMode then print( bot:GetUnitName().." mask Dismantle1" ) end
+				if bDebugMode then log( "%s mask Dismantle1", bot:GetUnitName() ) end
 				bot.maskDismantleDone = true
 				bot:ActionImmediate_DisassembleItem( bot:GetItemInSlot( mask ) )
 				return
@@ -492,7 +492,7 @@ function Fu.ConsiderForMkbDisassembleMask( bot )
 			if mask >= 0 and mask <= 8
 				and claymore >= 0 and reaver >= 0
 			then
-				if bDebugMode then print( bot:GetUnitName().." mask Dismantle2" ) end
+				if bDebugMode then log( "%s mask Dismantle2", bot:GetUnitName() ) end
 				bot.maskDismantleDone = true
 				bot:ActionImmediate_DisassembleItem( bot:GetItemInSlot( mask ) )
 				return
@@ -507,7 +507,7 @@ function Fu.ConsiderForMkbDisassembleMask( bot )
 		if lifesteal >= 0
 			and not bot.lifestealUnlockDone
 		then
-			if bDebugMode then print( bot:GetUnitName().." lifestealUnlockDone" ) end
+			if bDebugMode then log( "%s lifestealUnlockDone", bot:GetUnitName() ) end
 			bot.lifestealUnlockDone = true
 			bot:ActionImmediate_SetItemCombineLock( bot:GetItemInSlot( lifesteal ), false )
 			return
@@ -517,7 +517,7 @@ function Fu.ConsiderForMkbDisassembleMask( bot )
 
 		if satanic >= 0 and staff >= 0 and not bot.staffUnlockDone
 		then
-			if bDebugMode then print( bot:GetUnitName().." staffUnlockDone" ) end
+			if bDebugMode then log( "%s staffUnlockDone", bot:GetUnitName() ) end
 			bot.staffUnlockDone = true
 			bot:ActionImmediate_SetItemCombineLock( bot:GetItemInSlot( staff ), false )
 			return

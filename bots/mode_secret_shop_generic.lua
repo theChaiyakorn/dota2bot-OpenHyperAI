@@ -3,7 +3,7 @@ local botName = bot:GetUnitName();
 if bot == nil or bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() or not string.find(botName, "hero") or bot:IsIllusion() then return end
 
 local Fu = require(GetScriptDirectory()..'/FuncLib/func_utils')
-local Customize = require(GetScriptDirectory()..'/Customize/general')
+local Customize = require(GetScriptDirectory()..'/FuncLib/systems/custom_loader')
 Customize.ThinkLess = Customize.Enable and Customize.ThinkLess or 1
 
 local botTeam = bot:GetTeam()
@@ -27,6 +27,12 @@ function GetDesireHelper()
 
 	-- 如果在打高地 就别撤退去干别的
 	if Fu.Utils.IsTeamPushingSecondTierOrHighGround(bot) then
+		return BOT_MODE_DESIRE_NONE
+	end
+	-- Enemies pushing our HG or at ancient: don't leave base to shop
+	local ancient = GetAncient(GetTeam())
+	if Fu.Utils.CountEnemyHeroesOnHighGround(GetTeam()) >= 2
+		or (ancient and Fu.Utils.CountEnemyHeroesNear(ancient:GetLocation(), 2500) >= 1) then
 		return BOT_MODE_DESIRE_NONE
 	end
 

@@ -180,6 +180,8 @@ local talent7Damage = 0
 local abilityWFirstType = nil
 
 
+local nLV, nKeepMana, nMP, nHP, hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 	if abilityWFirstType == nil

@@ -83,7 +83,7 @@ export function PickCaptain() {
         if (GetCMCaptain() === -1) {
             const CaptBot = GetFirstBot();
             if (CaptBot !== null && CaptBot !== undefined) {
-                print("CAPTAIN PID : " + CaptBot);
+                log("CAPTAIN PID : %s", CaptBot);
                 SetCMCaptain(CaptBot);
             }
         }
@@ -120,7 +120,7 @@ function BansHero() {
         return;
     }
     const BannedHero = RandomHero();
-    print(BannedHero + " is banned");
+    log("%s is banned", BannedHero);
     CMBanHero(BannedHero);
     BanCycle = BanCycle + 1;
 }
@@ -160,7 +160,7 @@ function PicksHero() {
         PairsHeroNameNRole[sTeamName][PickedHero] = "carry";
     }
 
-    print(PickedHero + " is picked");
+    log("%s is picked", PickedHero);
     CMPickHero(PickedHero);
     PickCycle = PickCycle + 1;
 }
@@ -231,7 +231,7 @@ function SelectsHero() {
             const hero_name = GetSelectedHeroName(id);
             if (hero_name !== null && hero_name !== "") {
                 UpdateSelectedHeroes(hero_name);
-                print(hero_name + " Removed");
+                log("%s Removed", hero_name);
             } else {
                 RestBotPlayers.push(id);
             }

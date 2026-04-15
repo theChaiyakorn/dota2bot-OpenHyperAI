@@ -44,9 +44,9 @@ export class Request {
         const req = CreateRemoteHTTPRequest(url);
         req.SetHTTPRequestRawPostBody("application/json", reqData);
         req.Send((result: any) => {
-            print(`Raw ${url} Result: ${result}`);
+            log("Raw %s Result: %s", url, result);
             let resultData: ResultData = JSON.decode(result);
-            print(`Jsonified result: ${resultData}`);
+            log("Jsonified result: %s", resultData);
             if (callback) {
                 callback(result);
             }
@@ -58,9 +58,9 @@ export class Request {
         const req = CreateRemoteHTTPRequest(url);
         // req.SetHTTPRequestGetOrPostParameter("", "")
         req.Send((result: any) => {
-            print(`Raw ${url} Result: ${result}`);
+            log("Raw %s Result: %s", url, result);
             // let resultData: ResultData = JSON.decode(result);
-            // print(`Jsonified result: ${resultData}`)
+            // log(`Jsonified result: ${resultData}`)
             if (callback) {
                 callback(result);
             }

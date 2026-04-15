@@ -900,22 +900,22 @@ function ____exports.PrintTable(tbl, indent)
         indent = 0
     end
     if tbl == nil then
-        print("nil")
+        log("nil")
         return
     end
     for ____, ____value in ipairs(__TS__ObjectEntries(tbl)) do
         local key = ____value[1]
         local value = ____value[2]
-        local prefix = (string.rep("  ", indent) .. tostring(key)) .. ": "
+        local indentStr = string.rep("  ", indent)
         if type(value) == "table" then
             if indent < 3 then
-                print(prefix)
+                log("%s%s: ", indentStr, key)
                 ____exports.PrintTable(value, indent + 1)
             else
-                print(prefix .. "[WARN] Table has deep nested tables in it, stop printing more nested tables.")
+                log("%s%s: [WARN] Table has deep nested tables in it, stop printing more nested tables.", indentStr, key)
             end
         else
-            print(prefix .. tostring(value))
+            log("%s%s: %s", indentStr, key, value)
         end
     end
 end
@@ -926,7 +926,12 @@ function ____exports.PrintUnitModifiers(unit)
         while i < modifierCount do
             local modifierName = unit:GetModifierName(i)
             local stackCount = unit:GetModifierStackCount(i)
-            print((((("Unit " .. unit:GetUnitName()) .. " has modifier ") .. modifierName) .. " with stack count ") .. tostring(stackCount))
+            log(
+                "Unit %s has modifier %s with stack count %s",
+                unit:GetUnitName(),
+                modifierName,
+                stackCount
+            )
             i = i + 1
         end
     end
@@ -954,13 +959,24 @@ function ____exports.PrintPings(pingTimeGap)
                     if ping.time ~= 0 and GameTime() - ping.time < pingTimeGap then
                         listPings[#listPings + 1] = ping
                         local loc = ping.location
-                        print((((((((((("[PING] Player " .. tostring(i)) .. " pinged at (") .. tostring(math.floor(loc.x))) .. ", ") .. tostring(math.floor(loc.y))) .. ", ") .. tostring(math.floor(loc.z))) .. ") normal=") .. tostring(ping.normal_ping)) .. " time=") .. string.format("%.1f", ping.time))
+                        log(
+                            "[PING] Player %d pinged at (%d, %d, %d) normal=%s time=%.1f",
+                            i,
+                            math.floor(loc.x),
+                            math.floor(loc.y),
+                            math.floor(loc.z),
+                            tostring(ping.normal_ping),
+                            ping.time
+                        )
                         for ____, unit in ipairs(GetUnitList(UnitType.All)) do
                             if ____exports.GetLocationToLocationDistance(
                                 ping.location,
                                 unit:GetLocation()
                             ) < 400 then
-                                print("  nearby: " .. unit:GetUnitName())
+                                log(
+                                    "  nearby: %s",
+                                    unit:GetUnitName()
+                                )
                             end
                         end
                     end
@@ -978,13 +994,20 @@ function ____exports.PrintPings(pingTimeGap)
     end
 end
 function ____exports.PrintAllAbilities(unit)
-    print("Get all abilities of bot " .. unit:GetUnitName())
+    log(
+        "Get all abilities of bot %s",
+        unit:GetUnitName()
+    )
     for index = 0, 10 do
         local ability = unit:GetAbilityInSlot(index)
         if ability and not ability:IsNull() then
-            print((("Ability At Index " .. tostring(index)) .. ": ") .. ability:GetName())
+            log(
+                "Ability At Index %d: %s",
+                index,
+                ability:GetName()
+            )
         else
-            print(("Ability At Index " .. tostring(index)) .. " is nil")
+            log("Ability At Index %d is nil", index)
         end
     end
 end
@@ -1083,7 +1106,10 @@ function ____exports.IsPingedByAnyPlayer(bot, pingTimeGap, minDistance, maxDista
         local withinRange = minDistance <= distanceToBot and distanceToBot <= maxDistance
         local withinTimeRange = GameTime() - ping.time < pingTimeGap
         if withinRange and withinTimeRange then
-            print(("Bot " .. bot:GetUnitName()) .. " noticed the ping")
+            log(
+                "Bot %s noticed the ping",
+                bot:GetUnitName()
+            )
             return ping
         end
     end
@@ -1154,6 +1180,10 @@ function ____exports.CountEnemyHeroesOnHighGround(team)
         if ____exports.IsValidBuilding(bb) then
             anchors[#anchors + 1] = bb
         end
+    end
+    local anc = GetAncient(team)
+    if ____exports.IsValidBuilding(anc) then
+        anchors[#anchors + 1] = anc
     end
     local maxSeen = 0
     for ____, a in ipairs(anchors) do
@@ -1437,13 +1467,13 @@ function ____exports.DetermineEnemyBotRole(bot)
     local botName = bot:GetUnitName()
     local estimatedRole = ____exports.EstimatedEnemyRoles[botName]
     if estimatedRole == nil then
-        print(("Enemy bot " .. botName) .. " role not cached yet.")
+        log("Enemy bot %s role not cached yet.", botName)
         return 3
     end
     return estimatedRole.role
 end
 function ____exports.QueryCounters(heroId)
-    print("heroId=" .. tostring(heroId))
+    log("heroId=%s", heroId)
     Request:RawGetRequest(
         ("https://api.opendota.com/api/heroes/" .. tostring(heroId)) .. "/matchups",
         function(res)
@@ -1453,7 +1483,7 @@ function ____exports.QueryCounters(heroId)
 end
 function ____exports.InitiStats()
     Request:GetUUID(function(uuid)
-        print("uuid=" .. uuid)
+        log("uuid=%s", uuid)
     end)
 end
 function ____exports.GetLoneDruid(bot)
@@ -1784,7 +1814,7 @@ function ____exports.CountMissingEnemyHeroes()
     local count = 0
     for ____, playerdId in ipairs(GetTeamPlayers(GetOpposingTeam())) do
         do
-            local __continue267
+            local __continue268
             repeat
                 if IsHeroAlive(playerdId) then
                     local lastSeenInfo = GetHeroLastSeenInfo(playerdId)
@@ -1792,14 +1822,14 @@ function ____exports.CountMissingEnemyHeroes()
                         local firstInfo = lastSeenInfo[1]
                         if firstInfo.time_since_seen >= 2.5 then
                             count = count + 1
-                            __continue267 = true
+                            __continue268 = true
                             break
                         end
                     end
                 end
-                __continue267 = true
+                __continue268 = true
             until true
-            if not __continue267 then
+            if not __continue268 then
                 break
             end
         end
@@ -1814,7 +1844,7 @@ end
 -- @returns The ally if found, null otherwise.
 function ____exports.FindAllyWithAtLeastDistanceAway(bot, nDistance)
     if bot:GetTeam() ~= GetTeam() then
-        print("[ERROR] Wrong usage of the method")
+        log("[ERROR] Wrong usage of the method")
         return nil
     end
     for ____, playerId in ipairs(GetTeamPlayers(GetTeam())) do
@@ -1856,27 +1886,27 @@ local blinkBuffer = 1200
 function ____exports.IsAnySpecialAOEThreatNearby(bot, nRadius)
     for ____, enemy in ipairs(GetUnitList(UnitType.EnemyHeroes)) do
         do
-            local __continue296
+            local __continue297
             repeat
                 if not ____exports.IsValidHero(enemy) then
-                    __continue296 = true
+                    __continue297 = true
                     break
                 end
                 local enemyName = enemy:GetUnitName()
                 if not (SpecialAOEHeroesDetails[enemyName] ~= nil) then
-                    __continue296 = true
+                    __continue297 = true
                     break
                 end
                 if GetUnitToUnitDistance(bot, enemy) > nRadius + blinkBuffer then
-                    __continue296 = true
+                    __continue297 = true
                     break
                 end
                 if DoesHeroMeetThreatConditions(enemy, SpecialAOEHeroesDetails[enemyName]) then
                     return true
                 end
-                __continue296 = true
+                __continue297 = true
             until true
-            if not __continue296 then
+            if not __continue297 then
                 break
             end
         end
@@ -2110,13 +2140,13 @@ function ____exports.ConsiderTPToTarget(bot, targetLoc, isDefend)
             math.sqrt(dx * dx + dy * dy)
         )
         local tpLoc = Vector(bldLoc.x + dx / len * 200, bldLoc.y + dy / len * 200, 0)
-        print(string.format(
+        log(
             "[TP] %s t=%.0f DEFEND tp to building at (%.0f,%.0f)",
             bot:GetUnitName(),
             DotaTime(),
             tpLoc.x,
             tpLoc.y
-        ))
+        )
         bot:Action_UseAbilityOnLocation(tp, tpLoc)
         return true
     end

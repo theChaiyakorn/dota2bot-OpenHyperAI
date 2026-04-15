@@ -1,6 +1,6 @@
 import * as Fu from "bots/FuncLib/func_utils";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-import Customize = require("bots/Customize/general");
+import Customize = require("bots/FuncLib/systems/custom_loader");
 import { Barracks, BotMode, BotModeDesire, DamageType, Lane, Team, Tower, Unit, UnitType, Vector } from "bots/ts_libs/dota";
 import { IsValidUnit, GetLocationToLocationDistance, RadiantFountainTpPoint, DireFountainTpPoint } from "./utils";
 import { getGlobalGameState, getGlobalLocationState, getCachedAlliesNearLoc, getCachedEnemiesNearLoc, autoCleanupCache } from "./cache";
@@ -309,6 +309,8 @@ export function GetPushDesire(bot: Unit, lane: Lane): BotModeDesire {
 export function GetPushDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     if ((bot as any).laneToPush == null) (bot as any).laneToPush = lane;
 
+    nMaxDesire = 0.525; // reset per call — was only ever lowered, never restored
+
     autoCleanupCache();
     const gameState = getGlobalGameState();
     const locationState = getGlobalLocationState();
@@ -329,10 +331,13 @@ export function GetPushDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     if (_pushCacheEnemiesAtAncient >= 1) return BotModeDesire.None;
     if (_pushCacheLaneBlocked[lane]) return BotModeDesire.None;
 
-    // All team members must be level 6+
-    for (let i = 1; i <= 5; i++) {
-        const member = GetTeamMember(i);
-        if (member !== null && member.GetLevel() < 6) return BotModeDesire.None;
+    // During laning phase, all team members must be level 6+ to push.
+    // After laning, only require the pushing bot itself to be 6+ (checked above).
+    if (gameState.isLaningPhase) {
+        for (let i = 1; i <= 5; i++) {
+            const member = GetTeamMember(i);
+            if (member !== null && member.GetLevel() < 6) return BotModeDesire.None;
+        }
     }
 
     // Don't push alone into enemies
@@ -388,6 +393,16 @@ export function GetPushDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
         const [isPinged, pingedLane] = Fu.IsPingCloseToValidTower(GetOpposingTeam(), humanPing, 700, 5.0);
         if (isPinged && lane === pingedLane && GameTime() < humanPing.time + pingTimeDelta) {
             return 0.6 as BotModeDesire; // human pinged, push this lane
+        }
+    }
+
+    // Fountain rally floor bot healthy in fountain AND team
+    // has enough bodies+cores to sally → force VERYHIGH to commit to the push-out.
+    const ourAncient = gameState.ourAncient;
+    if (Fu.IsValidBuilding(ourAncient) && IsHealthyInsideFountain(bot)) {
+        const enemiesAroundAncient = Fu.GetEnemiesNearLoc(ourAncient!.GetLocation(), 1000);
+        if (gameState.aliveAllyCount >= enemiesAroundAncient.length && gameState.aliveAllyCoreCount >= gameState.aliveEnemyCoreCount) {
+            return 0.6 as BotModeDesire;
         }
     }
 
@@ -525,6 +540,7 @@ export function GetPushDesireHelper(bot: Unit, lane: Lane): BotModeDesire {
     if (!gameState.isEarlyGame) {
         if (gameState.hasAegis && aAliveCount >= 4) {
             nPushDesire += 0.25;
+            nMaxDesire = math.max(nMaxDesire, 0.6);
         }
         if (aAliveCount >= eAliveCount && gameState.averageLevel >= 12) {
             const networthAdvantage = gameState.teamNetworth - gameState.enemyNetworth;
@@ -836,7 +852,7 @@ function _getNearestFriendlyTowerForPush(team: Team, lane: Lane): Unit | null {
 }
 
 export function WhichLaneToPush(_bot: Unit, _lane: Lane): Lane {
-    //   print("WhichLaneToPush for: ", bot.GetUnitName(), lane);
+    //   log("WhichLaneToPush for: ", bot.GetUnitName(), lane);
 
     // Update location cache
     const locationState = updateLocationStateCache();
@@ -851,13 +867,27 @@ export function WhichLaneToPush(_bot: Unit, _lane: Lane): Lane {
     const vMid = locationState.laneFronts[Lane.Mid];
     const vBot = locationState.laneFronts[Lane.Bot];
 
-    // Prefer lanes closer to humans/cores; de-prioritize supports' solo pushes
+    // Furthest alive enemy building on each lane — drives commitment geometry.
+    // After we take enemy T3, this switches to rax → T4 → ancient (all tightly
+    // clustered), keeping the lane "close" to bots who just broke HG so they
+    // stay committed instead of walking to another lane's outer tower.
+    const topBuilding = GetNextEnemyBuildingOnLane(Lane.Top);
+    const midBuilding = GetNextEnemyBuildingOnLane(Lane.Mid);
+    const botBuilding = GetNextEnemyBuildingOnLane(Lane.Bot);
+
+    // Prefer lanes closer to humans/cores; de-prioritize supports' solo pushes.
+    // Dual-distance 60% lane-front + 40%
+    // furthest-building. Side lanes get a 0.9 nudge to avoid mid-lane overuse.
     const teamMembers = GetUnitList(UnitType.AlliedHeroes);
     for (const member of teamMembers) {
         if (Fu.IsValidHero(member)) {
-            let topDist = GetUnitToLocationDistance(member, vTop);
-            let midDist = GetUnitToLocationDistance(member, vMid);
-            let botDist = GetUnitToLocationDistance(member, vBot);
+            let topDist = GetUnitToLocationDistance(member, vTop) * 0.9 * 0.6;
+            let midDist = GetUnitToLocationDistance(member, vMid) * 0.6;
+            let botDist = GetUnitToLocationDistance(member, vBot) * 0.9 * 0.6;
+
+            if (topBuilding !== null) topDist += GetUnitToUnitDistance(member, topBuilding) * 0.9 * 0.4;
+            if (midBuilding !== null) midDist += GetUnitToUnitDistance(member, midBuilding) * 0.4;
+            if (botBuilding !== null) botDist += GetUnitToUnitDistance(member, botBuilding) * 0.9 * 0.4;
 
             if (Fu.IsCore(member) && member && !member.IsBot()) {
                 topDist *= 0.2;
@@ -1308,7 +1338,7 @@ export function PushThink(bot: Unit, lane: Lane): void {
  * High-ground cross-lane clearing
  * ---------------------------------------------------------------------------*/
 export function TryClearingOtherLaneHighGround(_bot: Unit, vLocation: Vector): Unit | null {
-    //   print("TryClearingOtherLaneHighGround for: ", bot.GetUnitName(), vLocation);
+    //   log("TryClearingOtherLaneHighGround for: ", bot.GetUnitName(), vLocation);
 
     const gameState = updateGameStateCache();
     const unitState = updateUnitStateCache();

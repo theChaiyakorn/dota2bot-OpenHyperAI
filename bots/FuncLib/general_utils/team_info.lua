@@ -187,6 +187,7 @@ end
 
 function Fu.GetAlliesNearLoc( vLoc, nRadius )
 	local allies = {}
+	if vLoc == nil then return allies end
 
 	for i = 1, #GetTeamPlayers( GetTeam() )
 	do
@@ -205,6 +206,7 @@ end
 
 function Fu.GetEnemiesNearLoc(vLoc, nRadius)
 	local enemies = {}
+	if vLoc == nil then return enemies end
 	-- Use pre-filtered list (illusions/clones already removed, cached per frame)
 	for _, enemyHero in pairs(Fu.GetRealEnemyHeroes())
 	do

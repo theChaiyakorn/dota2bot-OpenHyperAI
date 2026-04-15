@@ -32,6 +32,33 @@ function Fu.GetPosition(bot)
 	return role
 end
 
+-- Stable lane derivation that matches mode_laning_generic.
+-- LAN: trust engine GetAssignedLane (sandbox !pos swaps propagate there).
+-- Online: position-based (Valve's dynamic balancer can flip GetAssignedLane
+-- mid-game, causing defend/push to TP bots to the wrong lane during laning).
+function Fu.GetExpectedLane(bot)
+	if IsLanMode and IsLanMode() then
+		local assigned = bot:GetAssignedLane()
+		if assigned == LANE_TOP or assigned == LANE_MID or assigned == LANE_BOT then
+			return assigned
+		end
+	end
+	local pos = Fu.GetPosition(bot)
+	local team = bot:GetTeam()
+	if team == TEAM_RADIANT then
+		if pos == 2 then return LANE_MID
+		elseif pos == 1 or pos == 5 then return LANE_BOT
+		elseif pos == 3 or pos == 4 then return LANE_TOP
+		end
+	else
+		if pos == 2 then return LANE_MID
+		elseif pos == 1 or pos == 5 then return LANE_TOP
+		elseif pos == 3 or pos == 4 then return LANE_BOT
+		end
+	end
+	return bot:GetAssignedLane() or LANE_MID
+end
+
 function Fu.IsNotSelf(bot, ally)
 	if bot:GetUnitName() ~= ally:GetUnitName()
 	then

@@ -39,6 +39,7 @@ export interface Unit {
     // Seems to be internal to bot script?
     frameProcessTime: number | null;
     assignedRole: number | null;
+    lastAssignedLane: Lane | null;
     DefendLaneDesire: number[] | null;
     laneToDefend: Lane;
     stateTetheredHero: Unit | null;

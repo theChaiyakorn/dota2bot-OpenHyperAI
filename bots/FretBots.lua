@@ -1,5 +1,8 @@
+-- Install global `log(fmt, ...)` for this (FretBots) sandbox. Must be required
+-- before any log(...) call. IsDebug is set in bots/FretBots/Debug.lua.
+require('bots/FuncLib/systems/log')
 if not GameRules or GameRules:State_Get() < DOTA_GAMERULES_STATE_HERO_SELECTION then
-	print('Start a lobby game and try to enable Fretbots after entering the Hero Selection phase.')
+	log('Start a lobby game and try to enable Fretbots after entering the Hero Selection phase.')
 	return
 end
 -- LinkLuaModifier("modifier_fret_damage_increase", "FretBots/modifiers/modifier_seasonal_party_hat.lua", LUA_MODIFIER_MOTION_NONE)
@@ -7,7 +10,7 @@ if GetScriptDirectory == nil then GetScriptDirectory = function() return "bots" 
 -- Version information
 local Version = require 'bots.FuncLib.systems.version'
 -- Print version to console
-print('Open Hyper AI (OHA). Starting Fretbots mode: ' .. Version.number)
+log('Open Hyper AI (OHA). Starting Fretbots mode: %s', Version.number)
 -- Dependencies
 -- global debug flag
 require 'bots.FretBots.Debug'
@@ -83,8 +86,8 @@ function FretBots:PlayersLoadedTimer()
 			if ok then
 				isDataTablesInitialized = true
 			else
-				print('[FretBots] DataTables:Initialize FAILED: '..tostring(err))
-				print('[FretBots] Retrying next tick...')
+				log('[FretBots] DataTables:Initialize FAILED: %s', err)
+				log('[FretBots] Retrying next tick...')
 				return 1
 			end
 		end
@@ -181,5 +184,5 @@ if not Flags.isFretBotsInitialized then
 	Utilities:RegsiterGameStateListener(FretBots, 'Initialize', DOTA_GAMERULES_STATE_PRE_GAME )
 	Flags.isFretBotsInitialized = true
 else
-	print("Fretbots mode has already been enabled for this game.")
+	log("Fretbots mode has already been enabled for this game.")
 end

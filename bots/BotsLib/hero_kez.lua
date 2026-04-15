@@ -180,6 +180,8 @@ local bGoingOnSomeone
 local bRetreating
 local bAttacking
 local nBotHP
+local nLV, nMP, nHP, hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 	bGoingOnSomeone = Fu.IsGoingOnSomeone(bot)

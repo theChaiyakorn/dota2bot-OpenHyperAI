@@ -125,6 +125,8 @@ local castMDesire
 local castWMDesire, castWMLocation
 
 
+local nLV, nKeepMana, nMP, nHP, hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 	Fu.ConsiderForMkbDisassembleMask( bot )

@@ -11,7 +11,7 @@ local Fu = require( GetScriptDirectory()..'/FuncLib/func_utils' )
 local Utils = require( GetScriptDirectory()..'/FuncLib/systems/utils' )
 local BotBuild = dofile( GetScriptDirectory().."/BotsLib/"..string.gsub( botName, "npc_dota_", "" ) )
 local Localization = require( GetScriptDirectory()..'/FuncLib/systems/localization' )
-local Customize = require(GetScriptDirectory()..'/Customize/general')
+local Customize = require(GetScriptDirectory()..'/FuncLib/systems/custom_loader')
 Customize.ThinkLess = Customize.Enable and Customize.ThinkLess or 1
 local okDispel, Dispel = pcall(require, GetScriptDirectory()..'/FuncLib/systems/dispel')
 if not okDispel then Dispel = nil end
@@ -19,7 +19,7 @@ if GAMEMODE_TURBO == nil then GAMEMODE_TURBO = 23 end
 if GAMEMODE_ARDM == nil then GAMEMODE_ARDM = 20 end
 
 if BotBuild == nil then
-	log('[ERROR] BotBuild is nil for '..tostring(botName)..' - hero file failed to load. No items/abilities.')
+	log('[ERROR] BotBuild is nil for %s - hero file failed to load. No items/abilities.', botName)
 	return
 end
 
@@ -51,7 +51,7 @@ local tHiddenAbilitySwapMap = {
 -- Reload BotBuild for the current hero+role (shared by ARDM swap and !pos swap)
 local function ReloadBotBuild(reason)
 	local heroFile = string.gsub(botName, "npc_dota_", "")
-	log("[Reload] "..reason.." for "..botName..", loading BotsLib/"..heroFile)
+	log("[Reload] %s for %s, loading BotsLib/%s", reason, botName, heroFile)
 	local ok, newBuild = pcall(dofile, GetScriptDirectory().."/BotsLib/"..heroFile)
 	if ok and newBuild ~= nil then
 		BotBuild = newBuild
@@ -80,10 +80,10 @@ local function ReloadBotBuild(reason)
 				sAbilityLevelUpList = Fu.Utils.CombineTablesUnique(
 					Fu.Skill.GetTalentList(bot), Fu.Skill.GetAbilityList(bot))
 			end
-			log("[Reload] Skill list: "..#sAbilityLevelUpList.." entries remaining (spent "..nPointsSpent.." points)")
+			log("[Reload] Skill list: %s entries remaining (spent %s points)", #sAbilityLevelUpList, nPointsSpent)
 		end
 	else
-		log("[Reload] dofile FAILED for "..heroFile..": "..tostring(newBuild))
+		log("[Reload] dofile FAILED for %s: %s", heroFile, newBuild)
 	end
 end
 
@@ -92,13 +92,13 @@ end
 local function RefreshBotHandle()
 	local isStale, freshBot, freshName = Fu.IsStaleARDMHero(bot, botName)
 	if isStale then
-		log("[ARDM] Stale ability script: this="..botName..", current="..freshName)
+		log("[ARDM] Stale ability script: this=%s, current=%s", botName, freshName)
 		return true
 	end
 
 	-- Update handle/name if changed (hero swapped in place)
 	if freshName ~= botName then
-		log("[ARDM] Hero swap detected: "..botName.." -> "..freshName)
+		log("[ARDM] Hero swap detected: %s -> %s", botName, freshName)
 		bot = freshBot
 		botName = freshName
 		bNeedARDMReload = true
@@ -110,34 +110,34 @@ local function RefreshBotHandle()
 	if bNeedARDMReload and bot:IsAlive() then
 		bNeedARDMReload = false
 		local heroFile = string.gsub(botName, "npc_dota_", "")
-		log("[ARDM] Loading BotsLib/"..heroFile..".lua for "..botName)
+		log("[ARDM] Loading BotsLib/%s.lua for %s", heroFile, botName)
 		local ok, newBuild = pcall(dofile, GetScriptDirectory().."/BotsLib/"..heroFile)
 		if not ok then
-			log("[ARDM] dofile FAILED for "..heroFile..": "..tostring(newBuild))
+			log("[ARDM] dofile FAILED for %s: %s", heroFile, newBuild)
 		end
 		if ok and newBuild ~= nil and newBuild['sSkillList'] ~= nil and #newBuild['sSkillList'] > 0 then
 			BotBuild = newBuild
 			bDeafaultAbilityHero = BotBuild['bDeafaultAbility']
 			bDeafaultItemHero = BotBuild['bDeafaultItem']
 			sAbilityLevelUpList = BotBuild['sSkillList']
-			log("[ARDM] Loaded BotsLib for "..botName.." with "..#sAbilityLevelUpList.." skill entries, first: "..tostring(sAbilityLevelUpList[1]))
+			log("[ARDM] Loaded BotsLib for %s with %s skill entries, first: %s", botName, #sAbilityLevelUpList, sAbilityLevelUpList[1])
 		else
 			local abilityList = Fu.Skill.GetAbilityList(bot)
 			local talentList = Fu.Skill.GetTalentList(bot)
-			log("[ARDM] BotsLib load failed or empty for "..botName..", abilities: "..#abilityList..", talents: "..#talentList)
+			log("[ARDM] BotsLib load failed or empty for %s, abilities: %s, talents: %s", botName, #abilityList, #talentList)
 			if #abilityList > 0 then
 				BotBuild = nil
 				bDeafaultAbilityHero = false
 				bDeafaultItemHero = false
 				sAbilityLevelUpList = Fu.Utils.CombineTablesUnique(talentList, abilityList)
-				log("[ARDM] Using generic build for "..botName.." with "..#sAbilityLevelUpList.." entries")
+				log("[ARDM] Using generic build for %s with %s entries", botName, #sAbilityLevelUpList)
 			else
-				log("[ARDM] Abilities not ready for "..botName..", retrying next frame")
+				log("[ARDM] Abilities not ready for %s, retrying next frame", botName)
 				bNeedARDMReload = true
 			end
 		end
 	elseif bNeedARDMReload and not bot:IsAlive() then
-		log("[ARDM] Waiting for "..botName.." to respawn")
+		log("[ARDM] Waiting for %s to respawn", botName)
 	end
 
 	return false
@@ -154,16 +154,35 @@ local function AbilityLevelUpComplement()
 		return
 	end
 
-	-- Detect position change from !pos command: reload BotBuild for new role
+	-- Single source of truth for "I will play position N" announcement:
+	-- on initial detection (bot's first pos) announce during PRE_GAME, and
+	-- on any subsequent change announce regardless of state. Previously
+	-- mode_laning_generic also had an announce block, which caused
+	-- double-announce races and missed late swaps; this path covers both
+	-- windows in one place.
 	local nCurrentPos = Fu.GetPosition(bot)
 	if nLastKnownPosition == nil then
 		nLastKnownPosition = nCurrentPos
+		if bot.isBear == nil
+		   and GetGameMode() ~= GAMEMODE_1V1MID
+		   and GetGameState() == GAME_STATE_PRE_GAME
+		   and bot.announcedRole ~= nCurrentPos then
+			pcall(function()
+				bot:ActionImmediate_Chat(Localization.Get('say_play_pos') .. tostring(nCurrentPos), false)
+				bot.announcedRole = nCurrentPos
+			end)
+		end
 	elseif nCurrentPos ~= nLastKnownPosition then
-		log("[PosSwap] "..botName.." position changed: pos"..nLastKnownPosition.." -> pos"..nCurrentPos)
+		log("[PosSwap] %s position changed: pos%s -> pos%s", botName, nLastKnownPosition, nCurrentPos)
 		nLastKnownPosition = nCurrentPos
 		ReloadBotBuild("Position swap to pos"..nCurrentPos)
-		-- Signal item purchase to also rebuild
 		bot.needPurchaseRebuild = true
+		if bot.isBear == nil and bot.announcedRole ~= nCurrentPos then
+			pcall(function()
+				bot:ActionImmediate_Chat(Localization.Get('say_play_pos') .. tostring(nCurrentPos), false)
+				bot.announcedRole = nCurrentPos
+			end)
+		end
 	end
 
 	if bot:GetLevel() >= 30
@@ -205,8 +224,13 @@ local function AbilityLevelUpComplement()
 	local botLevel = bot:GetLevel()
 
 	if GetGameMode() == GAMEMODE_ARDM and bot:GetAbilityPoints() > 0 then
-		log("[ARDM] "..botName.." Lv"..botLevel.." has "..bot:GetAbilityPoints().." ability points, skill list has "..#sAbilityLevelUpList.." entries"
-			..(#sAbilityLevelUpList > 0 and (", next: "..tostring(sAbilityLevelUpList[1])) or ""))
+		if #sAbilityLevelUpList > 0 then
+			log("[ARDM] %s Lv%s has %s ability points, skill list has %s entries, next: %s",
+				botName, botLevel, bot:GetAbilityPoints(), #sAbilityLevelUpList, sAbilityLevelUpList[1])
+		else
+			log("[ARDM] %s Lv%s has %s ability points, skill list has %s entries",
+				botName, botLevel, bot:GetAbilityPoints(), #sAbilityLevelUpList)
+		end
 	end
 
 	if #sAbilityLevelUpList >= 1
@@ -217,7 +241,7 @@ local function AbilityLevelUpComplement()
 
 		-- Skip nil entries in skill list (can happen with broken talent mappings)
 		if abilityName == nil then
-			log("[WARN] Nil entry in sAbilityLevelUpList for "..botName..", removing")
+			log("[WARN] Nil entry in sAbilityLevelUpList for %s, removing", botName)
 			table.remove(sAbilityLevelUpList, 1)
 			return
 		end
@@ -230,11 +254,11 @@ local function AbilityLevelUpComplement()
 			local abilityList = Fu.Skill.GetAbilityList(bot)
 			local talentList = Fu.Skill.GetTalentList(bot)
 			if #abilityList >= 3 then
-				log("[ARDM] Ability '"..abilityName.."' not found on "..botName..", rebuilding skill list (abilities: "..#abilityList..", talents: "..#talentList..")")
+				log("[ARDM] Ability '%s' not found on %s, rebuilding skill list (abilities: %s, talents: %s)", abilityName, botName, #abilityList, #talentList)
 				sAbilityLevelUpList = Fu.Utils.CombineTablesUnique(talentList, abilityList)
 				return -- retry with fresh list next frame
 			else
-				log("[ARDM] Abilities not ready for "..botName.." ("..#abilityList.."), waiting")
+				log("[ARDM] Abilities not ready for %s (%s), waiting", botName, #abilityList)
 				return
 			end
 		end
@@ -271,7 +295,7 @@ local function AbilityLevelUpComplement()
 
 		-- ARDM: ability doesn't exist on this hero — skip it
 		if abilityToLevelup == nil then
-			log("[ARDM] Ability "..abilityName.." not found on "..botName..", skipping")
+			log("[ARDM] Ability %s not found on %s, skipping", abilityName, botName)
 			table.remove( sAbilityLevelUpList, 1 )
 			return
 		end
@@ -285,20 +309,20 @@ local function AbilityLevelUpComplement()
 			table.remove( sAbilityLevelUpList, 1 )
 		elseif abilityName == 'generic_hidden' then
 			local nextAbility = sAbilityLevelUpList[2]
-			log("[WARN] Level up ability "..abilityName.." for "..botName.." does not make sense. try to upgrade the next ability: "..tostring(nextAbility))
+			log("[WARN] Level up ability %s for %s does not make sense. try to upgrade the next ability: %s", abilityName, botName, nextAbility)
 			table.remove( sAbilityLevelUpList, 1 )
 			if nextAbility then
 				bot:ActionImmediate_LevelAbility(nextAbility)
 			end
 		elseif not abilityToLevelup:IsHidden() and botLevel >= abilityToLevelup:GetHeroLevelRequiredToUpgrade() then
 			-- still try it
-			log("[WARN] Level up ability "..abilityName.." for "..botName.." may fail because it was called on ability that's not available or can't get upgraded anymore.")
+			log("[WARN] Level up ability %s for %s may fail because it was called on ability that's not available or can't get upgraded anymore.", abilityName, botName)
 			bot:ActionImmediate_LevelAbility(abilityName)
 			table.remove( sAbilityLevelUpList, 1 )
 		else
-			log("[WARN] Skipped to level up ability "..abilityName.." for "..botName.." for this time because it may fail.")
+			log("[WARN] Skipped to level up ability %s for %s for this time because it may fail.", abilityName, botName)
 			if botLevel > 25 then
-				log("[WARN] Ignore ability "..abilityName.." for "..botName.." because it may always fail.")
+				log("[WARN] Ignore ability %s for %s because it may always fail.", abilityName, botName)
 				table.remove( sAbilityLevelUpList, 1 )
 			end
 		end
@@ -310,14 +334,25 @@ local function AbilityLevelUpComplement()
 
 	-- ARDM fallback: if skill list is empty but we still have points, rebuild from current abilities
 	if GetGameMode() == GAMEMODE_ARDM and #sAbilityLevelUpList == 0 and bot:GetAbilityPoints() > 0 then
-		log("[ARDM] Skill list exhausted for "..botName.." at Lv"..botLevel.." with "..bot:GetAbilityPoints().." points, rebuilding")
+		log("[ARDM] Skill list exhausted for %s at Lv%s with %s points, rebuilding", botName, botLevel, bot:GetAbilityPoints())
 		sAbilityLevelUpList = Fu.Utils.CombineTablesUnique(Fu.Skill.GetTalentList(bot), Fu.Skill.GetAbilityList(bot))
 	end
 end
 
--- Map bot position/role to lane (same logic as GetLaningTPLocation)
--- More reliable than bot:GetAssignedLane() which Valve can reassign
+-- Map bot to its lane. Online (shared scope) sees !pos-updated
+-- RoleAssignment through Fu.GetPosition, so position-derived lane is both
+-- correct and stable (Valve's dynamic lane balancer, especially in turbo,
+-- can flip bot:GetAssignedLane() mid-game which would bounce our TP
+-- decisions). LAN per-bot sandboxes can't see RoleAssignment mutations, so
+-- there we trust the engine-assigned lane (the only signal that reflects
+-- the swap). IsLanMode() gates the distinction.
 function X.GetLaneByPosition(bot)
+	if IsLanMode and IsLanMode() then
+		local assigned = bot:GetAssignedLane()
+		if assigned == LANE_TOP or assigned == LANE_MID or assigned == LANE_BOT then
+			return assigned
+		end
+	end
 	local position = Fu.GetPosition(bot)
 	if GetTeam() == TEAM_RADIANT then
 		if position == 1 then return LANE_BOT
@@ -507,7 +542,7 @@ function X.SetReplyHumanTime( tChat )
 
 	if string.find(sChatString, "!sp") or string.find(sChatString, "!speak") then
 		local action, target = Fu.Utils.TrimString(sChatString):match("^(%S+)%s+(.*)$")
-		log("Set to speak: ".. target)
+		log("Set to speak: %s", target)
 		Fu.Customize.Localization = target
 		return
 	end
@@ -4910,27 +4945,37 @@ function X.GetLaningTPLocation( bot, nMinTPDistance, botLocation )
 
 	local laneToTP
 	local tp = false
-	local position = Fu.GetPosition(bot)
-
-	if team == TEAM_RADIANT then
-		if position == 1 then
-			laneToTP = LANE_BOT
-		elseif position == 2 then
-			laneToTP = LANE_MID
-		elseif position == 3 or position == 4 then
-			laneToTP = LANE_TOP
-		elseif position == 5 then
-			laneToTP = LANE_BOT
+	-- LAN: engine-assigned lane (reflects !pos swaps in sandbox where
+	-- RoleAssignment doesn't propagate). Online: position-derived lane
+	-- (stable; Valve's dynamic balancer flips GetAssignedLane in turbo).
+	if IsLanMode and IsLanMode() then
+		local assigned = bot:GetAssignedLane()
+		if assigned == LANE_TOP or assigned == LANE_MID or assigned == LANE_BOT then
+			laneToTP = assigned
 		end
-	elseif team == TEAM_DIRE then
-		if position == 1 then
-			laneToTP = LANE_TOP
-		elseif position == 2 then
-			laneToTP = LANE_MID
-		elseif position == 3 or position == 4 then
-			laneToTP = LANE_BOT
-		elseif position == 5 then
-			laneToTP = LANE_TOP
+	end
+	if laneToTP == nil then
+		local position = Fu.GetPosition(bot)
+		if team == TEAM_RADIANT then
+			if position == 1 then
+				laneToTP = LANE_BOT
+			elseif position == 2 then
+				laneToTP = LANE_MID
+			elseif position == 3 or position == 4 then
+				laneToTP = LANE_TOP
+			elseif position == 5 then
+				laneToTP = LANE_BOT
+			end
+		elseif team == TEAM_DIRE then
+			if position == 1 then
+				laneToTP = LANE_TOP
+			elseif position == 2 then
+				laneToTP = LANE_MID
+			elseif position == 3 or position == 4 then
+				laneToTP = LANE_BOT
+			elseif position == 5 then
+				laneToTP = LANE_TOP
+			end
 		end
 	end
 
@@ -4942,6 +4987,14 @@ function X.GetLaningTPLocation( bot, nMinTPDistance, botLocation )
 		tp = true
 	end
 
+	local _ln = {[LANE_TOP]='top',[LANE_MID]='mid',[LANE_BOT]='bot'}
+	if tp then
+		log('[TP-DIAG laning] %s pos=%s assigned=%s chose=%s lan=%s',
+			bot:GetUnitName(), tostring(Fu.GetPosition(bot)),
+			tostring(_ln[bot:GetAssignedLane()] or bot:GetAssignedLane()),
+			tostring(_ln[laneToTP] or laneToTP),
+			tostring(IsLanMode and IsLanMode()))
+	end
 	return GetLaneFrontLocation(team, laneToTP, 100), tp
 end
 
@@ -5185,6 +5238,12 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 		end
 
 		local tpTarget = GetLaneFrontLocation(GetTeam(), tpLane, -500)
+		local _laneNames = {[LANE_TOP]='top',[LANE_MID]='mid',[LANE_BOT]='bot'}
+		log('[TP-DIAG fountain] %s pos=%s assigned=%s chose=%s mode=%s lan=%s',
+			botName, tostring(Fu.GetPosition(bot)),
+			tostring(_laneNames[bot:GetAssignedLane()] or bot:GetAssignedLane()),
+			tostring(_laneNames[tpLane] or tpLane),
+			tostring(nMode), tostring(IsLanMode and IsLanMode()))
 		if tpTarget ~= nil and GetUnitToLocationDistance(bot, tpTarget) > 3500 then
 
 			local laneNames = {[LANE_TOP] = 'top', [LANE_MID] = 'mid', [LANE_BOT] = 'bot'}
@@ -5227,9 +5286,10 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 
 	-- Go complete items
 	if X.IsInvFull(bot) and X.GetNumStashItem(bot) >= 1
-	and (X.IsThereRecipeInStash(bot) or (bot:GetStashValue() >= 1000 and bot:GetGold() > 1100))
-	and (bot:GetActiveMode() ~= BOT_MODE_PUSH_TOWER_TOP or bot:GetActiveMode() ~= BOT_MODE_PUSH_TOWER_MID or bot:GetActiveMode() ~= BOT_MODE_PUSH_TOWER_BOT or bot:GetActiveMode() ~= BOT_MODE_ATTACK)
-	and not Fu.IsInTeamFight(bot, 1000)
+	and ((bot:GetStashValue() >= 1200 and X.IsThereRecipeInStash(bot)) or (bot:GetStashValue() >= 2000 and bot:GetGold() > 1100))
+	and not Fu.IsPushing(bot) and bot:GetActiveMode() ~= BOT_MODE_ATTACK
+	and not Fu.IsInTeamFight(bot, 1200)
+	and not Fu.Utils.IsTeamPushingSecondTierOrHighGround(bot)
 	and nEnemyCount == 0
 	then
 		hEffectTarget = Fu.GetTeamFountain()
@@ -5361,14 +5421,18 @@ X.ConsiderItemDesire["item_tpscroll"] = function( hItem )
 
 		local botAmount = GetAmountAlongLane( nPushLane, botLocation )
 		local laneFront = GetLaneFrontAmount( team, nPushLane, false )
-		if botAmount.distance > nMinTPDistance
-			or botAmount.amount < laneFront / 5
+		-- Only TP to push if bot is actually BEHIND our lane front.
+		-- Without this, bots deep in enemy base (off the lane curve, high perp distance)
+		-- were TPing back to friendly-side lane front when our wave died.
+		if botAmount.amount < laneFront - 0.05
+			and (botAmount.distance > nMinTPDistance or botAmount.amount < laneFront / 5)
 		then
 			tpLoc = X.GetPushTPLocation( nPushLane )
 		end
 
 		if tpLoc ~= nil
 			and GetUnitToLocationDistance( bot, tpLoc ) > nMinTPDistance - 600
+			and GetAmountAlongLane( nPushLane, tpLoc ).amount > botAmount.amount
 		then
 			hEffectTarget = tpLoc
 			sCastMotive = '前往推塔:'..sLane

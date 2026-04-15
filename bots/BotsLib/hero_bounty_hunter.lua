@@ -226,6 +226,8 @@ local castRDesire, castRTarget
 local aetherRange = 0
 local talent3Damage = 0
 
+local nLV, nKeepMana, nMP, nHP, hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 	if Fu.CanNotUseAbility( bot ) then return end

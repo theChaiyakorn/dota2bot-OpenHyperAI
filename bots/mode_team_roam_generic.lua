@@ -5,7 +5,7 @@ if bot == nil or bot:IsInvulnerable() or not bot:IsHero() or not bot:IsAlive() o
 local Utils = require(GetScriptDirectory()..'/FuncLib/systems/utils')
 local EnemyRoles = require(GetScriptDirectory()..'/FuncLib/hero/enemy_role_estimation')
 local Localization = require(GetScriptDirectory()..'/FuncLib/systems/localization')
-local Customize = require(GetScriptDirectory()..'/Customize/general')
+local Customize = require(GetScriptDirectory()..'/FuncLib/systems/custom_loader')
 Customize.ThinkLess = Customize.Enable and Customize.ThinkLess or 1
 local Fu = require(GetScriptDirectory()..'/FuncLib/func_utils')
 local Item = require(GetScriptDirectory()..'/FuncLib/systems/item')
@@ -88,9 +88,12 @@ function GetDesire()
     -- This MUST be before ShouldSkipBotThink — critical recovery logic.
     -- Returns RAW desire (not adjusted) to outbid Valve's mode (e.g. wisdom shrine 0.75).
     local activeMode = bot:GetActiveMode()
-    if activeMode == BOT_MODE_ITEM
+    -- Pre-horn shopping is normal — never preempt it. This unstuck mechanism
+    -- must not fire before DotaTime > 0 or it will yank bots out of the shop.
+    if DotaTime() > 0 and (
+       activeMode == BOT_MODE_ITEM
     or (BOT_MODE_WISDOM_SHRINE and activeMode == BOT_MODE_WISDOM_SHRINE)
-    or (BOT_MODE_LOTUS_POOL and activeMode == BOT_MODE_LOTUS_POOL)
+    or (BOT_MODE_LOTUS_POOL and activeMode == BOT_MODE_LOTUS_POOL))
     then
         if bot._stuckModeTime == nil then bot._stuckModeTime = DotaTime() end
         if DotaTime() - bot._stuckModeTime > 5 then
@@ -208,7 +211,7 @@ function GetDesireHelper()
             SetStickyTarget(target)
             targetUnit = target
             -- Scale by bot HP: suppress below 50%, zero below 30%
-            return RemapValClamped(nBotHP, 0.3, 0.7, BOT_MODE_DESIRE_NONE, 0.98)
+            return RemapValClamped(nBotHP, 0.3, 0.7, BOT_MODE_DESIRE_NONE, 0.4)
         end
     end
 
@@ -331,7 +334,7 @@ function GetDesireHelper()
             -- Emergency: at leash limit
             elseif heroDist > 990 then
                 bot._bearFollowHero = true
-                return 0.9
+                return 0.6
             end
             -- Hero farming/rosh: bear can't go there alone
             local heroMode = ld.hero:GetActiveMode()
@@ -359,9 +362,10 @@ function GetDesireHelper()
         return RemapValClamped(nBotHP, 0.3, 1, BOT_ACTION_DESIRE_VERYHIGH, BOT_ACTION_DESIRE_NONE)
     end
 
+    -- BOT_MODE_LANING is intentionally excluded from this allow-list — laning mode
+    -- owns last-hit/deny, team_roam shouldn't compete during the laning phase.
     if not Fu.IsFarming(bot) and not Fu.IsPushing(bot) and not Fu.IsDefending(bot)
     and not Fu.IsDoingRoshan(bot) and not Fu.IsDoingTormentor(bot)
-    and bot:GetActiveMode() ~= BOT_MODE_LANING
     and bot:GetActiveMode() ~= BOT_MODE_RUNE
     and bot:GetActiveMode() ~= BOT_MODE_SECRET_SHOP
     and bot:GetActiveMode() ~= BOT_MODE_OUTPOST
@@ -371,12 +375,16 @@ function GetDesireHelper()
     and bot:GetActiveMode() ~= BOT_MODE_ROAM then
         return BOT_ACTION_DESIRE_NONE
     elseif #nearbyAllies >= #nearbyEnemies then
+        -- Clamp Carry/Support find-target returns to VERYHIGH+0.04 (=0.64) so
+        -- override values like BOT_DESIRE_OVERRIDE * 1.5 don't escape this branch.
+        local kFindTargetCap = BOT_MODE_DESIRE_VERYHIGH + 0.04
         if IsHeroCore then
             local botTarget, targetDesire = X.CarryFindTarget()
             if botTarget ~= nil then
                 targetUnit = botTarget
                 bot:SetTarget(botTarget)
-                return RemapValClamped(nBotHP, 0, 0.4, BOT_MODE_DESIRE_NONE, targetDesire)
+                local d = RemapValClamped(nBotHP, 0, 0.4, BOT_MODE_DESIRE_NONE, targetDesire)
+                return Clamp(d, 0, kFindTargetCap)
             end
         end
         if IsSupport then
@@ -384,13 +392,14 @@ function GetDesireHelper()
             if botTarget ~= nil then
                 targetUnit = botTarget
                 bot:SetTarget(botTarget)
-                return RemapValClamped(nBotHP, 0, 0.4, BOT_MODE_DESIRE_NONE, targetDesire)
+                local d = RemapValClamped(nBotHP, 0, 0.4, BOT_MODE_DESIRE_NONE, targetDesire)
+                return Clamp(d, 0, kFindTargetCap)
             end
         end
 
         if bot:IsAlive() and bot:DistanceFromFountain() > 4600 then
             if towerTime ~= 0 and X.IsValid(towerCreep) and DotaTime() < towerTime + towerCreepTime then
-                return RemapValClamped(nBotHP, 0, 0.4, BOT_MODE_DESIRE_NONE, 0.9)
+                return BOT_MODE_DESIRE_VERYHIGH
             else
                 towerTime, towerCreepMode = 0, false
             end
@@ -402,7 +411,7 @@ function GetDesireHelper()
                     towerCreepMode = true
                 end
                 bot:SetTarget(towerCreep)
-                return RemapValClamped(nBotHP, 0, 0.4, BOT_MODE_DESIRE_NONE, 0.9)
+                return BOT_MODE_DESIRE_VERYHIGH
             end
         end
     end
@@ -607,13 +616,10 @@ function Think()
 		return
 	end
 
-	-- Leash & validity guard to prevent pacing back and forth
+	-- Validity guard only (no leash check — the desire layer chose this target,
+	-- so let Think follow through and attack it).
 	if targetUnit ~= nil then
-		if (not Fu.Utils.IsValidUnit(targetUnit))
-		or (not X.CanBeAttacked(targetUnit))
-		or (GetUnitToUnitDistance(bot, targetUnit) > 1800)  -- too far = drop it
-		or (bot:GetActiveMode() == BOT_MODE_LANING and GetUnitToUnitDistance(bot, targetUnit) > bot:GetAttackRange() + 250)
-		then
+		if (not Fu.Utils.IsValidUnit(targetUnit)) or (not X.CanBeAttacked(targetUnit)) then
 			targetUnit = nil
 		end
 	end
@@ -686,7 +692,10 @@ function Think()
     end
 
     if ShouldAttackSpecialUnit then
-        AttackSpecialUnit.Think()
+        if Fu.IsValid(bot.special_unit_target) then
+            bot:Action_AttackUnit(bot.special_unit_target, false)
+            return
+        end
     end
 
     if towerCreepMode then

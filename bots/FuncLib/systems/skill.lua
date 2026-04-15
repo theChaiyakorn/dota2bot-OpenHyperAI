@@ -95,14 +95,14 @@ function X.GetAbilityList( bot )
 					--print('[WARN] The ability '..name..' on slot '..slot..' cannot be accessed for hero: '..unitName)
 					table.insert(sAbilityList, generic_hidden)
 				else
-					log('[WARN] The ability '..name..' on slot '..slot..' does not make sense. Check if there is anything wrong with this hero: '..unitName)
+					log('[WARN] The ability %s on slot %s does not make sense. Check if there is anything wrong with this hero: %s', name, slot, unitName)
 				end
 			elseif Utils.AbilityBehaviorHasFlag(ability:GetBehavior(), DOTA_ABILITY_BEHAVIOR_NOT_LEARNABLE) and ability:IsHidden() then
 				--print('[WARN] The ability '..name..' on slot '..slot..' is not learnable (e.g. innate like) for hero: '..unitName)
 			elseif ability:IsUltimate() and slot >= 4 then
 				-- log('[INFO] The ability '..name..' on slot '..slot..' is the ultimate for hero: '..unitName)
 				if Utils.AbilityBehaviorHasFlag(ability:GetBehavior(), DOTA_ABILITY_BEHAVIOR_NOT_LEARNABLE) or ability:IsHidden() then
-					log('[WARN] The ability '..name..' on slot '..slot..' seems to be an ultimate for hero: '..unitName..'. But it is not learnable OR hidden. Check if there is anything wrong with this hero.')
+					log('[WARN] The ability %s on slot %s seems to be an ultimate for hero: %s. But it is not learnable OR hidden. Check if there is anything wrong with this hero.', name, slot, unitName)
 				else
 					sAbilityList[6] = name
 					--print(unitName..' loaded ultimate ability with name= '..name..', at idx= '..slot)
@@ -114,10 +114,10 @@ function X.GetAbilityList( bot )
 				table.insert(sAbilityList, name)
 				--print(unitName..' loaded ability with name= '..name..', at idx= '..slot)
 			else
-				log(unitName..' failed to load ability with name= '..name..', at idx= '..slot)
+				log('%s failed to load ability with name= %s, at idx= %s', unitName, name, slot)
 			end
 		else
-			log('[WARN] It seems there is no ability on slot '..slot..' for '..unitName)
+			log('[WARN] It seems there is no ability on slot %s for %s', slot, unitName)
 		end
 	end
 

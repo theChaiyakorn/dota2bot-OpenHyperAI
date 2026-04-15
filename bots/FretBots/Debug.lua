@@ -1,5 +1,8 @@
 -- Edit this flag to enable / disable debug
 local isDebug = false;
+-- Mirror to global IsDebug so the shared log(fmt, ...) module (loaded from
+-- bots/FuncLib/systems/log.lua) emits output when this sandbox is in debug mode.
+IsDebug = isDebug
 
 -- Instantiate the class
 if Debug == nil then
@@ -29,12 +32,12 @@ end
 -- shorthand for debug printing
 function Debug:Print(msg, header)
 	if header ~= nil then
-		if isDebug then print(header) end
+		if isDebug then log(header) end
 	end
 	if type(msg) == 'table' then
 		if isDebug then DeepPrintTable(msg) end
 	else
-		if isDebug then print(msg) end
+		if isDebug then log(msg) end
 	end
 end
 

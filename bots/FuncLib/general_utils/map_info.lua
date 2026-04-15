@@ -459,7 +459,7 @@ end
 
 function Fu.GetCurrentRoshanLocation()
 	-- Variable names are misleading — RadiantRoshanLoc is actually the TOP pit,
-	-- DireRoshanLoc is the BOTTOM pit. Verified against reference bot coordinates.
+	-- DireRoshanLoc is the BOTTOM pit.
 	--
 	-- Roshan starts at top pit. First moves at 15:00.
 	-- Day → top pit (our RadiantRoshanLoc). Night → bottom pit (our DireRoshanLoc).

@@ -53,6 +53,7 @@ export function TryDenyAllyHero(bot: Unit): boolean;
 export function HasDamageOverTimeDebuff(bot: Unit): boolean;
 export function IsCore(unit: any): boolean;
 export function GetPosition(bot: Unit | null): number;
+export function GetExpectedLane(bot: Unit): Lane;
 export function IsChasingTarget(unit: any, target: any): boolean;
 
 // combat

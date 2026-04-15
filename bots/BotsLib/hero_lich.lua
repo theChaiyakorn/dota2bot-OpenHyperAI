@@ -208,6 +208,8 @@ local SacrificeDesire, SacrificeTarget
 local aetherRange = 0
 
 
+local nLV, nKeepMana, nMP, nHP, hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 

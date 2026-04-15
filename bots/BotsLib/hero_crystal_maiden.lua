@@ -149,6 +149,8 @@ local botTarget
 
 local nKeepMana, nMP, nHP, nLV
 
+local hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 	X.ConsiderCombo()

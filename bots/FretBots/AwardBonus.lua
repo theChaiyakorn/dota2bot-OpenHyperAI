@@ -199,7 +199,7 @@ function AwardBonus:Death(bot)
 			end
 			-- if this award is greater than max, then break
 			if awards > Settings.deathBonus.maxAwards then
-				if isDebug then print(bot.stats.name..': Max awards of '..Settings.deathBonus.maxAwards..' reached.') end
+				if isDebug then log('%s: Max awards of %s reached.', bot.stats.name, Settings.deathBonus.maxAwards) end
 				break
 			end
 			-- make the award
@@ -352,7 +352,7 @@ end
 function AwardBonus:ShouldAward(bot,award)
 	-- trivial case
 	if bot.stats.chance[award] >= 1 then
-		if isDebug then print(bot.stats.name..': Chance for '..award..' was 1 or greater.') end
+		if isDebug then log('%s: Chance for %s was 1 or greater.', bot.stats.name, award) end
 		return true
 	end
 	-- check timeGate
@@ -372,7 +372,7 @@ function AwardBonus:ShouldAward(bot,award)
 	-- almost as trivial case: check if deathStreakThreshold is enabled
 	if Settings.deathBonus.deathStreakThreshold >= 0 then
 		if bot.stats.deathStreak >= Settings.deathBonus.deathStreakThreshold then
-			if isDebug then print(bot.stats.name..': automatic '..award..' bonus due to death streak of '..bot.stats.deathStreak..'.') end
+			if isDebug then log('%s: automatic %s bonus due to death streak of %s.', bot.stats.name, award, bot.stats.deathStreak) end
 			return true
 		end
 	end

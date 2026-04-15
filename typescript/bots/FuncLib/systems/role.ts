@@ -283,8 +283,8 @@ export const GetPositionForCM = function (bot: Unit) {
         if (role != null) {
             return role;
         }
-        // print("[WARNING] Cannot determine the role of an enemy bot. Return default pos as 3");
-        // print("Stack Trace:", debug.traceback());
+        // log("[WARNING] Cannot determine the role of an enemy bot. Return default pos as 3");
+        // log("Stack Trace:", debug.traceback());
         return 3;
     }
 
@@ -325,16 +325,16 @@ export const GetPositionForCM = function (bot: Unit) {
 
     if (role == null) {
         role = 1;
-        print("[ERROR] Failed to determine role for bot " + heroName + " in CM. It got assigned lane#: " + lane + ". Set it to pos: " + role.toString());
+        log("[ERROR] Failed to determine role for bot %s in CM. It got assigned lane#: %s. Set it to pos: %s", heroName, lane, role);
     }
 
     return role;
 };
 
 export const GetRoleFromId = function (bot: Unit) {
-    const heroID = GetTeamPlayers(GetTeam());
+    const heroID = GetTeamPlayers(bot.GetTeam());
     const heroName = bot.GetUnitName();
-    const team = GetTeam() === Team.Radiant ? "TEAM_RADIANT" : "TEAM_DIRE";
+    const team = bot.GetTeam() === Team.Radiant ? "TEAM_RADIANT" : "TEAM_DIRE";
     for (let i = 0; i < heroID.length; i++) {
         if (GetSelectedHeroName(heroID[i]) === heroName) {
             return RoleAssignment[team][i];
@@ -345,8 +345,14 @@ export const GetRoleFromId = function (bot: Unit) {
 
 export let HeroPositions: { [playerId: number]: number | null } = {};
 
-// returns 1, 2, 3, 4, or 5 as the position of the hero in the team
+// returns 1, 2, 3, 4, or 5 as the position of the hero in the team.
+// For enemies, defers to GetEnemyPosition (estimated, not authoritative) —
+// must run BEFORE any GetAssignedLane call to avoid the engine's "non-teammate" warning.
 export const GetPosition = function (bot: Unit) {
+    if (bot != null && bot.GetTeam() !== GetTeam()) {
+        const eRole = GetEnemyPosition(bot.GetPlayerID());
+        return eRole != null ? eRole : 3;
+    }
     let role = bot.assignedRole;
     if (role == null && (GetGameMode() === GameMode.Cm || GetGameMode() === GameMode.ReverseCm)) {
         const [nH, _] = NumHumanBotPlayersInTeam(bot.GetTeam()); // assume it returns [number, number]
@@ -357,47 +363,75 @@ export const GetPosition = function (bot: Unit) {
     const playerId = bot.GetPlayerID();
     const unitName = bot.GetUnitName();
 
+    // Lane change = !pos/!Xpos was applied by the engine. Invalidate caches
+    // so the name-based / slot-based lookup below re-runs against the current
+    // RoleAssignment. In online shared scope this picks up the new role; in
+    // LAN sandbox it returns the same pre-swap role (unavoidable — mutation
+    // doesn't cross sandbox boundaries). We deliberately do NOT call
+    // GetPositionForCM here: it maps lane+hero suitability and collides when
+    // two bots on the same lane both fail the suitability check (e.g. two
+    // non-offlaners on offlane → both pos 4).
+    const currentLane = bot.GetAssignedLane();
+    if (bot.lastAssignedLane != null && bot.lastAssignedLane !== currentLane) {
+        role = null;
+        bot.assignedRole = null;
+        if (playerId != null) {
+            HeroPositions[playerId] = null;
+        }
+    }
+    bot.lastAssignedLane = currentLane;
+
     if ((role == null || GetGameState() === GameState.PreGame) && playerId != null) {
+        // HeroPositions is invalidated+updated by the lane-change path above
+        // on any !pos / !Xpos swap (since the engine applies the new
+        // tLaneAssignList, and bot:GetAssignedLane() reaches every scope
+        // including LAN sandboxes). So trust the cache here.
         const cRole = HeroPositions[playerId];
         if (cRole != null) {
             role = cRole;
         } else {
-            const heroID = GetTeamPlayers(GetTeam());
-            const team = GetTeam() === Team.Radiant ? "TEAM_RADIANT" : "TEAM_DIRE";
-            for (let i = 0; i < heroID.length; i++) {
-                if (heroID[i] === playerId) {
-                    role = RoleAssignment[team][i];
+            const heroID = GetTeamPlayers(bot.GetTeam());
+            const team = bot.GetTeam() === Team.Radiant ? "TEAM_RADIANT" : "TEAM_DIRE";
+            const heroName = bot.GetUnitName();
+            // Prefer name-based lookup (honors
+            // !pos / !Xpos swaps that hero_selection applies to RoleAssignment).
+            // Only trust it when the roster is a full 5-player list — in LAN
+            // per-bot sandboxes, GetTeamPlayers can return only the calling
+            // bot, which would collapse every Dire bot to slot 1 → pos 1.
+            if (heroID.length >= 5) {
+                for (let i = 0; i < heroID.length; i++) {
+                    if (GetSelectedHeroName(heroID[i]) === heroName) {
+                        role = RoleAssignment[team][i];
+                        break;
+                    }
                 }
+            }
+            // Sandbox / incomplete roster fallback: slot from PlayerID
+            // (Radiant PIDs 0..4 → slot 1..5, Dire PIDs 5..9 → slot 1..5).
+            // RoleAssignment is slot-keyed, so this still reflects any
+            // !pos-driven swaps that reached the current scope.
+            if (role == null) {
+                const slot = bot.GetTeam() === Team.Radiant ? playerId + 1 : playerId - 4;
+                if (slot >= 1 && slot <= 5) {
+                    role = RoleAssignment[team][slot - 1];
+                }
+            }
+            if (role != null) {
+                HeroPositions[playerId] = role;
             }
         }
     }
 
     bot.assignedRole = role;
 
-    if (GetTeam() !== bot.GetTeam()) {
-        // Trying to get role for enemy
-        role = GetEnemyPosition(bot.GetPlayerID());
-        // print("[WARNING] Trying to get role for enemy. The estimated role is: " + role + ", for bot: " + unitName);
-        if (role != null) {
-            return role;
-        }
-        // print("[WARNING] Cannot determine the role of an enemy bot. Return default pos as 3");
-        // print("Stack Trace:", debug.traceback());
-        return 3;
-    }
-
     if (role == null && GetGameState() !== GameState.PreGame) {
-        if (HeroPositions[playerId] == null) {
-            HeroPositions[playerId] = GetRoleFromId(bot);
-        }
-        role = HeroPositions[playerId] != null ? HeroPositions[playerId] : GetPositionForCM(bot);
-        print("[ERROR] Failed to match bot role for bot: " + unitName + ", PlayerID: " + playerId + ", set it to play pos: " + role);
-        print("Stack Trace:", debug.traceback());
+        role = GetPositionForCM(bot);
+        log("[ERROR] Failed to match bot role for bot: %s, PlayerID: %s, fallback pos: %s", unitName, playerId, role);
         bot.assignedRole = role;
     }
 
     if (role == null) {
-        // print("[ERROR] Failed to determine role for bot " + unitName + ". Set it to pos: 3.");
+        // log("[ERROR] Failed to determine role for bot " + unitName + ". Set it to pos: 3.");
         role = 3;
     }
 
@@ -416,10 +450,10 @@ export const IsAllShadow = function () {
 //     let maxVal = -1;
 //     let role = "";
 //     const heroName = bot.GetUnitName();
-//     print("=========" + heroName + "=========");
+//     log("=========" + heroName + "=========");
 //     const rolesForHero = export const hero_roles[heroName] || {};
 //     for (const [key, value] of Object.entries(rolesForHero)) {
-//         print(key + " : " + value);
+//         log(key + " : " + value);
 //         const val = value as number;
 //         if (val >= maxVal) {
 //             maxVal = val;
@@ -427,5 +461,5 @@ export const IsAllShadow = function () {
 //         }
 //     }
 
-//     print("Highest value role => " + role + " : " + maxVal.toString());
+//     log("Highest value role => " + role + " : " + maxVal.toString());
 // };

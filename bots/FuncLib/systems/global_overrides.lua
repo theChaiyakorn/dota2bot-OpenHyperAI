@@ -10,6 +10,38 @@ if package and package.path then
 end
 
 local Utils = require( GetScriptDirectory()..'/FuncLib/systems/utils')
+-- Install global `log(fmt, ...)` into this sandbox. IsDebug gates output.
+require( GetScriptDirectory()..'/FuncLib/systems/log')
+
+-- Valve's vscript sandbox usually strips `debug.traceback` but sometimes leaves
+-- `debug.getinfo`. Probe once and pick the best stack source available.
+local _hasGetInfo = (type(debug) == "table") and (type(debug.getinfo) == "function")
+local _hasTraceback = (type(debug) == "table") and (type(debug.traceback) == "function")
+-- skip = how many frames above safe_traceback's caller to start at.
+-- skip=1 => report the caller of safe_traceback (typical: the override fn).
+-- skip=2 => report the caller of the caller (typical: who invoked the override).
+local function safe_traceback(skip)
+	skip = skip or 2
+	if _hasTraceback then
+		-- debug.traceback level 1 = safe_traceback; +1 to skip self, +skip more.
+		return tostring(debug.traceback("", 1 + skip))
+	end
+	if _hasGetInfo then
+		local frames = {}
+		local start = 1 + skip -- skip safe_traceback + requested frames
+		for i = start, start + 8 do
+			local info = debug.getinfo(i, "Sl")
+			if not info then break end
+			frames[#frames + 1] = string.format("  %s:%d", tostring(info.short_src or info.source), info.currentline or -1)
+		end
+		if #frames == 0 then return "<no frames>" end
+		return "\n" .. table.concat(frames, "\n")
+	end
+	-- Last resort: error level math — L1=error, L2=pcall site (safe_traceback),
+	-- L3=safe_traceback's caller. So caller-of-caller = 3 + skip.
+	local _, where = pcall(error, "@", 2 + skip)
+	return tostring(where or "<no trace>")
+end
 
 -- Fast check: should this bot skip all mode logic (illusions, invulnerable, dead).
 -- The idle state check runs separately BEFORE this in mode files that need it.
@@ -200,19 +232,10 @@ function GetTeamPlayers(nTeam, bypass)
 	return nIDs
 end
 
--- Debug logging. Replaces print() across the codebase.
--- Usage: log('[FARM] %s t=%.0f', bot:GetUnitName(), DotaTime())
--- For hot paths, wrap in "if IsDebug then log(...) end" to skip argument evaluation.
-local orig_print = print
+-- Debug logging. `log` itself is defined in FuncLib/systems/log.lua (required
+-- above). IsDebug gates output — for hot paths, wrap in "if IsDebug then
+-- log(...) end" to skip even the call overhead.
 IsDebug = Utils.DebugMode
-function log(fmt, ...)
-    if not IsDebug then return end
-    if select('#', ...) == 0 then
-        orig_print(fmt)
-    else
-        orig_print(string.format(fmt, ...))
-    end
-end
 
 -- Safe function wrapper: catches errors, logs them, returns fallback value.
 -- Usage: local safeGetDesire = SafeCall(GetDesireHelper, 0, 'FarmDesire')
@@ -230,6 +253,22 @@ function SafeCall(fn, fallback, label)
     end
 end
 
+-- LAN / offline detection. Cached per-scope after first successful read.
+-- Primary signal: `sv_lan` convar via the Convars vscript API. If that API
+-- isn't exposed in this environment, the pcall keeps us safely at "not LAN"
+-- so online behavior (shuffles, etc.) is preserved.
+local _isLanModeCached = nil
+function IsLanMode()
+    if _isLanModeCached ~= nil then return _isLanModeCached end
+    local ok, val = pcall(function() return Convars:GetInt('sv_lan') end)
+    if ok and val ~= nil then
+        _isLanModeCached = (val == 1)
+    else
+        _isLanModeCached = false
+    end
+    return _isLanModeCached
+end
+
 local original_GetUnitToUnitDistance = GetUnitToUnitDistance
 function GetUnitToUnitDistance(unit1, unit2)
 	if not unit1 then
@@ -239,6 +278,22 @@ function GetUnitToUnitDistance(unit1, unit2)
 		return 1000
 	end
 	return original_GetUnitToUnitDistance(unit1, unit2)
+end
+
+-- Engine throws "expected vector but got void" when location is nil/non-Vector.
+-- Trace the caller so we can fix the source instead of swallowing silently.
+local original_GetUnitToLocationDistance_global = GetUnitToLocationDistance
+function GetUnitToLocationDistance(unit, location)
+	if unit == nil then
+		log("[OVERRIDE] GetUnitToLocationDistance nil unit\n%s", safe_traceback(2))
+		return 1000
+	end
+	if location == nil or type(location) ~= "userdata" then
+		log("[OVERRIDE] GetUnitToLocationDistance bad location (type=%s) for %s\n%s",
+			type(location), tostring(unit and unit.GetUnitName and unit:GetUnitName()), safe_traceback(2))
+		return 1000
+	end
+	return original_GetUnitToLocationDistance_global(unit, location)
 end
 
 local originalWasRecentlyDamagedByAnyHero = CDOTA_Bot_Script.WasRecentlyDamagedByAnyHero
@@ -544,15 +599,34 @@ function CDOTA_Bot_Script:ActionPush_UseAbility(hAbility)
     return originalActionPush_UseAbility(self, hAbility)
 end
 
--- local originalAction_AttackUnit = CDOTA_Bot_Script.Action_AttackUnit
--- function CDOTA_Bot_Script:Action_AttackUnit(hUnit, bOnce)
---     if hUnit:GetUnitName() == 'npc_dota_warlock_minor_imp' then
--- 		print("Action_AttackUnit has been called on entity npc_dota_warlock_minor_imp")
--- 		print("Stack Trace:", debug.traceback())
--- 		return nil
--- 	end
---     return originalAction_AttackUnit(self, hUnit, bOnce)
--- end
+-- Diagnostic-only wrapper: log nil-target calls, but never block. Minion micro
+-- (wards, wolves, illusions, spirit bear, etc.) routes through this method
+-- with self ~= GetBot() — that's normal Valve API, not a bug. Blocking caused
+-- minions to idle. The engine itself will reject anything truly invalid.
+local originalAction_AttackUnit = CDOTA_Bot_Script.Action_AttackUnit
+function CDOTA_Bot_Script:Action_AttackUnit(hUnit, bOnce)
+	if hUnit == nil then
+		log("[OVERRIDE] Action_AttackUnit nil target for %s\n%s",
+			tostring(self and self:GetUnitName()), safe_traceback(2))
+		return
+	end
+	return originalAction_AttackUnit(self, hUnit, bOnce)
+end
+
+-- Engine warns when GetAssignedLane is called on a non-teammate. Return
+-- LANE_NONE for non-teammates so callers can handle it uniformly.
+local originalGetAssignedLane = CDOTA_Bot_Script.GetAssignedLane
+function CDOTA_Bot_Script:GetAssignedLane()
+	if not self or self:GetTeam() ~= GetTeam() then
+		log("[OVERRIDE] GetAssignedLane on non-teammate: unit=%s unitTeam=%s runningTeam=%s\n%s",
+			tostring(self and self:GetUnitName()),
+			tostring(self and self:GetTeam()),
+			tostring(GetTeam()),
+			safe_traceback(2))
+		return LANE_NONE
+	end
+	return originalGetAssignedLane(self)
+end
 
 local originalGetTarget = CDOTA_Bot_Script.GetTarget
 function CDOTA_Bot_Script:GetTarget()

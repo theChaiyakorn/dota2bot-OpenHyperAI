@@ -167,6 +167,8 @@ local castASDesire, castASTarget
 local aetherRange = 0
 
 
+local nLV, nKeepMana, nMP, nHP, hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 	-- Re-fetch ability handles each tick for safety

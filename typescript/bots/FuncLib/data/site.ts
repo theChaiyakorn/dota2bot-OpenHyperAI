@@ -301,6 +301,38 @@ export const IsEnemyCamp = function (camp: any): boolean {
     return camp.team !== GetTeam();
 };
 
+// Camps that sit behind the enemy's Defender's Gates. Gates let allied heroes
+// pass but block enemies from chasing out, so a bot farming one of these camps
+// can get trapped inside the enemy base and body-block its own team's paths.
+// Thresholds come from in-game map inspection of the gate chokepoints.
+// Camp locations and the enemy ancient are fixed for the whole match, so the
+// gate check only needs to run once per camp. Cache by camp idx.
+const gatedCampCache: Record<string, boolean> = {};
+export const IsCampBehindEnemyGates = function (camp: any): boolean {
+    const key = camp.idx !== undefined ? String(camp.idx) : camp.cattr && camp.cattr.idx !== undefined ? String(camp.cattr.idx) : null;
+    if (key !== null && gatedCampCache[key] !== undefined) return gatedCampCache[key];
+    const loc = camp.cattr ? camp.cattr.location : camp.location;
+    if (!loc) return false;
+    const enemyTeam = GetTeam() === Team.Radiant ? Team.Dire : Team.Radiant;
+    const enemyAncient = GetAncient(enemyTeam);
+    if (!enemyAncient) return false;
+    const ancLoc = enemyAncient.GetLocation();
+    const dx = loc.x - ancLoc.x;
+    const dy = loc.y - ancLoc.y;
+    let result: boolean;
+    // Only gated when inside the enemy HG radius AND past the gate thresholds;
+    // edge jungle camps crossing the x/y lines but far from the ancient stay farmable.
+    if (dx * dx + dy * dy > 5000 * 5000) {
+        result = false;
+    } else if (GetTeam() === Team.Radiant) {
+        result = loc.x > 6500 || loc.y > 6000;
+    } else {
+        result = loc.x < -6500 || loc.y < -6500;
+    }
+    if (key !== null) gatedCampCache[key] = result;
+    return result;
+};
+
 export const IsAncientCamp = function (camp: any): boolean {
     return camp.type === "ancient";
 };
@@ -324,6 +356,7 @@ export const RefreshCamp = function (bot: Unit): LuaMultiReturn<[any[], number]>
 
     for (const aCamp of Object.values(camps)) {
         const camp = aCamp as any;
+        if (IsCampBehindEnemyGates({ cattr: camp })) continue;
         if ((botLevel <= 7 || bot.GetAttackDamage() <= 80) && !IsEnemyCamp(camp) && !IsLargeCamp(camp) && !IsAncientCamp(camp)) {
             allCampList.push({ idx: camp.idx, cattr: camp });
         } else if (botLevel <= 11 && !IsEnemyCamp(camp) && !IsAncientCamp(camp)) {

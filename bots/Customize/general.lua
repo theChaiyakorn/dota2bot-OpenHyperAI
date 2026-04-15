@@ -108,6 +108,10 @@ Customize.Dire_Team_Name = ''
 -- Group pushing may increase the difficulty but can reduce the game experience. 
 Customize.Force_Group_Push_Level = 1
 
+-- Set how frequently you want the bots to push. 
+-- 1 is default, bot may choose to farm more in game. 2 is balanced for push vs farm. 3 is almost no farm, all push.
+Customize.Push_Frequency = 1
+
 -- The Enhanced Fretbots mode settings:
 -- For more about Fretbots mode: https://github.com/forest0xia/dota2bot-OpenHyperAI/discussions/68
 -- Note: these settings below will override the pre-defind settings in Fretbots folder.

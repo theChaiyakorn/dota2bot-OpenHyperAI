@@ -153,6 +153,8 @@ local nLastBlinkTime = -90
 local nAttackPoint = 0
 
 
+local nLV, nKeepMana, nMP, nHP, hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 

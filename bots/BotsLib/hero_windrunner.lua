@@ -174,6 +174,8 @@ local bGoingOnSomeone
 local bRetreating
 local bAttacking
 local nBotMP
+local nHP
+
 function X.SkillsComplement()
     if Fu.CanNotUseAbility(bot) then return end
 

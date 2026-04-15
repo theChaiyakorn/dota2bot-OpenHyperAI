@@ -178,6 +178,8 @@ local aetherRange = 0
 local lastCastQTime = -99
 
 
+local nLV, nKeepMana, nMP, nHP, hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 	if X.ConsiderStopDrain() > 0

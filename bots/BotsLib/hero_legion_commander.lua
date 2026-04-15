@@ -124,6 +124,8 @@ local castRDesire, castRTarget
 local aetherRange = 0
 
 
+local nLV, nKeepMana, nMP, nHP, hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 	if Fu.CanNotUseAbility( bot ) or bot:IsInvisible() then return end

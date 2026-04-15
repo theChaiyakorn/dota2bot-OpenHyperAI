@@ -125,6 +125,8 @@ local aetherRange = 0
 local talent6Range = 0
 
 
+local nLV, nKeepMana, nMP, nHP, hEnemyList, hAllyList
+
 function X.SkillsComplement()
 
 

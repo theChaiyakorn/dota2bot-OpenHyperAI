@@ -80,7 +80,7 @@ function EntityHurt:RegisterEvents()
 		ListenToGameEvent("entity_hurt", Dynamic_Wrap(EntityHurt, 'OnEntityHurt'), EntityHurt)
 		Flags.isEntityHurtRegistered = true;
 		if isDebug then
-			print("EntityHurt Event Listener Registered.")
+			log("EntityHurt Event Listener Registered.")
 		end
 	end
 end
