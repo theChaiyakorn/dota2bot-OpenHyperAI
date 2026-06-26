@@ -198,8 +198,11 @@ end
 
 local bMlLaning = MLLaning.IsHeroEnabled(botName)
 
+print('OHA_ML_DEBUG|load|bMlLaning='..tostring(bMlLaning)..'|hero='..botName)
+
 if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bMlLaning then
 	function Think()
+		print('OHA_ML_DEBUG|think|t='..DotaTime())
 		DataLog.Tick()   -- resolve any pending CS-outcome records (no-op unless logging enabled)
 
 		local hitCreep, moveToCreep = GetBestLastHitCreep(nEnemyCreeps)
