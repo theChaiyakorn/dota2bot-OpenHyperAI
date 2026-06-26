@@ -211,14 +211,10 @@ if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) o
 				-- Guaranteed last-hits (moveToCreep == false) are never gated -> no free CS lost.
 				if bMlLaning and moveToCreep then
 					local ctx = { attackDamage = attackDamage }
+					local feats = MLLaning.BuildLastHitFeatures(J, bot, hitCreep, ctx)
+					DataLog.RecordCS('laning_lasthit', bot, feats, 'lasthit')
 					local commit = MLLaning.LastHitCommit(J, bot, hitCreep, ctx)
-					if commit ~= nil then
-						goForIt = commit > 0
-						if goForIt then
-							DataLog.RecordCS('laning_lasthit', bot,
-								MLLaning.BuildLastHitFeatures(J, bot, hitCreep, ctx), 'lasthit')
-						end
-					end
+					if commit ~= nil then goForIt = commit > 0 end
 				end
 
 				if goForIt then
@@ -240,14 +236,10 @@ if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) o
 			local goDeny = true
 			if bMlLaning then
 				local ctx = { attackDamage = attackDamage }
+				local feats = MLLaning.BuildDenyFeatures(J, bot, denyCreep, ctx)
+				DataLog.RecordCS('laning_deny', bot, feats, 'deny')
 				local commit = MLLaning.DenyCommit(J, bot, denyCreep, ctx)
-				if commit ~= nil then
-					goDeny = commit > 0
-					if goDeny then
-						DataLog.RecordCS('laning_deny', bot,
-							MLLaning.BuildDenyFeatures(J, bot, denyCreep, ctx), 'deny')
-					end
-				end
+				if commit ~= nil then goDeny = commit > 0 end
 			end
 			if goDeny then
 				bot:SetTarget(denyCreep)
@@ -262,10 +254,11 @@ if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) o
 			local harassTarget = GetBestHarassTarget()
 			if J.IsValid(harassTarget) then
 				local ctx = { attackDamage = attackDamage }
+				local feats = MLLaning.BuildTradeFeatures(J, bot, harassTarget, ctx)
+				-- Log every candidate (commit or hold) so training data covers both classes.
+				DataLog.RecordTrade('laning_trade', bot, harassTarget, feats)
 				local commit = MLLaning.TradeCommit(J, bot, harassTarget, ctx)
 				if commit ~= nil and commit > 0 then
-					DataLog.RecordTrade('laning_trade', bot, harassTarget,
-						MLLaning.BuildTradeFeatures(J, bot, harassTarget, ctx))
 					bot:SetTarget(harassTarget)
 					bot:Action_AttackUnit(harassTarget, true)
 					return
