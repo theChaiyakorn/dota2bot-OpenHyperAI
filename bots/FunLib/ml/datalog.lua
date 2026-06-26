@@ -15,7 +15,7 @@
 
 local DataLog = {}
 
-DataLog.ENABLED   = (OHA_ML_LOG == true)
+DataLog.ENABLED   = true
 DataLog.PREFIX    = 'OHA_ML'
 DataLog.WINDOW    = 6.0    -- default outcome timeout (Assassinate)
 DataLog.CS_WINDOW = 1.5    -- short timeout for last-hit / deny outcomes
