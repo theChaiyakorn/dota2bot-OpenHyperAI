@@ -12,6 +12,11 @@ local bot = GetBot()
 
 local J = require( GetScriptDirectory()..'/FunLib/jmz_func' )
 local Minion = dofile( GetScriptDirectory()..'/FunLib/aba_minion' )
+-- Hybrid (rule + learned) policy for the Assassinate ultimate. Falls back to the
+-- hand-written heuristic automatically when no trained weights are present.
+local SniperUltPolicy = require( GetScriptDirectory()..'/FunLib/ml/sniper_assassinate_policy' )
+-- Outcome logger (disabled unless OHA_ML_LOG=true) used to collect real training data.
+local DataLog = require( GetScriptDirectory()..'/FunLib/ml/datalog' )
 local sTalentList = J.Skill.GetTalentList( bot )
 local sAbilityList = J.Skill.GetAbilityList( bot )
 local sRole = J.Item.GetRoleItemsBuyList( bot )
@@ -157,6 +162,7 @@ local botTarget
 
 function X.SkillsComplement()
 
+	DataLog.Tick()   -- resolve any pending ult-outcome records (no-op unless logging enabled)
 
 	X.ConsiderTarget()
 	J.ConsiderForMkbDisassembleMask( bot )
@@ -505,7 +511,7 @@ function X.ConsiderR()
 			or ( X.ShouldUseR( nTempTarget, nWeakestEnemyHeroInCastRange, nDamage ) and ( bot:GetMana() > nKeepMana * 1.28 or bot:HasScepter() ) ) )
 	then
 		castRTarget = nWeakestEnemyHeroInCastRange
-		return BOT_ACTION_DESIRE_HIGH, castRTarget
+		return X.GateUltDesire( castRTarget, nDamage, nCastPoint )
 	end
 
 	if J.IsValid( nChannelingEnemyHeroInCastRange )
@@ -513,10 +519,32 @@ function X.ConsiderR()
 		and not J.IsRetreating( bot )
 	then
 		castRTarget = nChannelingEnemyHeroInCastRange
-		return BOT_ACTION_DESIRE_HIGH, castRTarget
+		return X.GateUltDesire( castRTarget, nDamage, nCastPoint )
 	end
 
 	return 0
+end
+
+-- Hybrid gate: the rule above already chose a valid target and passed the hard gates.
+-- The learned model only decides WHETHER NOW is a good moment (desire in [0,1]).
+-- If no model is loaded, GetUltDesire returns nil and we keep the original behaviour.
+function X.GateUltDesire( castRTarget, nDamage, nCastPoint )
+	local ctx = { damage = nDamage, castPoint = nCastPoint }
+	local mlDesire = SniperUltPolicy.GetUltDesire( J, bot, castRTarget, ctx )
+
+	local desire = mlDesire
+	if desire == nil then
+		-- no model loaded -> original behaviour
+		desire = BOT_ACTION_DESIRE_HIGH
+	end
+
+	-- mlDesire == 0 means HOLD; anything > 0 means we are about to cast -> log it for training.
+	if desire > 0 then
+		DataLog.RecordUltFire( 'sniper_assassinate', bot, castRTarget,
+			SniperUltPolicy.BuildFeatures( J, bot, castRTarget, ctx ) )
+	end
+
+	return desire, castRTarget
 end
 
 function X.GetWeakestUnitInRangeExRadius( nUnits, nRange, nRadius, bot )

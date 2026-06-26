@@ -4,6 +4,12 @@ local J = require( GetScriptDirectory()..'/FunLib/jmz_func')
 local Version      = require(GetScriptDirectory()..'/FunLib/version')
 local Localization = require(GetScriptDirectory()..'/FunLib/localization')
 
+-- Shared hybrid (rule + learned) laning policy + outcome logger.
+-- Hero-agnostic: enabled per MLLaning.IsHeroEnabled (default = all heroes). A hero not enabled
+-- keeps the original code paths byte-for-byte.
+local MLLaning = require(GetScriptDirectory()..'/FunLib/ml/laning_ml_policy')
+local DataLog  = require(GetScriptDirectory()..'/FunLib/ml/datalog')
+
 
 local bot = GetBot()
 local botName = bot:GetUnitName()
@@ -172,29 +178,99 @@ function GetBestDenyCreep(hCreepList)
 	return nil
 end
 
-if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) then
+-- Rule-owned target selection for the hybrid HP-trade head: nearest attackable enemy hero
+-- already within our attack reach (no chasing). The model only decides whether to commit.
+function GetBestHarassTarget()
+	local reach = botAttackRange + 50
+	local enemies = bot:GetNearbyHeroes(reach, true, BOT_MODE_NONE)
+	local best, bestDist = nil, 99999
+	for _, e in pairs(enemies) do
+		if J.IsValidHero(e) and not J.IsSuspiciousIllusion(e)
+		and J.CanBeAttacked(e) and J.CanCastOnNonMagicImmune(e) then
+			local d = GetUnitToUnitDistance(bot, e)
+			if d <= reach and d < bestDist then
+				best, bestDist = e, d
+			end
+		end
+	end
+	return best
+end
+
+local bMlLaning = MLLaning.IsHeroEnabled(botName)
+
+if local_mode_laning_generic or (J.GetPosition(bot) == 1 and J.IsPosxHuman(5)) or bMlLaning then
 	function Think()
+		DataLog.Tick()   -- resolve any pending CS-outcome records (no-op unless logging enabled)
+
 		local hitCreep, moveToCreep = GetBestLastHitCreep(nEnemyCreeps)
 		if J.IsValid(hitCreep) then
 			if J.GetPosition(bot) <= 2 or not J.IsThereNonSelfCoreNearby(700)
 			then
-				if GetUnitToUnitDistance(bot, hitCreep) > botAttackRange
-				or (moveToCreep and GetUnitToUnitDistance(bot, hitCreep) > botAttackRange * 0.8) then
-					bot:Action_MoveToUnit(hitCreep)
-					return
-				else
-					bot:SetTarget(hitCreep)
-					bot:Action_AttackUnit(hitCreep, true)
-					return
+				local goForIt = true
+				-- Shared laning hybrid: only the RISKY step-up (moveToCreep) is judged by the model.
+				-- Guaranteed last-hits (moveToCreep == false) are never gated -> no free CS lost.
+				if bMlLaning and moveToCreep then
+					local ctx = { attackDamage = attackDamage }
+					local commit = MLLaning.LastHitCommit(J, bot, hitCreep, ctx)
+					if commit ~= nil then
+						goForIt = commit > 0
+						if goForIt then
+							DataLog.RecordCS('laning_lasthit', bot,
+								MLLaning.BuildLastHitFeatures(J, bot, hitCreep, ctx), 'lasthit')
+						end
+					end
+				end
+
+				if goForIt then
+					if GetUnitToUnitDistance(bot, hitCreep) > botAttackRange
+					or (moveToCreep and GetUnitToUnitDistance(bot, hitCreep) > botAttackRange * 0.8) then
+						bot:Action_MoveToUnit(hitCreep)
+						return
+					else
+						bot:SetTarget(hitCreep)
+						bot:Action_AttackUnit(hitCreep, true)
+						return
+					end
 				end
 			end
 		end
 
 		local denyCreep = GetBestDenyCreep(nAllyCreeps)
 		if J.IsValid(denyCreep) then
-			bot:SetTarget(denyCreep)
-			bot:Action_AttackUnit(denyCreep, true)
-			return
+			local goDeny = true
+			if bMlLaning then
+				local ctx = { attackDamage = attackDamage }
+				local commit = MLLaning.DenyCommit(J, bot, denyCreep, ctx)
+				if commit ~= nil then
+					goDeny = commit > 0
+					if goDeny then
+						DataLog.RecordCS('laning_deny', bot,
+							MLLaning.BuildDenyFeatures(J, bot, denyCreep, ctx), 'deny')
+					end
+				end
+			end
+			if goDeny then
+				bot:SetTarget(denyCreep)
+				bot:Action_AttackUnit(denyCreep, true)
+				return
+			end
+		end
+
+		-- Shared laning hybrid: HP-trade / harass. Rule picks a valid in-reach enemy hero and
+		-- never chases; the model decides whether trading HP right now is worth it.
+		if bMlLaning then
+			local harassTarget = GetBestHarassTarget()
+			if J.IsValid(harassTarget) then
+				local ctx = { attackDamage = attackDamage }
+				local commit = MLLaning.TradeCommit(J, bot, harassTarget, ctx)
+				if commit ~= nil and commit > 0 then
+					DataLog.RecordTrade('laning_trade', bot, harassTarget,
+						MLLaning.BuildTradeFeatures(J, bot, harassTarget, ctx))
+					bot:SetTarget(harassTarget)
+					bot:Action_AttackUnit(harassTarget, true)
+					return
+				end
+			end
 		end
 
 		if local_mode_laning_generic then
